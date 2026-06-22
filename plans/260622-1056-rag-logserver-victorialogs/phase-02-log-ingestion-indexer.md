@@ -18,10 +18,14 @@
 
 ## Architecture
 ```
-Servers (rsyslog/journald/filebeat-style)
-   │ syslog RFC5424 / vector source
+Clients (Ubuntu 24.04, 50-200 nodes)
+   ├── rsyslog imjournal      → systemd journal (ssh, kernel, cron, fail2ban)
+   ├── rsyslog imfile         → /var/log/nginx/*, /var/log/mysql/*, /var/log/myapp/*
+   └── auditd                 → /var/log/audit/audit.log (via imfile)
+   │
+   │ TCP 6514 TLS, RFC5424
    ▼
-Vector.dev
+Log Server VM — Vector.dev
    ├── sink: victorialogs (full stream, JSON)
    └── sink: nats (stream "logs.warn", filter severity>=WARN)
                     │
@@ -38,8 +42,14 @@ Vector.dev
 
 ## Related Code Files
 Create:
-- `infra/vector/vector.toml`
+- `infra/vector/vector.yaml` (server-side pipeline)
 - `infra/docker-compose.yml` (add `nats`, `indexer` services)
+- `infra/certs/` (mkcert CA + server cert cho lab)
+- `infra/ansible/playbook-rsyslog-client.yml`
+- `infra/ansible/files/rsyslog/10-forward-to-logserver.conf`
+- `infra/ansible/files/rsyslog/20-app-logs.conf`
+- `infra/ansible/files/ca.crt`
+- `infra/ansible/inventory.ini`
 - `indexer/pyproject.toml`
 - `indexer/src/indexer/main.py`
 - `indexer/src/indexer/drain_cluster.py`
@@ -53,12 +63,18 @@ Create:
 - `indexer/Dockerfile`
 
 ## Implementation Steps
-1. **Vector config** (see `infra/vector/vector.yaml`):
-   - source `syslog` UDP 514 + TCP 6514 TLS
-   - transform `enrich` (normalize service/host/severity)
+
+### Server-side (log server VM)
+1. **Generate TLS cert cho syslog TLS** (lab):
+   - `mkcert -install` trên log server
+   - `mkcert -cert-file infra/certs/server.crt -key-file infra/certs/server.key logserver.corp.local <IP>`
+   - Copy `~/.local/share/mkcert/rootCA.pem` → `infra/ansible/files/ca.crt` để distribute clients
+2. **Vector config** (`infra/vector/vector.yaml`):
+   - source `syslog_tls`: TCP 0.0.0.0:6514, TLS server cert mount `/etc/vector/certs/`, lab `verify_certificate=false` (server-side only); production bật client cert verify
+   - transform `enrich` (normalize service/host/severity từ RFC5424 fields)
    - **transform `redact` VRL** — strip email, RFC1918 IP, JWT, AWS key, Bearer token, password (BEFORE VL ingest)
-   - sink `victorialogs` (data đã clean)
-   - sink `nats` subject `logs.warn`, filter severity WARN+
+   - sink `victorialogs` (Elasticsearch bulk API `http://victorialogs:9428/insert/elasticsearch/`, data đã clean)
+   - sink `nats` subject `logs.warn`, filter `severity in ["warning","err","crit","alert","emerg"]`
 2. Thêm NATS server vào docker-compose (image `nats:latest`, JetStream enable)
 3. Init Qdrant collection: `log_templates`, vector 1536d cosine, payload indexes (service, host, severity, ts_start)
 4. **Indexer worker**:
@@ -76,8 +92,38 @@ Create:
    - `test_drain_cluster.py`: 1000 log lines → assert template count < 50
 8. Load test: replay 1GB log file qua Vector → đo lag indexer
 
+### Client-side (Ubuntu 24.04, 50-200 nodes) — rsyslog forwarder
+Chiến lược: dùng rsyslog có sẵn (KISS), không cài agent thêm. Vector agent chỉ cần khi structured parsing nặng trên client — không cần ở scale này.
+
+9. **Setup 1 node thủ công trước** để verify, sau đó rollout Ansible:
+   - Add `/etc/hosts`: `<LOGSERVER_IP> logserver.corp.local` (chờ DNS thật)
+   - Copy CA cert: `/etc/rsyslog.d/certs/ca.crt` (mode 0644)
+   - File `/etc/rsyslog.d/10-forward-to-logserver.conf`:
+     ```rsyslog
+     # TLS driver
+     $DefaultNetstreamDriver gtls
+     $DefaultNetstreamDriverCAFile /etc/rsyslog.d/certs/ca.crt
+     $ActionSendStreamDriverMode 1
+     $ActionSendStreamDriverAuthMode anon   # Lab; prod: x509/name
+     # RFC5424 forwarding
+     template(name="RFC5424Format" type="string"
+       string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% %HOSTNAME% %APP-NAME% %PROCID% %MSGID% - %msg%\n")
+     *.* @@(o)logserver.corp.local:6514;RFC5424Format
+     ```
+   - File `/etc/rsyslog.d/20-app-logs.conf` — imfile cho `/var/log/nginx/*`, `/var/log/mysql/error.log`, `/var/log/audit/audit.log`, `/var/log/myapp/*.log` (mỗi input có Tag riêng để Vector parse `appname`)
+   - `systemctl restart rsyslog && ss -tnp | grep 6514` → có connection ESTAB tới log server
+   - `logger -t smoke-test "hello $(hostname)"` → verify log server query thấy
+10. **Ansible rollout** (`infra/ansible/playbook-rsyslog-client.yml`):
+    - Tasks: copy CA cert + 2 file rsyslog config + add `/etc/hosts` entry + restart rsyslog
+    - Inventory group `[logclients]` chia theo env (lab/prod)
+    - Run: `ansible-playbook -i inventory.ini playbook-rsyslog-client.yml --limit lab`
+    - Idempotent: chạy lại không break
+11. **Audit + fail2ban**: auditd ghi `/var/log/audit/audit.log` → đã cover qua imfile. fail2ban mặc định log journald → đã cover qua imjournal.
+
 ## Todo
-- [ ] Vector config + TLS cert syslog
+### Server-side
+- [ ] mkcert CA + server cert cho `logserver.corp.local`
+- [ ] Vector config (syslog TLS source + enrich + redact + VL/NATS sinks)
 - [ ] NATS service trong compose
 - [ ] Qdrant collection init script
 - [ ] Indexer scaffold (pyproject, config, logging)
@@ -89,6 +135,13 @@ Create:
 - [ ] Dockerfile + compose integration
 - [ ] Load test replay 1GB
 - [ ] Doc data flow
+
+### Client-side
+- [ ] Setup 1 node lab thủ công verify end-to-end
+- [ ] Ansible playbook + inventory (lab group)
+- [ ] Rollout 5 node lab, verify VL nhận log đủ
+- [ ] Rollout full lab fleet
+- [ ] Doc client onboarding cho production (cần network team confirm route)
 
 ## Success Criteria
 - Vector ingest 50GB/ngày không drop (queue depth < threshold)
@@ -105,10 +158,12 @@ Create:
 - PII regex false negative → review weekly mẫu Qdrant payload
 
 ## Security
-- syslog TCP 6514 chỉ chấp nhận TLS client cert từ server đã cấp
+- syslog TCP 6514 TLS bắt buộc. **Lab: server-side cert only (AuthMode anon).** Production: enable client cert verify (`AuthMode x509/name`) + cấp client cert mỗi node qua Ansible
+- Client cert distribution defer đến production (cần PKI nội bộ hoặc step-ca)
 - Indexer chạy non-root, read-only fs trừ /data/drain_state
 - OpenAI key qua sops .env, không log
 - Audit redaction: log số count redacted/batch
+- mkcert root CA chỉ dùng lab — production swap sang corp internal CA
 
 ## Next Steps
 - Phase 03 query Qdrant + VictoriaLogs

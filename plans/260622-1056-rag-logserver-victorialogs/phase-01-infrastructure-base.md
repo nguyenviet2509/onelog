@@ -13,6 +13,8 @@
 - VM: 16 vCPU, 32GB RAM, SSD 1TB, Ubuntu 22.04/24.04 LTS
 - Docker Engine + docker-compose v2
 - Firewall: chỉ mở port admin (SSH) + syslog ingest (514/6514) + HTTPS 443 (Caddy) + Telegram outbound + LLM API outbound. **Khi auth chưa setup**: thêm IP whitelist source ở Caddy cho subnet sysadmin nội bộ (thay thế tạm cho auth).
+- **Lab vs Production TLS**: lab dùng TLS server-side only (server cert tự ký bằng mkcert, client rsyslog dùng `AuthMode anon`). Production bật client cert verify (`AuthMode x509/name`) + distribute client cert qua Ansible.
+- **Domain + SSL từ công ty**: defer — Caddy dùng `tls internal` cho lab. Khi sysadmin cấp domain + cert, đổi 3 dòng Caddyfile.
 - Persistent volumes mount /data (VictoriaLogs, Qdrant, Redis)
 - Snapshot script daily → local /backup hoặc MinIO
 
@@ -37,7 +39,7 @@ Create:
 - `docs/deployment-guide.md` (update)
 
 ## Implementation Steps
-1. Provision VM, bật UFW: allow 22/tcp, 514/udp, 6514/tcp, deny rest inbound
+1. Provision VM, bật UFW: allow 22/tcp, 6514/tcp (syslog TLS), 443/tcp (Caddy), 514/udp (optional internal), deny rest inbound. Lab: source = LAN CIDR. Production: source = VPN subnet + corp LAN.
 2. Cài Docker Engine + compose plugin theo official repo
 3. Viết `docker-compose.yml`:
    - `victorialogs`: image `victoriametrics/victoria-logs:latest`, port 9428, volume `./victorialogs:/victoria-logs-data`, flags `-retentionPeriod=90d -storageDataPath=/victoria-logs-data`

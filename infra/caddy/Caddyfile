@@ -1,0 +1,57 @@
+# Caddy reverse proxy — PoC stage
+# Serves mock UI from /srv/mockups; later switch to Next.js upstream
+# IP allow list as MVP auth substitute (until real auth plugged)
+
+{
+    # global options
+    auto_https off  # for app.local LAN; remove for real domain to get LE TLS
+    admin off
+}
+
+# LAN HTTP (no TLS) — uncomment for app.local testing
+:80 {
+    @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
+    handle @allowed {
+        # VictoriaLogs built-in UI (vmui) — used by /trace iframe + deep links from chat citations
+        handle_path /vmui/* {
+            reverse_proxy victorialogs:9428 {
+                rewrite /select/vmui/{path}
+            }
+        }
+        # VictoriaLogs HTTP API (LogsQL query for agent + deep-link redirects)
+        handle_path /vl-api/* {
+            reverse_proxy victorialogs:9428
+        }
+        # MCP server official (mcp-victorialogs) — 12 read-only tools
+        # Requires Bearer auth (set MCP_BEARER in env when going public)
+        handle_path /mcp/vl/* {
+            reverse_proxy mcp-vl:8000
+        }
+        # MCP custom semantic — Phase 08, expose search_log_templates only
+        # handle_path /mcp/semantic/* {
+        #     reverse_proxy mcp-semantic:9000
+        # }
+        # Mock UI preview (static HTML)
+        root * /srv/mockups
+        file_server browse
+    }
+    handle {
+        respond "Forbidden — IP not in allow list" 403
+    }
+}
+
+# HTTPS (uncomment + set real domain when ready)
+# {$APP_DOMAIN} {
+#     @allowed remote_ip {$ADMIN_ALLOW_CIDR}
+#     handle @allowed {
+#         # / → Next.js web (port 3000) — Phase 04
+#         # reverse_proxy /api/* agent:8080
+#         # reverse_proxy /mcp/*  mcp:9000
+#         # reverse_proxy / web:3000
+#         root * /srv/mockups
+#         file_server
+#     }
+#     handle {
+#         respond "Forbidden — IP not in allow list" 403
+#     }
+# }

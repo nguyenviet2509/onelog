@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin · Cost — RAG Log Server</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="flex h-screen">
+    <aside class="w-56 border-r border-zinc-800 p-4 bg-zinc-900/40">
+      <a href="index.html" class="text-xs text-zinc-500 hover:text-zinc-300">← Mockups</a>
+      <h1 class="font-semibold mt-1 mb-6">Admin</h1>
+      <nav class="space-y-1 text-sm">
+        <a href="admin-audit.html" class="block px-2 py-1.5 rounded hover:bg-zinc-800/60">📋 Audit</a>
+        <a href="admin-cost.html" class="block px-2 py-1.5 rounded bg-zinc-800">💰 Cost</a>
+        <a href="admin-health.html" class="block px-2 py-1.5 rounded hover:bg-zinc-800/60">❤️ Health</a>
+      </nav>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-6">
+      <header class="mb-6">
+        <h2 class="text-2xl font-bold">Cost LLM</h2>
+        <p class="text-sm text-zinc-400">30 ngày gần nhất</p>
+      </header>
+
+      <!-- Summary cards -->
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-xs text-zinc-400">Hôm nay</div>
+          <div class="text-2xl font-bold mt-1">$3.42</div>
+          <div class="text-xs text-emerald-400 mt-1">↓ 12% vs hôm qua</div>
+        </div>
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-xs text-zinc-400">Tuần này</div>
+          <div class="text-2xl font-bold mt-1">$24.18</div>
+          <div class="text-xs text-zinc-500 mt-1">5/7 ngày</div>
+        </div>
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-xs text-zinc-400">Tháng này</div>
+          <div class="text-2xl font-bold mt-1">$112.50</div>
+          <div class="text-xs text-zinc-500 mt-1">Budget $200 · 56%</div>
+        </div>
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-xs text-zinc-400">Cache hit rate</div>
+          <div class="text-2xl font-bold mt-1">34%</div>
+          <div class="text-xs text-emerald-400 mt-1">Saved ~$58</div>
+        </div>
+      </div>
+
+      <!-- Chart placeholder -->
+      <div class="rounded-lg border border-zinc-800 p-4 mb-6">
+        <div class="text-sm font-medium mb-3">Cost theo ngày (USD)</div>
+        <div class="flex items-end gap-1 h-40">
+          <!-- Fake daily bars 30 -->
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 30%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 45%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 38%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 55%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 60%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 40%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 35%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 50%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 70%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 85%"></div>
+          <div class="flex-1 bg-amber-500 rounded-t" style="height: 95%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 65%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 55%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 50%"></div>
+          <div class="flex-1 bg-blue-600 rounded-t" style="height: 45%"></div>
+        </div>
+        <div class="flex justify-between text-[10px] text-zinc-500 mt-2">
+          <span>15 ngày trước</span><span>10 ngày</span><span>5 ngày</span><span>hôm nay</span>
+        </div>
+      </div>
+
+      <!-- Breakdown -->
+      <div class="grid grid-cols-2 gap-4">
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-sm font-medium mb-3">Theo user (tháng này)</div>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span>sysadmin</span><span class="text-zinc-400">$68.20 · 60%</span></div>
+            <div class="flex justify-between"><span>truc.lt</span><span class="text-zinc-400">$31.50 · 28%</span></div>
+            <div class="flex justify-between"><span>alert (auto)</span><span class="text-zinc-400">$12.80 · 11%</span></div>
+          </div>
+        </div>
+        <div class="rounded-lg border border-zinc-800 p-4">
+          <div class="text-sm font-medium mb-3">Theo model</div>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span>claude-sonnet-4-5</span><span class="text-zinc-400">$98.30</span></div>
+            <div class="flex justify-between"><span>text-embedding-3-small</span><span class="text-zinc-400">$11.20</span></div>
+            <div class="flex justify-between"><span>claude-haiku (cache)</span><span class="text-zinc-400">$3.00</span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

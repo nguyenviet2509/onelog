@@ -1,0 +1,82 @@
+# Vector pipeline — PoC stage
+# Sources: syslog UDP/TCP from 3 demo servers
+# Sinks: VictoriaLogs (full), file (debug)
+# Future Phase 02: + filter WARN+ → NATS → indexer
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  syslog_udp:
+    type: syslog
+    address: 0.0.0.0:514
+    mode: udp
+
+  syslog_tcp:
+    type: syslog
+    address: 0.0.0.0:6514
+    mode: tcp
+
+transforms:
+  enrich:
+    type: remap
+    inputs: [syslog_udp, syslog_tcp]
+    source: |
+      # Normalize fields for VictoriaLogs
+      .service = .appname || "unknown"
+      .severity = .severity || "info"
+      .host = .hostname || .source_ip || "unknown"
+      ._msg = .message
+      ._time = .timestamp
+      # Drop verbose fields
+      del(.appname)
+      del(.hostname)
+      del(.facility)
+      del(.version)
+      del(.procid)
+
+  redact:
+    # PII/secret redaction BEFORE log lands in VictoriaLogs
+    # Anything downstream (MCP tools, indexer, agent) reads safe data
+    type: remap
+    inputs: [enrich]
+    source: |
+      msg = string!(._msg)
+      # Email
+      msg = replace(msg, r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', "<EMAIL>")
+      # IPv4 (keep public IPs, redact RFC1918 private)
+      msg = replace(msg, r'\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b', "<PRIV_IP>")
+      # JWT (3 base64 segments)
+      msg = replace(msg, r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', "<JWT>")
+      # AWS access key
+      msg = replace(msg, r'AKIA[0-9A-Z]{16}', "<AWS_KEY>")
+      # Bearer token
+      msg = replace(msg, r'(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._-]+', "$1<TOKEN>")
+      # Password fields (basic)
+      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "$1=<REDACTED>")
+      ._msg = msg
+
+sinks:
+  victorialogs:
+    type: elasticsearch
+    inputs: [redact]
+    endpoints:
+      - http://victorialogs:9428/insert/elasticsearch/
+    mode: bulk
+    api_version: v8
+    healthcheck:
+      enabled: false
+    encoding:
+      timestamp_format: rfc3339
+    query:
+      _msg_field: _msg
+      _time_field: _time
+      _stream_fields: "service,host"
+
+  debug_file:
+    type: file
+    inputs: [redact]
+    path: /var/lib/vector/debug-%Y-%m-%d.log
+    encoding:
+      codec: json

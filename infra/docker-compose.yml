@@ -1,0 +1,115 @@
+# PoC stack for RAG Log Server (single-node, 3 demo servers)
+# Bring up:  docker compose up -d
+# Tear down: docker compose down
+# Logs:      docker compose logs -f <service>
+
+name: ragstack
+
+services:
+  victorialogs:
+    image: victoriametrics/victoria-logs:latest
+    container_name: ragstack-vl
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=${VL_RETENTION:-7d}
+      - -httpListenAddr=:9428
+      - -memory.allowedBytes=512MB
+    ports:
+      - "127.0.0.1:9428:9428"   # HTTP API (web/agent)
+    volumes:
+      - ./data/victorialogs:/victoria-logs-data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9428/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ragstack-qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      QDRANT__SERVICE__HTTP_PORT: 6333
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ragstack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ragstack-redis
+    restart: unless-stopped
+    profiles: [agent]   # only start when agent stack is needed (Phase 03+)
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "128mb"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data
+
+  vector:
+    image: timberio/vector:0.40.0-alpine
+    container_name: ragstack-vector
+    restart: unless-stopped
+    ports:
+      - "514:514/udp"           # syslog UDP (RFC3164) from servers
+      - "6514:6514/tcp"         # syslog TCP (RFC5424) optional
+      - "127.0.0.1:8686:8686"   # Vector API
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - ./data/vector:/var/lib/vector
+    depends_on:
+      - victorialogs
+
+  # MCP server official from VictoriaMetrics
+  # Exposes 12 read-only tools (query LogsQL, hits, facets, stream_ids, ...)
+  # https://github.com/VictoriaMetrics/mcp-victorialogs
+  mcp-vl:
+    image: victoriametrics/mcp-victorialogs:latest
+    container_name: ragstack-mcp-vl
+    restart: unless-stopped
+    profiles: [mcp]   # opt-in: docker compose --profile mcp up
+    environment:
+      VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
+      MCP_TRANSPORT: sse
+      MCP_LISTEN_ADDR: 0.0.0.0:8000
+      # Optional: disable noisy tools
+      # MCP_DISABLED_TOOLS: documentation
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      - victorialogs
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: ragstack-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+      - ./mockups:/srv/mockups:ro
+
+networks:
+  default:
+    name: ragstack

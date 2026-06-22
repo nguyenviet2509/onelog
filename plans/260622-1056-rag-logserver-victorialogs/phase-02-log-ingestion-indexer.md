@@ -72,7 +72,8 @@ Create:
 2. **Vector config** (`infra/vector/vector.yaml`):
    - source `syslog_tls`: TCP 0.0.0.0:6514, TLS server cert mount `/etc/vector/certs/`, lab `verify_certificate=false` (server-side only); production bật client cert verify
    - transform `enrich` (normalize service/host/severity từ RFC5424 fields)
-   - **transform `redact` VRL** — strip email, RFC1918 IP, JWT, AWS key, Bearer token, password (BEFORE VL ingest)
+   - **transform `parse_app_logs` VRL** — structured parse cho nginx (combined format → status/method/path/latency), mysql error (timestamp/level/code), audit log (key=value pairs). Branch theo `appname` tag từ rsyslog. Parse fail → giữ raw `message`, không drop.
+   - **transform `redact` VRL** — strip email, RFC1918 IP, JWT, AWS key, Bearer token, password (BEFORE VL ingest). Áp dụng sau parse để parsed fields cũng được redact.
    - sink `victorialogs` (Elasticsearch bulk API `http://victorialogs:9428/insert/elasticsearch/`, data đã clean)
    - sink `nats` subject `logs.warn`, filter `severity in ["warning","err","crit","alert","emerg"]`
 2. Thêm NATS server vào docker-compose (image `nats:latest`, JetStream enable)
@@ -123,7 +124,8 @@ Chiến lược: dùng rsyslog có sẵn (KISS), không cài agent thêm. Vector
 ## Todo
 ### Server-side
 - [ ] mkcert CA + server cert cho `logserver.corp.local`
-- [ ] Vector config (syslog TLS source + enrich + redact + VL/NATS sinks)
+- [ ] Vector config (syslog TLS source + enrich + parse_app_logs + redact + VL/NATS sinks)
+- [ ] parse_app_logs VRL: nginx combined, mysql error, audit kv (fallback giữ raw nếu parse fail)
 - [ ] NATS service trong compose
 - [ ] Qdrant collection init script
 - [ ] Indexer scaffold (pyproject, config, logging)

@@ -7,7 +7,7 @@
 
 ## Overview
 - Priority: P0
-- Status: **server-side DONE** (2026-06-23 — Vector ingest UDP 514 + TCP 6514, VRL redact 5/5 PII verified, rsyslog client TCP working). **Indexer worker scaffolded 2026-06-23** (NATS JetStream + Drain3 + redact + OpenAI/mock embed + Qdrant async upsert + Prometheus metrics). Mock log generator deployed srv-01/srv-02 (`infra/clients/mock-logs.py`). Pending: `docker compose --profile indexer up -d --build` + soak.
+- Status: **DONE end-to-end** (2026-06-23). Vector ingest UDP 514 + TCP 6514, VRL redact 5/5 PII verified, rsyslog client TCP working, mock log generator on srv-01/srv-02. Indexer pipeline live: NATS JetStream → Drain3 (per-service templates, `<*>` wildcards) → regex redact defense-in-depth → embed (OpenAI / EMBED_MOCK fallback) → Qdrant async upsert. Verified: 451 points across 4 services × 2 hosts, dedup working (count aggregation 4-33 per template), PII zero-leak audit 0 hits in 200-point sample. Prometheus `/metrics` exposed on :9100. Pending: real OpenAI key swap + scale MOCK_RATE 10→50 + 24h soak.
 - Mục tiêu: Vector.dev nhận log từ 50-200 server → **redact PII bằng VRL ngay tại ingest** → ghi VictoriaLogs (data clean) + tap stream WARN+ qua NATS → Indexer worker (Python) dedupe Drain3, redact lần 2 (defense in depth), embed, upsert Qdrant.
 
 ## Requirements

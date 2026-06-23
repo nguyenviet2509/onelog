@@ -100,6 +100,34 @@ services:
       timeout: 5s
       retries: 3
 
+  # RAG agent — FastAPI + Claude tool-use over Qdrant + VictoriaLogs.
+  agent:
+    build: ../agent
+    container_name: ragstack-agent
+    restart: unless-stopped
+    profiles: [agent]   # opt-in: docker compose --profile agent up -d
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      LLM_MOCK: ${LLM_MOCK:-false}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
+      EMBED_MOCK: ${EMBED_MOCK:-false}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_COLLECTION: log_templates
+      VL_URL: http://victorialogs:9428
+      HOST: 0.0.0.0
+      PORT: "8080"
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - qdrant
+      - victorialogs
+
   # Indexer worker — consumes NATS logs.warn, Drain3 cluster, embed → Qdrant.
   indexer:
     build: ../indexer

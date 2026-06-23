@@ -75,9 +75,11 @@ async def run(args: dict[str, Any]) -> dict[str, Any]:
     qfilter = qm.Filter(must=must) if must else None
 
     vector = await embed.embed(query)
-    results = await qdrant.search(
+    # qdrant-client 1.10+ uses `query_points`; the older `search` was removed
+    # in 1.11. Result is a QueryResponse with a `points` list of ScoredPoint.
+    resp = await qdrant.query_points(
         collection_name=settings.qdrant_collection,
-        query_vector=vector,
+        query=vector,
         query_filter=qfilter,
         limit=limit,
         with_payload=True,
@@ -95,7 +97,7 @@ async def run(args: dict[str, Any]) -> dict[str, Any]:
             "window_end": (r.payload or {}).get("window_end"),
             "sample": (r.payload or {}).get("sample"),
         }
-        for r in results
+        for r in resp.points
     ]
     log.info("tool.search_log_templates", query=query, hits=len(hits))
     return {"hits": hits}

@@ -4,6 +4,7 @@
  * Each probe has its own 2s timeout and returns either ok+latency or error+msg.
  * No long-lived state; this endpoint is cheap to refresh from the admin UI.
  */
+import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { ensureBootstrap } from "@/db/bootstrap";
@@ -42,8 +43,7 @@ async function probePostgres(): Promise<Check> {
     await ensureBootstrap();
     const db = getDb();
     // Tiny no-op query — confirms pool + auth + DDL ran.
-    // @ts-expect-error — drizzle exposes the underlying client for ad-hoc SQL
-    await db.execute("SELECT 1");
+    await db.execute(sql`SELECT 1`);
     return { name: "postgres", ok: true, latency_ms: Date.now() - start };
   } catch (e) {
     return { name: "postgres", ok: false, latency_ms: Date.now() - start, detail: (e as Error).message };

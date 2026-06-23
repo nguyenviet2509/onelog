@@ -139,6 +139,20 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./data/alertmanager:/data
 
+  # Web UI (Next.js) — chat front-end, proxies SSE through BFF to agent.
+  web:
+    build: ../web
+    container_name: ragstack-web
+    restart: unless-stopped
+    profiles: [web]   # opt-in: docker compose --profile web up -d
+    environment:
+      AGENT_URL: http://agent:8080
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - agent
+
   # RAG agent — FastAPI + Claude tool-use over Qdrant + VictoriaLogs.
   agent:
     build: ../agent

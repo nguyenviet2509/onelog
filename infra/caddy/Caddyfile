@@ -42,9 +42,13 @@
         # handle_path /mcp/semantic/* {
         #     reverse_proxy mcp-semantic:9000
         # }
-        # Mock UI preview (static HTML)
-        root * /srv/mockups
-        file_server browse
+        # Next.js web app — chat UI + BFF /api/* routes
+        # Phase 04 MVP: chat only. /api/chat proxies SSE to agent.
+        handle {
+            reverse_proxy web:3000 {
+                flush_interval -1   # streaming SSE — no buffering
+            }
+        }
     }
     handle {
         respond "Forbidden — IP not in allow list" 403

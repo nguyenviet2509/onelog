@@ -6,7 +6,8 @@
 set -euo pipefail
 
 ARCHIVE="${1:?usage: restore-snapshot.sh <archive.tar.gz>  (set FORCE=1 to skip prompt)}"
-INFRA_DIR="${INFRA_DIR:-/opt/onelog/infra}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STAGE="$(mktemp -d -t ragrestore.XXXXXX)"
 
 if [[ "${FORCE:-0}" != "1" ]]; then

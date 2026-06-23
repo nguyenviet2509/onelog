@@ -51,10 +51,10 @@ transforms:
       msg = replace(msg, r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', "<JWT>")
       # AWS access key
       msg = replace(msg, r'AKIA[0-9A-Z]{16}', "<AWS_KEY>")
-      # Bearer token
-      msg = replace(msg, r'(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._-]+', "$1<TOKEN>")
-      # Password fields (basic)
-      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "$1=<REDACTED>")
+      # Bearer token — $$1 để Vector không hiểu $1 là env var khi parse YAML
+      msg = replace(msg, r'(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._-]+', "$$1<TOKEN>")
+      # Password fields (basic) — same escape rule
+      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "$$1=<REDACTED>")
       ._msg = msg
 
 sinks:

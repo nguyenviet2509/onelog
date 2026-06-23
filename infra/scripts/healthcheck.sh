@@ -5,7 +5,9 @@
 
 set -u
 
-INFRA_DIR="${INFRA_DIR:-/opt/onelog/infra}"
+# Default: thư mục chứa script (giả định scripts/ nằm trong infra/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 if [[ -f "$INFRA_DIR/.env" ]]; then
   set -a; . "$INFRA_DIR/.env"; set +a
 fi

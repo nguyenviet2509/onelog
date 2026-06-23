@@ -7,8 +7,9 @@
 
 set -euo pipefail
 
-INFRA_DIR="${INFRA_DIR:-/opt/onelog/infra}"
-BACKUP_DIR="${1:-${BACKUP_DIR:-/opt/onelog/backup}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+BACKUP_DIR="${1:-${BACKUP_DIR:-$INFRA_DIR/../backup}}"
 DATE="$(date +%Y%m%d-%H%M)"
 STAGE="$(mktemp -d -t ragsnap.XXXXXX)"
 KEEP_DAYS="${KEEP_DAYS:-7}"

@@ -108,8 +108,9 @@ services:
     restart: unless-stopped
     profiles: [alerts]
     command:
-      - "-datasource.url=http://victorialogs:9428/select/logsql"
-      - "-datasource.disableStepParam=true"
+      # For `type: vlogs` groups, vmalert appends `/select/logsql/stats_query`
+      # to this base URL itself. Use root path of VictoriaLogs.
+      - "-datasource.url=http://victorialogs:9428/"
       - "-notifier.url=http://alertmanager:9093"
       - "-rule=/etc/vmalert/rules.yml"
       - "-evaluationInterval=30s"

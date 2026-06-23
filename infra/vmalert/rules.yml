@@ -10,8 +10,14 @@ groups:
     type: vlogs
     interval: 5m
     rules:
+      # LogsQL `| filter value > N` keeps only series breaching threshold.
+      # Without filter vmalert fires on count >= 1 — too noisy.
+      #
+      # Thresholds are SMOKE-TEST level (low) so the alert pipeline triggers
+      # against current mock baseline. Production tuning: raise to numbers
+      # well above MOCK_RATE × service-weight × severity-weight × window.
       - alert: SshBruteForce
-        expr: 'service:mock-sshd "Failed password" | stats by (host) count() as value'
+        expr: 'service:mock-sshd "Failed password" | stats by (host) count() as value | filter value > 20'
         for: 1m
         labels:
           severity: warning
@@ -21,7 +27,7 @@ groups:
           description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
 
       - alert: MysqlErrorBurst
-        expr: 'service:mock-mysql severity:err | stats by (host) count() as value'
+        expr: 'service:mock-mysql severity:err | stats by (host) count() as value | filter value > 30'
         for: 1m
         labels:
           severity: warning
@@ -31,7 +37,7 @@ groups:
           description: "{{ $value }} mysql err events in last 5m on {{ $labels.host }}"
 
       - alert: AuditLoginFailures
-        expr: 'service:mock-audit "res=failed" | stats by (host) count() as value'
+        expr: 'service:mock-audit "res=failed" | stats by (host) count() as value | filter value > 10'
         for: 1m
         labels:
           severity: warning
@@ -41,7 +47,7 @@ groups:
           description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
 
       - alert: NginxServerErrors
-        expr: 'service:mock-nginx severity:err | stats by (host) count() as value'
+        expr: 'service:mock-nginx severity:err | stats by (host) count() as value | filter value > 100'
         for: 1m
         labels:
           severity: warning

@@ -30,7 +30,9 @@ export async function* streamSSE(
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // Normalize CRLF → LF up front — sse-starlette emits `\r\n` per spec
+    // (browser EventSource handles both, but our manual split needs LF only).
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
     // SSE delimits events with a blank line. We process complete events,
     // leaving any partial trailing event in the buffer for the next chunk.

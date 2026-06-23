@@ -150,8 +150,9 @@ services:
       NODE_ENV: production
     ports:
       - "127.0.0.1:3000:3000"
-    depends_on:
-      - agent
+    # No `depends_on: [agent]` because `agent` lives in its own profile; compose
+    # rejects cross-profile depends_on. Web tolerates agent-absent at startup —
+    # the first chat request will just surface the upstream error.
 
   # RAG agent — FastAPI + Claude tool-use over Qdrant + VictoriaLogs.
   agent:

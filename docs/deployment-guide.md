@@ -160,6 +160,23 @@ sudo systemctl enable --now ragstack.service
 sudo systemctl status ragstack
 ```
 
+### 3.7 Snapshot daily (cron)
+
+```bash
+sudo install -m 0755 -o ragops -g ragops -d /opt/onelog/backup
+sudo install -m 0755 infra/scripts/snapshot-daily.sh /opt/onelog/infra/scripts/snapshot-daily.sh
+sudo install -m 0755 infra/scripts/restore-snapshot.sh /opt/onelog/infra/scripts/restore-snapshot.sh
+sudo install -m 0755 infra/scripts/healthcheck.sh    /opt/onelog/infra/scripts/healthcheck.sh
+
+# Crontab cho user ragops
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/ragstack-snapshot.log 2>&1") | crontab -
+
+# Smoke test ngay
+bash /opt/onelog/infra/scripts/healthcheck.sh
+bash /opt/onelog/infra/scripts/snapshot-daily.sh
+ls -lh /opt/onelog/backup/
+```
+
 ---
 
 ## 4. Cấu hình client server (192.168.122.51 và 192.168.122.52)
@@ -323,7 +340,9 @@ Kiểm tra Telegram chat (nếu đã set token).
 - [ ] RAG `/api/chat` trả về kèm sources
 - [ ] Web UI mở được, chat round-trip OK
 - [ ] Reboot logserver → stack tự up qua `systemctl status ragstack`
-- [ ] Snapshot script `infra/scripts/snapshot-daily.sh` chạy không lỗi, file `.tar.gz` xuất hiện trong `/backup`
+- [ ] `bash infra/scripts/healthcheck.sh` → 0 failure
+- [ ] `bash infra/scripts/snapshot-daily.sh` chạy không lỗi, file `onelog-YYYYMMDD-HHMM.tar.gz` xuất hiện trong `/opt/onelog/backup`
+- [ ] Restore khô (lab): `bash infra/scripts/restore-snapshot.sh <archive>` → stack up lại với data đúng
 
 ---
 
@@ -357,7 +376,7 @@ docker compose down -v
 sudo rm -rf /opt/onelog/infra/{victorialogs,qdrant,postgres,redis}
 
 # Khôi phục từ snapshot
-bash /opt/onelog/infra/scripts/restore-qdrant.sh /backup/onelog-YYYYMMDD.tar.gz
+bash /opt/onelog/infra/scripts/restore-snapshot.sh /opt/onelog/backup/onelog-YYYYMMDD-HHMM.tar.gz
 ```
 
 Trên client:

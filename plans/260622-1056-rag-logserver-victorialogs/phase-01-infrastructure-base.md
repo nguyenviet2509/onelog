@@ -56,16 +56,17 @@ Create:
 10. Smoke test: ingest 1 log qua VictoriaLogs HTTP, query lại; create Qdrant collection test, upsert 1 point
 
 ## Todo
-- [ ] Provision VM + hardening (UFW, fail2ban, ssh key only)
-- [ ] Cài Docker + compose
-- [ ] Viết docker-compose.yml (5 service: VL, Qdrant, Postgres, Redis, Caddy)
-- [ ] DNS A record cho APP_DOMAIN → VM
-- [ ] Caddyfile (TLS LE, reverse proxy stub cho web/agent)
-- [ ] sops + age setup, encrypt .env
-- [ ] Snapshot + restore script (VL + Qdrant + Postgres dump)
-- [ ] systemd unit
-- [ ] Smoke test ingest + query + Postgres connect + Caddy TLS
-- [ ] Doc deployment-guide.md
+- [ ] Provision VM + hardening (UFW, fail2ban, ssh key only) — sysadmin task (doc trong deployment-guide §3.1-3.3)
+- [x] Cài Docker + compose (script `infra/scripts/setup-log-server.sh`)
+- [x] Viết docker-compose.yml (VL, Qdrant, Postgres, Redis profile=agent, Vector, Caddy, MCP-VL profile=mcp)
+- [ ] DNS A record cho APP_DOMAIN → VM — defer (công ty cấp domain sau)
+- [x] Caddyfile (lab: HTTP + IP allowlist; production swap TLS sau)
+- [ ] sops + age setup, encrypt .env — doc-only, defer thực thi đến production
+- [x] Snapshot + restore script (`snapshot-daily.sh` + `restore-snapshot.sh`, VL hot-tar + Qdrant API + pg_dump)
+- [x] systemd unit (`infra/systemd/ragstack.service`)
+- [x] Healthcheck script (`infra/scripts/healthcheck.sh`)
+- [ ] Smoke test ingest + query + Postgres connect + Caddy — chờ deploy lên VM lab
+- [x] Doc deployment-guide.md (đã có §1-9, thêm §3.7 snapshot cron)
 
 ## Success Criteria
 - `docker compose ps` 3/3 healthy

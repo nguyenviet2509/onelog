@@ -38,11 +38,13 @@ transforms:
 
   redact:
     # PII/secret redaction BEFORE log lands in VictoriaLogs
-    # Anything downstream (MCP tools, indexer, agent) reads safe data
+    # Anything downstream (MCP tools, indexer, agent) reads safe data.
+    # Null-safe: nếu _msg thiếu (rare edge case từ syslog parser), fallback ""
+    # để VRL không panic + drop event.
     type: remap
     inputs: [enrich]
     source: |
-      msg = string!(._msg)
+      msg = string(._msg) ?? ""
       # Email
       msg = replace(msg, r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', "<EMAIL>")
       # IPv4 (keep public IPs, redact RFC1918 private)

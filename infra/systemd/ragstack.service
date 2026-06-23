@@ -1,15 +1,22 @@
 [Unit]
 Description=OneLog RAG Log Server (docker compose stack)
-Documentation=file:///opt/onelog/docs/deployment-guide.md
+Documentation=file:///etc/onelog-ragstack.env
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
 
+# Read RAGSTACK_DIR + RAGSTACK_USER + RAGSTACK_GROUP from /etc/onelog-ragstack.env
+# Example /etc/onelog-ragstack.env:
+#   RAGSTACK_DIR=/home/vietnt/onelog/infra
+#   RAGSTACK_USER=vietnt
+#   RAGSTACK_GROUP=vietnt
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/onelog/infra
-EnvironmentFile=-/opt/onelog/infra/.env
+EnvironmentFile=/etc/onelog-ragstack.env
+WorkingDirectory=${RAGSTACK_DIR}
+User=${RAGSTACK_USER}
+Group=${RAGSTACK_GROUP}
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down
 ExecReload=/usr/bin/docker compose up -d --remove-orphans

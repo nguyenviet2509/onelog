@@ -66,28 +66,29 @@ adduser ragops && usermod -aG sudo ragops
 sudo systemctl restart ssh
 ```
 
-### 3.2 UFW
+### 3.2 One-shot setup script (Docker + UFW + system tuning)
+
+Thay vì làm tay từng bước, dùng script idempotent đã verify trên Ubuntu 24.04:
 
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw allow from 192.168.122.0/24 to any port 514 proto udp
-sudo ufw allow from 192.168.122.0/24 to any port 6514 proto tcp
-sudo ufw allow from 192.168.122.0/24 to any port 80 proto tcp
-sudo ufw allow from 192.168.122.0/24 to any port 443 proto tcp
-sudo ufw enable
-sudo ufw status numbered
+# Clone repo trước
+sudo mkdir -p /opt/onelog && sudo chown $USER:$USER /opt/onelog
+cd /opt/onelog
+git clone <repo-url> .
+
+# Chạy setup (cần sudo, tự pass INVOKING_USER để add docker group)
+sudo INVOKING_USER=$USER LAN_CIDR=192.168.122.0/24 bash infra/scripts/setup-log-server.sh
 ```
 
-### 3.3 Docker Engine
+Script này tự:
+- Cài Docker CE + compose plugin (gỡ `docker-compose-v2` / `docker.io` của Ubuntu nếu conflict)
+- Recover từ docker.io → docker-ce transition fail (gợi ý `RESET_DOCKER=1` khi containerd hỏng)
+- Mở UFW chỉ cho LAN CIDR
+- Thêm `$USER` vào docker group
+- Sync NTP + fix `/etc/hosts` cho hostname
+- In ra secrets random để paste vào `.env`
 
-```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker ragops
-newgrp docker
-docker version && docker compose version
-```
+> **Quan trọng**: sau khi script chạy xong, **re-login** (hoặc `newgrp docker`) để group docker có hiệu lực, rồi mới `docker compose up` được không cần sudo.
 
 ### 3.4 Clone repo + secrets
 
@@ -153,11 +154,18 @@ docker compose logs -f --tail=100 <service>
 
 ### 3.6 systemd auto-restart
 
+Dùng installer tự detect path + user:
+
 ```bash
-sudo cp infra/systemd/ragstack.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now ragstack.service
-sudo systemctl status ragstack
+sudo bash infra/scripts/install-systemd-unit.sh
+# Tạo /etc/onelog-ragstack.env + enable ragstack.service
+# KHÔNG start ngay nếu stack đang chạy thủ công — chờ reboot để verify
+```
+
+Verify khi reboot lần kế (hoặc thử manual):
+```bash
+sudo systemctl status ragstack --no-pager
+sudo cat /etc/onelog-ragstack.env
 ```
 
 ### 3.7 Snapshot daily (cron)
@@ -181,23 +189,28 @@ ls -lh /opt/onelog/backup/
 
 ## 4. Cấu hình client server (192.168.122.51 và 192.168.122.52)
 
-### 4.1 Option A — rsyslog (đơn giản nhất, dùng cho smoke test)
+### 4.1 Option A — rsyslog (recommend, production-ready)
 
-Trên **mỗi** client:
+Dùng script tự động (TCP 6514 + RFC5424 + disk queue):
 
 ```bash
-sudo apt-get install -y rsyslog
-sudo tee /etc/rsyslog.d/90-forward-onelog.conf >/dev/null <<'EOF'
-# Forward all logs to onelog logserver (UDP, RFC5424)
-*.* @192.168.122.53:514;RSYSLOG_SyslogProtocol23Format
-EOF
-sudo systemctl restart rsyslog
+# Clone hoặc copy infra/scripts/setup-rsyslog-client.sh sang client
+scp infra/scripts/setup-rsyslog-client.sh user@<client-ip>:/tmp/
+ssh user@<client-ip>
+sudo LOG_SERVER_IP=192.168.122.53 bash /tmp/setup-rsyslog-client.sh
 ```
 
-Test ngay:
-```bash
-logger -t smoke-test "hello from $(hostname) at $(date -Is)"
-```
+Script tự:
+- Cài rsyslog nếu thiếu
+- Backup mọi forwarder conflict cũ (`*-forward*.conf`, `*-onelog*.conf`)
+- Drop `90-forward-onelog.conf` với template RFC5424 (Vector strict parser yêu cầu)
+- Syntax check, restart rsyslog, verify TCP ESTABLISHED tới logserver:6514
+- Fire smoke log `service:client-onboard`
+
+**Tại sao TCP 6514, không phải UDP 514**:
+- Vector syslog parser strict — reject RFC3164 default của rsyslog (no year + tz)
+- Cần RFC5424 template `<%PRI%>1 %TIMESTAMP:::date-rfc3339% ...`
+- TCP cho reliable delivery + disk queue resume khi logserver restart
 
 ### 4.2 Option B — Vector agent (khuyến nghị production, có buffer disk + TLS)
 
@@ -350,12 +363,21 @@ Kiểm tra Telegram chat (nếu đã set token).
 
 | Triệu chứng | Check | Fix |
 |---|---|---|
-| Client `logger` không thấy trong VL | `nc -uvz 192.168.122.53 514` từ client | UFW chưa allow 514/udp hoặc rsyslog config sai |
-| Vector restart loop | `docker compose logs vector` | VRL syntax error hoặc sink VL down |
+| `apt install docker-compose-plugin` lỗi `trying to overwrite /usr/libexec/docker/cli-plugins/docker-compose` | Ubuntu 24.04 ship sẵn `docker-compose-v2` từ universe repo, conflict path với Docker official | Chạy lại `setup-log-server.sh` (idempotent) — auto purge `docker-compose-v2` `docker.io` trước khi cài Docker CE |
+| Docker daemon fail start, log: `metadata.db: no such file or directory` | Sót state cũ từ docker.io khi transition sang docker-ce | `sudo RESET_DOCKER=1 bash setup-log-server.sh` (nuke `/var/lib/{docker,containerd}` rồi reinstall) |
+| `docker compose: permission denied while trying to connect to .../docker.sock` | User không trong group docker | `sudo usermod -aG docker $USER && newgrp docker` (hoặc re-login) |
+| Vector restart loop, log `Missing environment variable in config. name = "1"` | VRL `$1` backref bị YAML env-var interpolation nuốt | Đã fix trong `vector.yaml`: bỏ backref, dùng literal replacement |
+| `logger` từ client không thấy trong VL, Vector log `Failed deserializing frame: unable to parse input as valid syslog message` | rsyslog default RFC3164 timestamp thiếu năm + tz, Vector strict reject | Dùng `setup-rsyslog-client.sh` (TCP 6514 + template RFC5424) |
+| rsyslog config error `parameter 'action.resumeFromLastCheckpoint' not known` | Param ảo, không tồn tại trong rsyslog 8.x | Đã loại khỏi `clients/rsyslog-forward.conf` |
+| Browser vào `http://<vm-ip>:9428/select/vmui/` timeout | VL bind `127.0.0.1:9428` (loopback only) | Vào qua Caddy: `http://<vm-ip>/select/vmui/` hoặc `http://<vm-ip>/vmui/` (redirect) |
+| vmui load HTML nhưng "Failed to load stream fields - 404" | Caddy không proxy `/select/*` (vmui JS gọi absolute paths) | Đã fix Caddyfile: thêm `handle /select/*` + `/insert/*` + `/health` + `/metrics` |
+| healthcheck script báo `disk ?% used` | Default `INFRA_DIR=/opt/onelog/infra` không tồn tại nếu repo ở `~/onelog` | Đã fix: auto-detect INFRA_DIR từ script location |
+| `sudo` warn `unable to resolve host srv-XX: Name or service not known` | Hostname không có trong /etc/hosts | Cosmetic, không block. Setup script tự add `127.0.1.1 $(hostname)` vào /etc/hosts |
+| `git pull` báo "local changes would be overwritten" | Edit file trực tiếp trên VM | `git stash && git pull && git stash pop` (hoặc `git checkout -- <file>` để discard) |
 | Qdrant 401 | env `QDRANT_API_KEY` mismatch giữa indexer và qdrant | đồng bộ `.env`, restart cả 2 |
-| Indexer lag > 5 phút | `docker stats indexer` | tăng batch size hoặc thêm worker; check OpenAI rate limit |
-| RAG /api/chat 5xx | `docker compose logs rag-agent` | thiếu `ANTHROPIC_API_KEY` hoặc Postgres down |
-| Web 502 qua Caddy | `docker compose logs caddy web` | web build fail; rebuild `docker compose build web && up -d web` |
+| Indexer lag > 5 phút (Phase 02) | `docker stats indexer` | tăng batch size hoặc thêm worker; check OpenAI rate limit |
+| RAG /api/chat 5xx (Phase 03) | `docker compose logs rag-agent` | thiếu `ANTHROPIC_API_KEY` hoặc Postgres down |
+| Web 502 qua Caddy (Phase 04) | `docker compose logs caddy web` | web build fail; rebuild `docker compose build web && up -d web` |
 | TLS warning browser | bình thường ở lab (self-signed) | accept exception; production phải có domain + LE |
 
 Log tổng hợp:

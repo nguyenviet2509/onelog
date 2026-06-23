@@ -6,7 +6,7 @@
 
 ## Overview
 - Priority: P1 (có thể chạy song song sau Phase 01)
-- Status: pending
+- Status: **MVP slice scaffolded 2026-06-23**. vmalert + Alertmanager trong compose (profile `alerts`), 4 LogsQL rule (ssh_brute, mysql_err_burst, audit_login_fail, nginx_5xx). Agent `/alert` webhook: in-memory TTL dedupe → triage qua agent_loop → Telegram direct push (TELEGRAM_MOCK fallback). KHÔNG có bot service riêng / inline button — slice 2 thêm khi cần ack/silence.
 - Mục tiêu: Alertmanager webhook → agent pre-compute triage → push Telegram topic với tóm tắt + suggested action + deep link về Web. **Telegram bot ở phase này là MINIMAL one-way** (~100 LOC, không Q&A — Q&A đã chuyển sang Web Phase 04).
 
 ## Requirements

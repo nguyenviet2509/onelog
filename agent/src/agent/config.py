@@ -43,5 +43,15 @@ class Settings(BaseSettings):
     agent_max_turns: int = 5
     agent_timeout_s: int = 30
 
+    # Telegram alert push (Phase 06)
+    telegram_bot_token: str = ""
+    telegram_alert_chat_id: str = ""
+    # TELEGRAM_MOCK=true → log message instead of HTTP push. For dry-run /
+    # tests / when bot not yet provisioned.
+    telegram_mock: bool = False
+
+    # Alert dedupe — same fingerprint won't re-push within this window.
+    alert_dedupe_ttl_s: int = 3600
+
 
 settings = Settings()

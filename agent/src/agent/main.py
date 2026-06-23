@@ -6,11 +6,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from agent.auth_stub import attach_user
 from agent.config import settings
+from agent.routes.alert import router as alert_router
 from agent.routes.chat import router as chat_router
 
 app = FastAPI(title="onelog-agent", version="0.1.0")
 app.add_middleware(BaseHTTPMiddleware, dispatch=attach_user)
 app.include_router(chat_router)
+app.include_router(alert_router)
 
 
 @app.get("/health")

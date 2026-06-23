@@ -1,0 +1,21 @@
+# Alertmanager — route alerts to onelog agent webhook, dedupe + group by alertname+host.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: onelog-agent
+  group_by: ["alertname", "host"]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
+
+receivers:
+  - name: onelog-agent
+    webhook_configs:
+      - url: http://agent:8080/alert
+        send_resolved: true
+        # Agent is in the same docker network; no auth needed at this layer.
+        # Production: add an HMAC header validated by the agent.
+
+inhibit_rules: []

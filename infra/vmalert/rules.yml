@@ -1,0 +1,55 @@
+# vmalert rule group — LogsQL stats expressions evaluated against VictoriaLogs.
+# Each rule's `expr` must return a numeric series; `by` fields become alert labels.
+#
+# Tune thresholds after observing mock log baseline. Mock currently emits:
+#   nginx 60% / mysql 20% / sshd 15% / audit 5% at MOCK_RATE ev/s/client.
+# At 10 ev/s × 2 clients × 5m × 0.15 (sshd) × 0.10 (err) ≈ 9 events / 5m / fleet.
+# Threshold of 20 / 5m / host catches a sustained brute-force burst, not normal mock noise.
+
+groups:
+  - name: log-alerts
+    interval: 30s
+    rules:
+      - alert: SshBruteForce
+        expr: |
+          _time:5m service:mock-sshd "Failed password" | stats by (host) count() as value
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "SSH brute force suspected on {{ $labels.host }}"
+          description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
+
+      - alert: MysqlErrorBurst
+        expr: |
+          _time:5m service:mock-mysql severity:err | stats by (host) count() as value
+        for: 1m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "MySQL error burst on {{ $labels.host }}"
+          description: "{{ $value }} mysql err events in last 5m on {{ $labels.host }}"
+
+      - alert: AuditLoginFailures
+        expr: |
+          _time:5m service:mock-audit "res=failed" | stats by (host) count() as value
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Audit login failures on {{ $labels.host }}"
+          description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
+
+      - alert: NginxServerErrors
+        expr: |
+          _time:5m service:mock-nginx severity:err | stats by (host) count() as value
+        for: 1m
+        labels:
+          severity: warning
+          category: app
+        annotations:
+          summary: "Nginx 5xx burst on {{ $labels.host }}"
+          description: "{{ $value }} nginx err events in last 5m on {{ $labels.host }}"

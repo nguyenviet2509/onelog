@@ -100,6 +100,44 @@ services:
       timeout: 5s
       retries: 3
 
+  # vmalert — evaluates LogsQL stats queries against VictoriaLogs, fires
+  # to Alertmanager. Native VL datasource since vmalert v1.96+.
+  vmalert:
+    image: victoriametrics/vmalert:latest
+    container_name: ragstack-vmalert
+    restart: unless-stopped
+    profiles: [alerts]
+    command:
+      - "-datasource.url=http://victorialogs:9428/select/logsql"
+      - "-datasource.disableStepParam=true"
+      - "-notifier.url=http://alertmanager:9093"
+      - "-rule=/etc/vmalert/rules.yml"
+      - "-evaluationInterval=30s"
+      - "-rule.resendDelay=1m"
+      - "-httpListenAddr=:8880"
+    ports:
+      - "127.0.0.1:8880:8880"
+    volumes:
+      - ./vmalert/rules.yml:/etc/vmalert/rules.yml:ro
+    depends_on:
+      - victorialogs
+      - alertmanager
+
+  # Alertmanager — dedupe / group / route fired alerts to agent webhook.
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ragstack-alertmanager
+    restart: unless-stopped
+    profiles: [alerts]
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/data"
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./data/alertmanager:/data
+
   # RAG agent — FastAPI + Claude tool-use over Qdrant + VictoriaLogs.
   agent:
     build: ../agent
@@ -119,6 +157,9 @@ services:
       QDRANT_API_KEY: ${QDRANT_API_KEY}
       QDRANT_COLLECTION: log_templates
       VL_URL: http://victorialogs:9428
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      TELEGRAM_MOCK: ${TELEGRAM_MOCK:-false}
       HOST: 0.0.0.0
       PORT: "8080"
       LOG_LEVEL: INFO

@@ -6,7 +6,7 @@
 
 ## Overview
 - Priority: P0
-- Status: **MVP slice scaffolded 2026-06-23** — FastAPI + SSE `/chat`, self-written tool-use loop (max 5 turn, 30s timeout), citation validator, 2 tools (search_log_templates, query_victorialogs), auth stub, LLM_MOCK/EMBED_MOCK for pre-key dev. Deferred: Postgres persist, Redis session/semantic cache, /admin/*, /trace, rate limit, external stubs, LangGraph (only if multi-step branching actually needed).
+- Status: **MVP slice DONE end-to-end 2026-06-23**. FastAPI `/chat` SSE verified: tool_call → Qdrant search → hits → mock LLM citation → validator pass → answer with `citations` populated. 2 tools live (search_log_templates, query_victorialogs). LLM_MOCK + EMBED_MOCK working without keys. Auth stub middleware ready for OIDC swap. Deferred: Postgres persist, Redis session/semantic cache, /admin/*, /trace, rate limit, external stubs, LangGraph (add only if multi-step branching demands it).
 - Mục tiêu: Service HTTP nhận query free-form, chạy agent loop với Claude Sonnet + tools (Qdrant search, LogsQL query, summarize, list), trả lời streaming có citation bắt buộc. **Bổ sung re-scope**: OIDC JWT verify middleware, Postgres persistence (conversations/messages/audit), endpoints `/trace` (LogsQL passthrough), `/admin/*` (audit/cost/eval/users/health) cho Web BFF gọi.
 
 ## Requirements

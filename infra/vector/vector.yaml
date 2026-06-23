@@ -51,10 +51,12 @@ transforms:
       msg = replace(msg, r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', "<JWT>")
       # AWS access key
       msg = replace(msg, r'AKIA[0-9A-Z]{16}', "<AWS_KEY>")
-      # Bearer token — $$1 để Vector không hiểu $1 là env var khi parse YAML
-      msg = replace(msg, r'(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._-]+', "$$1<TOKEN>")
-      # Password fields (basic) — same escape rule
-      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "$$1=<REDACTED>")
+      # Bearer token — không dùng backref ($1) vì Vector env-var interpolation
+      # chạy trên config text trước, không thể escape an toàn cho cả `$1` và `$$1`.
+      # Match cả prefix + token, replace bằng literal.
+      msg = replace(msg, r'(?i)authorization:\s*bearer\s+[A-Za-z0-9._-]+', "Authorization: Bearer <TOKEN>")
+      # Password fields — match cả key + value, replace literal (mất casing gốc, OK cho redaction)
+      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "password=<REDACTED>")
       ._msg = msg
 
 sinks:

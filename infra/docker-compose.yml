@@ -241,24 +241,24 @@ services:
       qdrant:
         condition: service_started
 
-  # MCP server official from VictoriaMetrics
-  # Exposes 12 read-only tools (query LogsQL, hits, facets, stream_ids, ...)
-  # https://github.com/VictoriaMetrics/mcp-victorialogs
-  mcp-vl:
-    image: victoriametrics/mcp-victorialogs:latest
-    container_name: ragstack-mcp-vl
-    restart: unless-stopped
-    profiles: [mcp]   # opt-in: docker compose --profile mcp up
-    environment:
-      VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
-      MCP_TRANSPORT: sse
-      MCP_LISTEN_ADDR: 0.0.0.0:8000
-      # Optional: disable noisy tools
-      # MCP_DISABLED_TOOLS: documentation
-    ports:
-      - "127.0.0.1:8001:8000"
-    depends_on:
-      - victorialogs
+  # MCP server official from VictoriaMetrics — DISABLED 2026-06-23: image
+  # `victoriametrics/mcp-victorialogs:latest` not on Docker Hub. Repo:
+  # https://github.com/VictoriaMetrics/mcp-victorialogs — try `ghcr.io/...` or
+  # build from source when adding back. Custom mcp-semantic provides the USP
+  # (semantic search) standalone in the meantime.
+  # mcp-vl:
+  #   image: ghcr.io/victoriametrics/mcp-victorialogs:latest
+  #   container_name: ragstack-mcp-vl
+  #   restart: unless-stopped
+  #   profiles: [mcp]
+  #   environment:
+  #     VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
+  #     MCP_TRANSPORT: sse
+  #     MCP_LISTEN_ADDR: 0.0.0.0:8000
+  #   ports:
+  #     - "127.0.0.1:8001:8000"
+  #   depends_on:
+  #     - victorialogs
 
   caddy:
     image: caddy:2-alpine

@@ -12,14 +12,25 @@
 :80 {
     @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
     handle @allowed {
-        # VictoriaLogs built-in UI (vmui) — used by /trace iframe + deep links from chat citations
-        handle_path /vmui/* {
-            reverse_proxy victorialogs:9428 {
-                rewrite /select/vmui/{path}
-            }
+        # VictoriaLogs built-in UI (vmui) — kept under /vmui/ for short URL,
+        # but proxy KHÔNG strip prefix vì vmui JS gọi /select/logsql/... absolute.
+        # Trick: redirect /vmui/* → /select/vmui/* để cùng namespace với API.
+        redir /vmui /select/vmui/ 302
+        redir /vmui/ /select/vmui/ 302
+
+        # VictoriaLogs full API + UI cùng prefix /select/* (đủ cho cả vmui + LogsQL query)
+        handle /select/* {
+            reverse_proxy victorialogs:9428
         }
-        # VictoriaLogs HTTP API (LogsQL query for agent + deep-link redirects)
-        handle_path /vl-api/* {
+        # Insert API (cho client gửi log qua HTTP — Vector cũng dùng path này nội bộ)
+        handle /insert/* {
+            reverse_proxy victorialogs:9428
+        }
+        # Health / metrics
+        handle /health {
+            reverse_proxy victorialogs:9428
+        }
+        handle /metrics {
             reverse_proxy victorialogs:9428
         }
         # MCP server official (mcp-victorialogs) — 12 read-only tools

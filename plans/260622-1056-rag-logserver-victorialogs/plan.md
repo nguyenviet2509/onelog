@@ -39,7 +39,7 @@ Triển khai RAG log server single-node: VictoriaLogs + Vector.dev + Qdrant + Po
 | 01 | [Hạ tầng VM + docker-compose + VictoriaLogs + Qdrant + Postgres + Caddy](phase-01-infrastructure-base.md) | **DONE** (verified 2026-06-23) | — |
 | 02 | [Vector pipeline + Drain3 + Redaction + Indexer](phase-02-log-ingestion-indexer.md) | **DONE** (verified 2026-06-23) | 01 |
 | 03 | [RAG Agent FastAPI + tool-use loop + Sonnet + auth stub](phase-03-rag-agent-service.md) | **MVP DONE** (2026-06-23) | 02 |
-| 04 | [Web app Next.js (chat + trace + admin + settings)](phase-04-web-app-nextjs.md) | **MVP DONE** (chat only, 2026-06-23) | 03 |
+| 04 | [Web app Next.js (chat + trace + admin + settings)](phase-04-web-app-nextjs.md) | **slice 1+2 DONE** (chat + history + /trace, 2026-06-23) | 03 |
 | 05 | [Eval harness 20 cases + UI trigger](phase-05-eval-and-tuning.md) | pending | 04 |
 | 06 | [Alertmanager + Telegram alert bot minimal](phase-06-alertmanager-integration.md) | **MVP DONE** (2026-06-23) | 01 (song song 02-05) |
 | 07 | [HA roadmap doc](phase-07-ha-roadmap.md) | pending | 05 |

@@ -41,6 +41,24 @@ CREATE INDEX IF NOT EXISTS idx_conversations_user
 CREATE INDEX IF NOT EXISTS idx_messages_conv
   ON messages(conversation_id, created_at ASC);
 
+CREATE TABLE IF NOT EXISTS audit_log (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          INTEGER NOT NULL REFERENCES users(id),
+  source           VARCHAR(32) NOT NULL,
+  conversation_id  UUID,
+  prompt           TEXT NOT NULL,
+  tool_calls       JSONB,
+  latency_ms       INTEGER NOT NULL DEFAULT 0,
+  status           VARCHAR(16) NOT NULL DEFAULT 'ok',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_user_time
+  ON audit_log(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_source_time
+  ON audit_log(source, created_at DESC);
+
 INSERT INTO users (id, email, name, role)
 VALUES (1, 'sysadmin@local', 'sysadmin', 'admin')
 ON CONFLICT (id) DO NOTHING;

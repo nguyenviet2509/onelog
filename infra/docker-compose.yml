@@ -170,6 +170,8 @@ services:
     profiles: [web]   # opt-in: docker compose --profile web up -d
     environment:
       AGENT_URL: http://agent:8080
+      VL_URL: http://victorialogs:9428
+      QDRANT_URL: http://qdrant:6333
       # Postgres URL — same DB as agent (different table namespace by table prefix).
       # postgres-js driver accepts standard URL form.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rag

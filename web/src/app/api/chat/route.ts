@@ -91,7 +91,10 @@ export async function POST(req: NextRequest) {
   let buf = "";
   let currentEvent = "message";
   const parts: Part[] = [];
+  const toolCalls: { name: string; input: unknown; ok: boolean }[] = [];
   let finalText = "";
+  let hadError = false;
+  const startedAt = Date.now();
 
   const tee = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -106,10 +109,16 @@ export async function POST(req: NextRequest) {
           else if (line.startsWith("data:")) data += line.slice(5).trim();
         }
         if (!data) continue;
-        applyToParts(currentEvent, safeJson(data), parts);
-        if (currentEvent === "answer") {
-          const t = safeJson(data)?.text;
-          if (typeof t === "string") finalText = t;
+        const payload = safeJson(data);
+        applyToParts(currentEvent, payload, parts);
+        if (currentEvent === "tool_call" && payload) {
+          toolCalls.push({ name: payload.name ?? "?", input: payload.input, ok: true });
+        } else if (currentEvent === "tool_result" && payload?.output?.error && toolCalls.length) {
+          toolCalls[toolCalls.length - 1].ok = false;
+        } else if (currentEvent === "answer" && typeof payload?.text === "string") {
+          finalText = payload.text;
+        } else if (currentEvent === "error") {
+          hadError = true;
         }
       }
     },
@@ -125,6 +134,15 @@ export async function POST(req: NextRequest) {
           .update(schema.conversations)
           .set({ updatedAt: new Date() })
           .where(eq(schema.conversations.id, conversationId!));
+        await db.insert(schema.auditLog).values({
+          userId: user.id,
+          source: "web_chat",
+          conversationId: conversationId!,
+          prompt: query,
+          toolCalls,
+          latencyMs: Date.now() - startedAt,
+          status: hadError ? "error" : "ok",
+        });
       } catch (err) {
         // Best-effort persist; don't break the response if DB hiccups.
         console.error("chat.persist_failed", err);

@@ -6,7 +6,7 @@
  * `content` is the human-readable rendition, used by sidebar previews + the
  * final `<a>` citation links.
  */
-import { jsonb, pgTable, serial, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -33,6 +33,26 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * Audit log — append-only record of every chat / alert / mcp invocation.
+ * Used by /admin/audit for ops visibility + future cost dashboard.
+ *
+ * `tool_calls` jsonb captures tool name + input/output digest per turn so we
+ * can compute aggregate stats without re-parsing message parts.
+ */
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: serial("user_id").references(() => users.id).notNull(),
+  source: varchar("source", { length: 32 }).notNull(), // web_chat | alert | mcp
+  conversationId: uuid("conversation_id"), // null for non-chat sources
+  prompt: text("prompt").notNull(),
+  toolCalls: jsonb("tool_calls"), // array of {name, input, ok}
+  latencyMs: integer("latency_ms").notNull().default(0),
+  status: varchar("status", { length: 16 }).notNull().default("ok"), // ok | error
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type AuditLog = typeof auditLog.$inferSelect;

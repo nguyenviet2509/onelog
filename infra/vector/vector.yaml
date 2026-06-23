@@ -61,6 +61,14 @@ transforms:
       msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "password=<REDACTED>")
       ._msg = msg
 
+  # Tap: only WARN+ events feed the indexer worker via NATS.
+  # Severity field is normalized in `enrich` from syslog priority — values like
+  # "warning"/"err"/"crit"/"alert"/"emerg".
+  warn_filter:
+    type: filter
+    inputs: [redact]
+    condition: 'includes(["warning", "warn", "err", "error", "crit", "alert", "emerg"], string!(.severity))'
+
 sinks:
   victorialogs:
     type: elasticsearch
@@ -77,6 +85,16 @@ sinks:
       _msg_field: _msg
       _time_field: _time
       _stream_fields: "service,host"
+
+  # Stream WARN+ to NATS JetStream so indexer can pull-consume in batches.
+  # JSON encoding preserves _msg + service/host/severity for downstream Drain3.
+  nats_warn:
+    type: nats
+    inputs: [warn_filter]
+    url: nats://nats:4222
+    subject: logs.warn
+    encoding:
+      codec: json
 
   debug_file:
     type: file

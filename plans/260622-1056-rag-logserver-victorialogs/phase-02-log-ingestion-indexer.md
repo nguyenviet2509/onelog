@@ -7,7 +7,7 @@
 
 ## Overview
 - Priority: P0
-- Status: **server-side DONE** (2026-06-23 — Vector ingest UDP 514 + TCP 6514, VRL redact 5/5 PII verified, rsyslog client TCP working). Indexer worker (NATS+Drain3+embed+Qdrant) **deferred** chờ soak test data thật.
+- Status: **server-side DONE** (2026-06-23 — Vector ingest UDP 514 + TCP 6514, VRL redact 5/5 PII verified, rsyslog client TCP working). **Indexer worker scaffolded 2026-06-23** (NATS JetStream + Drain3 + redact + OpenAI/mock embed + Qdrant async upsert + Prometheus metrics). Mock log generator deployed srv-01/srv-02 (`infra/clients/mock-logs.py`). Pending: `docker compose --profile indexer up -d --build` + soak.
 - Mục tiêu: Vector.dev nhận log từ 50-200 server → **redact PII bằng VRL ngay tại ingest** → ghi VictoriaLogs (data clean) + tap stream WARN+ qua NATS → Indexer worker (Python) dedupe Drain3, redact lần 2 (defense in depth), embed, upsert Qdrant.
 
 ## Requirements

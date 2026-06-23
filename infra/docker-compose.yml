@@ -77,6 +77,61 @@ services:
       - ./data/vector:/var/lib/vector
     depends_on:
       - victorialogs
+      - nats
+
+  # NATS JetStream — Vector tap stream (WARN+) → indexer worker.
+  # Single-node, file-backed. Subject: logs.warn (filter applied at Vector sink).
+  nats:
+    image: nats:2.10-alpine
+    container_name: ragstack-nats
+    restart: unless-stopped
+    command:
+      - "-js"
+      - "-sd=/data"
+      - "-m=8222"
+    ports:
+      - "127.0.0.1:4222:4222"   # client
+      - "127.0.0.1:8222:8222"   # monitoring
+    volumes:
+      - ./data/nats:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Indexer worker — consumes NATS logs.warn, Drain3 cluster, embed → Qdrant.
+  indexer:
+    build: ../indexer
+    container_name: ragstack-indexer
+    restart: unless-stopped
+    profiles: [indexer]   # opt-in: docker compose --profile indexer up -d
+    environment:
+      NATS_URL: nats://nats:4222
+      NATS_SUBJECT: logs.warn
+      NATS_STREAM: LOGS
+      NATS_DURABLE: indexer-v1
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_COLLECTION: log_templates
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
+      EMBED_MOCK: ${EMBED_MOCK:-false}
+      BATCH_SIZE: "500"
+      BATCH_WINDOW_S: "30"
+      DRAIN_STATE_DIR: /data/drain_state
+      METRICS_PORT: "9100"
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1:9100:9100"   # Prometheus /metrics + /health
+    volumes:
+      - ./data/indexer:/data
+    depends_on:
+      nats:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
 
   # MCP server official from VictoriaMetrics
   # Exposes 12 read-only tools (query LogsQL, hits, facets, stream_ids, ...)

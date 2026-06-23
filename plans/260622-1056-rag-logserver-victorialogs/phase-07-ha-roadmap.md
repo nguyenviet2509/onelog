@@ -78,11 +78,14 @@ Single doc: `docs/ha-roadmap.md`
 - Post-cutover: monitor 48h, rollback plan
 
 ## Todo
-- [ ] Viết outline đầy đủ thành prose
-- [ ] Vẽ sơ đồ ASCII single-node vs cluster
-- [ ] Bảng so sánh cost single-node vs cluster
+- [x] Viết outline đầy đủ thành prose (2026-06-23)
+- [x] Vẽ sơ đồ ASCII single-node vs cluster (2026-06-23)
+- [x] Bảng so sánh cost single-node vs cluster (2026-06-23)
 - [ ] Review với team
 - [ ] Commit `docs/ha-roadmap.md`
+
+## Status
+**DONE** — doc written to `docs/ha-roadmap.md` (2026-06-23). Team review pending.
 
 ## Success Criteria
 - Doc < 800 LOC, đủ 11 section

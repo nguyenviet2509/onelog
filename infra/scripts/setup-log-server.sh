@@ -6,14 +6,32 @@ set -euo pipefail
 echo "[1/6] Install Docker + compose plugin"
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg ufw
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+
+# Idempotent: nếu Docker CE + compose plugin đã hoạt động, skip cài lại.
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  echo "  Docker + compose plugin đã sẵn sàng — skip install."
+  echo "  $(docker --version)"
+  echo "  $(docker compose version)"
+else
+  # Ubuntu 24.04 ship sẵn 'docker-compose-v2' (universe repo) hoặc 'docker.io' (cũ).
+  # Hai gói này conflict với 'docker-compose-plugin' + 'docker-ce' từ Docker official repo
+  # (cùng path /usr/libexec/docker/cli-plugins/docker-compose). Gỡ trước khi cài.
+  for pkg in docker-compose-v2 docker.io docker-doc docker-compose podman-docker containerd runc; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then
+      echo "  Removing conflicting package: $pkg"
+      apt-get remove -y "$pkg" || true
+    fi
+  done
+
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-  > /etc/apt/sources.list.d/docker.list
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    > /etc/apt/sources.list.d/docker.list
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+fi
 
 echo "[2/6] Firewall (UFW)"
 ufw --force enable

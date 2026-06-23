@@ -6,7 +6,7 @@
 
 ## Overview
 - Priority: P0 (primary UX)
-- Status: **MVP slice (chat only) scaffolded 2026-06-23**. Next.js 14 + Tailwind + tiny inline shadcn-style components. `/chat` page với SSE consume, citation parser → vmui deep-link, tool call cards collapsible. BFF `/api/chat` proxy SSE → agent. Caddy reverse_proxy / → web:3000 (flush_interval -1 cho streaming). Deferred slice 2: Postgres conv history, `/trace` embed vmui, `/admin/*`, settings, auth login.
+- Status: **MVP slice (chat only) DONE end-to-end 2026-06-23**. Next.js 14 + Tailwind. `/chat` page: SSE stream qua BFF, thinking/tool_call/tool_result/answer events render đúng (sau khi fix CRLF parser), citation `[svc:host:ts]` click ra `/select/vmui/?query=...&start=...&end=...`. Tool call cards collapsible. Caddy reverse_proxy / → web:3000 flush_interval -1. Verified browser flow live với mock LLM. Deferred slice 2: Postgres conv history, `/trace` embed vmui, `/admin/*`, settings, auth.
 - Mục tiêu: Web app Next.js cho sysadmin Q&A, trace log interactive, admin panel, settings. **Auth defer** (truy cập thẳng MVP, IP whitelist ở Caddy), conversation persistent Postgres, streaming SSE. Auth thật (email/pass hoặc SSO) bổ sung sau.
 
 ## Requirements

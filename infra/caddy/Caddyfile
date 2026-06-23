@@ -38,10 +38,13 @@
         handle_path /mcp/vl/* {
             reverse_proxy mcp-vl:8000
         }
-        # MCP custom semantic — Phase 08, expose search_log_templates only
-        # handle_path /mcp/semantic/* {
-        #     reverse_proxy mcp-semantic:9000
-        # }
+        # MCP custom semantic — Phase 08, expose search_log_templates only.
+        # SSE transport on /sse path under mcp-semantic:9000.
+        handle_path /mcp/semantic/* {
+            reverse_proxy mcp-semantic:9000 {
+                flush_interval -1
+            }
+        }
         # Next.js web app — chat UI + BFF /api/* routes
         # Phase 04 MVP: chat only. /api/chat proxies SSE to agent.
         handle {

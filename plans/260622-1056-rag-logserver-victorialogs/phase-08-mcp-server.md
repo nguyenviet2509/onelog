@@ -7,7 +7,7 @@
 
 ## Overview
 - Priority: P2 (sau MVP)
-- Status: pending
+- Status: **MVP slice scaffolded 2026-06-23**. mcp-vl official đã trong compose (profile `mcp`). Custom `mcp-semantic` FastMCP scaffold xong với 1 tool `search_log_templates` (reuse Qdrant + embed mock-compat). Caddy route `/mcp/semantic/*` activated. Auth defer (Caddy IP whitelist guard, MCP_BEARER env placeholder). Deferred slice 2: Postgres bearer token table, Web settings UI sinh token, audit log source=mcp.
 - Mục tiêu: 2 MCP server song song để IDE assistant (Claude Code/Desktop/Cursor) truy log:
   1. **`mcp-victorialogs` official** (Go) — 12 read-only tools cho LogsQL, discovery, stats
   2. **Custom FastMCP semantic** (Python) — 1 tool `search_log_templates` (Qdrant semantic, USP)

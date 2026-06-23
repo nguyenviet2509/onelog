@@ -30,20 +30,22 @@ export function splitCitations(text: string): Segment[] {
 }
 
 function vmuiHref(service: string, host: string, ts?: string): string {
-  // vmui accepts `query=` for LogsQL. Filter by stream fields + window the
-  // citation timestamp ±1 minute so the user sees surrounding context.
-  let query = `service:${quote(service)} AND host:${quote(host)}`;
-  const params = new URLSearchParams({ query });
+  // Point directly to `/select/vmui/` (canonical path) — Caddy's `/vmui/`
+  // redirect drops query string, which would strip our LogsQL filter.
+  // Filter by stream fields + window the citation timestamp ±5 minutes so
+  // the user sees surrounding context.
+  const query = `service:${quote(service)} AND host:${quote(host)}`;
+  const params = new URLSearchParams({ query, limit: "200" });
   if (ts) {
     const t = new Date(ts);
     if (!Number.isNaN(t.getTime())) {
-      const start = new Date(t.getTime() - 60_000).toISOString();
-      const end = new Date(t.getTime() + 60_000).toISOString();
+      const start = new Date(t.getTime() - 5 * 60_000).toISOString();
+      const end = new Date(t.getTime() + 5 * 60_000).toISOString();
       params.set("start", start);
       params.set("end", end);
     }
   }
-  return `/vmui/?${params.toString()}`;
+  return `/select/vmui/?${params.toString()}`;
 }
 
 function quote(v: string): string {

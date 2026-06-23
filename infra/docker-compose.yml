@@ -170,6 +170,9 @@ services:
     profiles: [web]   # opt-in: docker compose --profile web up -d
     environment:
       AGENT_URL: http://agent:8080
+      # Postgres URL — same DB as agent (different table namespace by table prefix).
+      # postgres-js driver accepts standard URL form.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rag
       NODE_ENV: production
     ports:
       - "127.0.0.1:3000:3000"

@@ -17,23 +17,38 @@ type ToolPart = {
 
 type TextPart = { kind: "text"; text: string };
 
-type Message = {
+export type Message = {
   role: Role;
   parts: (TextPart | ToolPart)[];
   status?: "streaming" | "done" | "error";
 };
 
-export function ChatView() {
-  const [messages, setMessages] = useState<Message[]>([]);
+export type ChatViewProps = {
+  /** Conversation id, if loaded from /chat/[id]. Empty → new conversation,
+   *  created lazily by the BFF on first send and reflected in URL via replaceState. */
+  initialConversationId?: string;
+  /** Restored history (drawn from DB) when opening an existing conversation. */
+  initialMessages?: Message[];
+};
+
+export function ChatView({ initialConversationId, initialMessages = [] }: ChatViewProps) {
+  const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId);
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to bottom on new content.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // If we navigated between conversations client-side, sync state.
+  useEffect(() => {
+    setConversationId(initialConversationId);
+    setMessages(initialMessages);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConversationId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +68,20 @@ export function ChatView() {
     ]);
 
     try {
-      for await (const ev of streamSSE("/api/chat", { query }, ac.signal)) {
+      for await (const ev of streamSSE(
+        "/api/chat",
+        { query, conversationId },
+        ac.signal,
+        (res) => {
+          // BFF returns the conversation id in a custom header (new or echo).
+          // Mirror it to the URL so reload + share keep working.
+          const id = res.headers.get("X-Conversation-Id");
+          if (id && id !== conversationId) {
+            setConversationId(id);
+            window.history.replaceState(null, "", `/chat/${id}`);
+          }
+        },
+      )) {
         const payload = safeJson(ev.data);
         setMessages((m) => applyEvent(m, ev.event, payload));
       }
@@ -213,12 +241,7 @@ function safeJson(s: string): any {
   }
 }
 
-// Reducer-style: produce next messages array given an SSE event.
-function applyEvent(
-  messages: Message[],
-  event: string,
-  payload: any,
-): Message[] {
+function applyEvent(messages: Message[], event: string, payload: any): Message[] {
   if (messages.length === 0) return messages;
   const last = messages[messages.length - 1];
   if (last.role !== "assistant") return messages;
@@ -237,7 +260,6 @@ function applyEvent(
         { kind: "tool", name: payload?.name ?? "tool", input: payload?.input },
       ]);
     case "tool_result": {
-      // Attach output to the most recent tool part with matching id (or last open one).
       const parts = [...last.parts];
       for (let i = parts.length - 1; i >= 0; i--) {
         const p = parts[i];

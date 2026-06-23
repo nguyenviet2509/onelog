@@ -11,6 +11,9 @@ export async function* streamSSE(
   url: string,
   body: unknown,
   signal?: AbortSignal,
+  /** Called once with the Response before consuming the stream — handy for
+   *  reading custom headers (X-Conversation-Id) without buffering the body. */
+  onResponse?: (res: Response) => void,
 ): AsyncGenerator<SSEEvent> {
   const res = await fetch(url, {
     method: "POST",
@@ -21,6 +24,7 @@ export async function* streamSSE(
   if (!res.ok || !res.body) {
     throw new Error(`HTTP ${res.status}`);
   }
+  onResponse?.(res);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

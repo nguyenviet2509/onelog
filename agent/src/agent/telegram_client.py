@@ -33,7 +33,7 @@ class TelegramClient:
         payload = {
             "chat_id": settings.telegram_alert_chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
         async with httpx.AsyncClient(timeout=10.0) as client:

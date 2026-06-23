@@ -26,13 +26,21 @@ def test_format_contains_essentials() -> None:
     assert "srv-01" in body
     assert "mock-sshd" in body
     assert "warning" in body
-    assert "*Triage*" in body
+    assert "<b>Triage</b>" in body
     assert "[mock-sshd:srv-01" in body
 
 
 def test_format_handles_missing_triage() -> None:
     body = format_alert(ALERT, "")
     assert "no triage" in body.lower()
+
+
+def test_format_escapes_html_special_chars() -> None:
+    """Triage text containing `<` `>` `&` must not break Telegram HTML parser."""
+    body = format_alert(ALERT, "<script>alert('xss')</script> & co.")
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body
+    assert "&amp;" in body
 
 
 def test_fingerprint_uses_alertmanager_value() -> None:

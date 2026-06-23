@@ -201,6 +201,7 @@ services:
       QDRANT_API_KEY: ${QDRANT_API_KEY}
       QDRANT_COLLECTION: log_templates
       VL_URL: http://victorialogs:9428
+      WEB_URL: http://web:3000
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
       TELEGRAM_MOCK: ${TELEGRAM_MOCK:-false}

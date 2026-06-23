@@ -30,7 +30,9 @@ _started_at = time.time()
 
 
 async def _metrics(_: web.Request) -> web.Response:
-    return web.Response(body=generate_latest(), content_type=CONTENT_TYPE_LATEST)
+    # aiohttp rejects charset in `content_type=` since 3.10. CONTENT_TYPE_LATEST
+    # includes `; charset=utf-8`, so pass the full string via headers instead.
+    return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 async def _health(_: web.Request) -> web.Response:

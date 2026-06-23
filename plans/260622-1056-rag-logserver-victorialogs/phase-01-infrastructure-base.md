@@ -6,7 +6,7 @@
 
 ## Overview
 - Priority: P0 (blocker mọi phase sau)
-- Status: pending
+- Status: **DONE** (2026-06-23 — lab logserver-01 192.168.122.53, srv-01 192.168.122.52 onboarded TCP 6514)
 - Mục tiêu: VM Ubuntu LTS chạy docker-compose stack: VictoriaLogs + Qdrant + Postgres + Redis + Caddy reverse proxy. Có persistent volume, snapshot, TLS, monitoring cơ bản.
 
 ## Requirements

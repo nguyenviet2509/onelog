@@ -7,7 +7,7 @@
 
 ## Overview
 - Priority: P0
-- Status: pending
+- Status: **server-side DONE** (2026-06-23 — Vector ingest UDP 514 + TCP 6514, VRL redact 5/5 PII verified, rsyslog client TCP working). Indexer worker (NATS+Drain3+embed+Qdrant) **deferred** chờ soak test data thật.
 - Mục tiêu: Vector.dev nhận log từ 50-200 server → **redact PII bằng VRL ngay tại ingest** → ghi VictoriaLogs (data clean) + tap stream WARN+ qua NATS → Indexer worker (Python) dedupe Drain3, redact lần 2 (defense in depth), embed, upsert Qdrant.
 
 ## Requirements

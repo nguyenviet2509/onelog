@@ -1,0 +1,24 @@
+[Unit]
+Description=onelog mock log generator (synthetic logs → rsyslog → logserver)
+Documentation=https://github.com/inet/onelog
+After=rsyslog.service network-online.target
+Wants=rsyslog.service
+
+[Service]
+Type=simple
+# Tune via systemctl edit mock-logs (creates override) or edit env block below.
+Environment=MOCK_RATE=10
+Environment=MOCK_PII_RATE=0.05
+Environment=MOCK_DURATION=0
+ExecStart=/usr/local/bin/mock-logs.py
+Restart=on-failure
+RestartSec=5s
+# Hardening — generator only forks `logger`, no FS writes needed.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target

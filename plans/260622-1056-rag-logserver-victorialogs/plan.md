@@ -36,7 +36,7 @@ Triển khai RAG log server single-node: VictoriaLogs + Vector.dev + Qdrant + Po
 
 | # | Phase | Status | Dependency |
 |---|---|---|---|
-| 01 | [Hạ tầng VM + docker-compose + VictoriaLogs + Qdrant + Postgres + Caddy](phase-01-infrastructure-base.md) | code-complete, awaiting VM smoke test | — |
+| 01 | [Hạ tầng VM + docker-compose + VictoriaLogs + Qdrant + Postgres + Caddy](phase-01-infrastructure-base.md) | **DONE** (verified 2026-06-23) | — |
 | 02 | [Vector pipeline + Drain3 + Redaction + Indexer](phase-02-log-ingestion-indexer.md) | pending | 01 |
 | 03 | [RAG Agent FastAPI + LangGraph + Sonnet + auth stub + Postgres persist](phase-03-rag-agent-service.md) | pending | 02 |
 | 04 | [Web app Next.js (chat + trace + admin + settings)](phase-04-web-app-nextjs.md) | pending | 03 |

@@ -266,8 +266,10 @@ services:
     restart: unless-stopped
     environment:
       VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
-      MCP_TRANSPORT: sse
-      MCP_LISTEN_ADDR: 0.0.0.0:8000
+      # v1.9.0 reads MCP_SERVER_MODE (not MCP_TRANSPORT); default stdio crash-loops
+      # under docker. Set sse so the container exposes /sse + /message over HTTP.
+      MCP_SERVER_MODE: sse
+      MCP_LISTEN_ADDR: ":8000"
       # Disable heavyweight documentation tool — keeps the surface focused on
       # query/hits/facets/stats for IDE assistants.
       MCP_DISABLED_TOOLS: documentation

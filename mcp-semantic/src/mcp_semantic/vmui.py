@@ -6,11 +6,13 @@ the IDE assistant should be able to one-click into VMUI showing the raw lines.
 This builds the deep link used in tool responses.
 
 VMUI is mounted under /select/vmui/ behind Caddy (see infra/caddy/Caddyfile).
-The hash-routed UI expects `g0.expr` / `g0.range_input` query params.
+Time picker hydrates from `g0.relative_time` / `g0.range_input` / `g0.end_input`
+URL params (see VictoriaLogs vmui useTimePeriod hook).
 """
 from __future__ import annotations
 
 import urllib.parse
+from datetime import datetime
 from typing import Optional
 
 
@@ -35,6 +37,28 @@ def build_logsql(
     return " AND ".join(parts) if parts else "*"
 
 
+def _parse_rfc3339(value: str) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _duration_label(start: datetime, end: datetime) -> str:
+    """Render a Prometheus-style duration string (5m / 2h / 3d) covering the window.
+
+    VMUI's `g0.range_input` accepts these tokens; we always round UP so the
+    actual window stays inside the rendered range — never want the deep link to
+    crop out the hit it's supposed to highlight.
+    """
+    seconds = max(int((end - start).total_seconds()), 60)
+    if seconds < 3600:
+        return f"{(seconds + 59) // 60}m"
+    if seconds < 86400:
+        return f"{(seconds + 3599) // 3600}h"
+    return f"{(seconds + 86399) // 86400}d"
+
+
 def build_vmui_url(
     base_url: str,
     *,
@@ -46,15 +70,20 @@ def build_vmui_url(
 ) -> str:
     """Return a VMUI deep link, e.g. http://app.local/select/vmui/?#/?query=...
 
-    Time range is encoded as `start`/`end` (RFC3339 from Qdrant payload). VMUI
-    accepts these and reflects them in its time picker.
+    When a `[start, end]` window is supplied we encode it as an absolute time
+    range via VMUI's `g0.*` params; the time picker shows the exact window
+    instead of falling back to its default "Last 5 minutes".
     """
     query = build_logsql(service=service, host=host, severity=severity)
     qs: dict[str, str] = {"query": query}
-    if window_start:
-        qs["start"] = window_start
-    if window_end:
-        qs["end"] = window_end
+
+    start_dt = _parse_rfc3339(window_start) if window_start else None
+    end_dt = _parse_rfc3339(window_end) if window_end else None
+    if start_dt and end_dt and end_dt > start_dt:
+        qs["g0.relative_time"] = "none"
+        qs["g0.end_input"] = window_end  # type: ignore[assignment]
+        qs["g0.range_input"] = _duration_label(start_dt, end_dt)
+
     # VMUI lives under /select/vmui/ and uses hash routing. Querystring goes
     # *after* the hash so JS reads it from `location.hash`.
     base = base_url.rstrip("/")

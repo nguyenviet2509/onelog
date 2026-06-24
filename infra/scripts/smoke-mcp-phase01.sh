@@ -66,13 +66,22 @@ assert_status "GET /mcp/semantic/sse (bad bearer)" "$BASE/mcp/semantic/sse" 401 
   -H "Authorization: Bearer sk-bogus"
 
 echo
-echo "═ Test 4: /mcp/semantic/sse with valid Bearer → 200 (SSE upgrade)"
-# SSE returns 200 + content-type text/event-stream — we just check the status.
-assert_status "GET /mcp/semantic/sse (valid)" "$BASE/mcp/semantic/sse" 200 \
-  -H "Authorization: Bearer $TOKEN"
+echo "═ Test 4: /mcp/semantic/mcp with valid Bearer → 2xx/406 (Streamable HTTP)"
+# FastMCP 3.x serves Streamable HTTP at /mcp. A plain GET without the right
+# Accept header returns 406, with proper headers returns 200. We accept either
+# as proof the endpoint exists + Bearer passes Caddy forward_auth.
+got4=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/mcp/semantic/mcp" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/json, text/event-stream")
+if [[ "$got4" =~ ^(200|202|400|406)$ ]]; then
+  echo "✓ GET /mcp/semantic/mcp (valid) → $got4 (endpoint reachable past auth)"
+else
+  echo "✗ GET /mcp/semantic/mcp (valid) → $got4 (expected 200/202/400/406)"
+  exit 1
+fi
 
 echo
-echo "═ Test 5: /mcp/vl/sse with valid Bearer → 200 (proxied to mcp-vl)"
+echo "═ Test 5: /mcp/vl/sse with valid Bearer → 200 (mcp-vl still SSE in v1.9.0)"
 assert_status "GET /mcp/vl/sse (valid)" "$BASE/mcp/vl/sse" 200 \
   -H "Authorization: Bearer $TOKEN"
 

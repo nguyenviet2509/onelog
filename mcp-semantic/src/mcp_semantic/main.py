@@ -24,10 +24,8 @@ from fastmcp import FastMCP
 from pydantic import Field
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qm
-from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
-from starlette.routing import Mount, Route
 
 from mcp_semantic.audit import get_audit
 from mcp_semantic.auth import is_auth_enabled, token_fingerprint, verify_bearer
@@ -94,11 +92,13 @@ def _resolve_user(request: Request | None) -> str:
     return verify_bearer(request.headers.get("authorization")) or "unknown"
 
 
+@mcp.custom_route("/healthz", methods=["GET"])
 async def healthz(_: Request) -> Response:
     """Container liveness — no auth required, no audit noise."""
     return PlainTextResponse("ok")
 
 
+@mcp.custom_route("/auth/verify", methods=["GET", "POST"])
 async def auth_verify(request: Request) -> Response:
     """Caddy `forward_auth` target. 204 + X-Mcp-User on success, 401 otherwise.
 
@@ -243,26 +243,13 @@ async def search_log_templates(
     return hits
 
 
-def build_app() -> Starlette:
-    """Compose the ASGI app: edge routes first, then mount FastMCP's SSE app.
-
-    Why not @mcp.custom_route + mcp.run(): older FastMCP releases do not include
-    custom routes in the SSE app, so /healthz + /auth/verify 404. Mounting
-    explicitly is robust across versions and lets us guarantee Caddy can hit
-    /auth/verify even if upstream FastMCP changes again.
-    """
-    routes = [
-        Route("/healthz", healthz, methods=["GET"]),
-        Route("/auth/verify", auth_verify, methods=["GET", "POST"]),
-        # SSE app handles /sse + /messages/ — mount last so the named routes
-        # above win the lookup order.
-        Mount("/", app=mcp.sse_app()),
-    ]
-    return Starlette(routes=routes)
-
-
 def run() -> None:
-    """Console entry — serve over SSE (Claude Desktop / Code use this transport)."""
+    """Console entry — serve Streamable HTTP transport (FastMCP 3.x).
+
+    `mcp.http_app()` returns a Starlette app that exposes the MCP protocol at
+    `/mcp` and any `@mcp.custom_route` handlers (/healthz, /auth/verify) at
+    root. Claude Desktop reaches the MCP via `mcp-remote https://.../mcp`.
+    """
     log.info(
         "mcp-semantic.starting",
         host=settings.host,
@@ -285,7 +272,7 @@ def run() -> None:
                 note="no tokens configured AND MCP_ALLOW_ANON unset — /auth/verify "
                      "will deny every request. Set MCP_BEARER_TOKENS or MCP_ALLOW_ANON=true.",
             )
-    uvicorn.run(build_app(), host=settings.host, port=settings.port, log_config=None)
+    uvicorn.run(mcp.http_app(), host=settings.host, port=settings.port, log_config=None)
 
 
 if __name__ == "__main__":

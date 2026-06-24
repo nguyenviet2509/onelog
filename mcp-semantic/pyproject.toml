@@ -4,12 +4,17 @@ version = "0.1.0"
 description = "FastMCP server exposing semantic log-template search to IDE assistants"
 requires-python = ">=3.12"
 dependencies = [
-    "fastmcp>=2.0.0",
+    # 3.x removed sse_app(); we serve Streamable HTTP via mcp.http_app() and
+    # mount /healthz + /auth/verify via @mcp.custom_route.
+    "fastmcp>=3.4.0",
     "qdrant-client>=1.10.0",
     "openai>=1.40.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.4.0",
     "structlog>=24.4.0",
+    # uvicorn/starlette declared explicitly — main.py drives uvicorn directly.
+    "uvicorn>=0.30.0",
+    "starlette>=0.37.0",
 ]
 
 [project.scripts]

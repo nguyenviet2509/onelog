@@ -62,6 +62,27 @@ def _duration_label(start: datetime, end: datetime) -> str:
 
 _RANGE_TOKEN = re.compile(r"^\d+[smhdw]$")
 
+# Tokens that map to VMUI's built-in `g0.relative_time` presets. When the
+# range hits one of these, picker shows the preset highlighted (nicer UX)
+# instead of "Custom range". Anything else falls back to absolute range_input.
+# Source: VictoriaLogs vmui useTimePeriod hook + the time picker dropdown.
+_RELATIVE_PRESETS: dict[str, str] = {
+    "5m": "last_5_minutes",
+    "15m": "last_15_minutes",
+    "30m": "last_30_minutes",
+    "1h": "last_1_hour",
+    "3h": "last_3_hours",
+    "6h": "last_6_hours",
+    "12h": "last_12_hours",
+    "24h": "last_24_hours",
+    "1d": "last_24_hours",
+    "2d": "last_2_days",
+    "7d": "last_7_days",
+    "1w": "last_7_days",
+    "30d": "last_30_days",
+    "90d": "last_90_days",
+}
+
 
 def _normalize_time_range(value: str) -> Optional[str]:
     """Accept VMUI-style tokens (5m / 2h / 2d / 1w). Reject anything else.
@@ -97,9 +118,18 @@ def build_vmui_url(
 
     range_token = _normalize_time_range(time_range) if time_range else None
     if range_token:
-        qs["g0.relative_time"] = "none"
-        qs["g0.range_input"] = range_token
-        qs["g0.end_input"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        preset = _RELATIVE_PRESETS.get(range_token)
+        if preset:
+            # Preset path: picker hydrates the named option, no need for
+            # range_input/end_input — keeps the URL short and the UX clean.
+            qs["g0.relative_time"] = preset
+        else:
+            # Non-preset duration (e.g. "2h", "45m") — fall back to absolute
+            # range anchored to "now". Picker shows "Custom range" but the
+            # window is still correct.
+            qs["g0.relative_time"] = "none"
+            qs["g0.range_input"] = range_token
+            qs["g0.end_input"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     else:
         start_dt = _parse_rfc3339(window_start) if window_start else None
         end_dt = _parse_rfc3339(window_end) if window_end else None

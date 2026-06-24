@@ -12,6 +12,13 @@
 :80 {
     @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
     handle @allowed {
+        # OAuth discovery probes from mcp-remote etc. Return clean JSON 404 so
+        # the client falls back to its static --header Bearer token instead of
+        # parsing a Next.js HTML 404 as OAuth metadata (which crashes the proxy).
+        handle /.well-known/* {
+            header Content-Type application/json
+            respond `{"error":"not_supported","reason":"onelog uses static Bearer tokens, not OAuth"}` 404
+        }
         # VictoriaLogs built-in UI (vmui) — kept under /vmui/ for short URL,
         # but proxy KHÔNG strip prefix vì vmui JS gọi /select/logsql/... absolute.
         # Trick: redirect /vmui/* → /select/vmui/* để cùng namespace với API.

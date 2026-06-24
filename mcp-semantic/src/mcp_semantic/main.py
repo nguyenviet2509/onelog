@@ -123,7 +123,15 @@ async def auth_verify(request: Request) -> Response:
             # repeated denials to a specific (likely leaked) credential.
             auth_hint=token_fingerprint(auth_header),
         )
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # RFC 6750: signal static-Bearer challenge so mcp-remote (and any other
+        # OAuth-aware client) does NOT try dynamic OAuth client registration on
+        # a 401. Without this header mcp-remote walks /register → /.well-known
+        # → fatal "Invalid OAuth error response" on plain-token servers.
+        return JSONResponse(
+            {"error": "unauthorized"},
+            status_code=401,
+            headers={"WWW-Authenticate": 'Bearer realm="onelog"'},
+        )
     audit.write(
         source="edge",
         user=user,

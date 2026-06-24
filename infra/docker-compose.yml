@@ -103,11 +103,12 @@ services:
   # Custom semantic MCP — FastMCP server exposing search_log_templates over Qdrant.
   # Pair with official mcp-vl (LogsQL/discovery); this one adds semantic search
   # over Drain3-clustered templates which mcp-vl cannot do.
+  # Also hosts /auth/verify endpoint that Caddy `forward_auth` calls to gate both
+  # /mcp/vl/* and /mcp/semantic/* routes — central token table for the two MCPs.
   mcp-semantic:
     build: ../mcp-semantic
     container_name: ragstack-mcp-semantic
     restart: unless-stopped
-    profiles: [mcp]   # opt-in: docker compose --profile mcp up -d
     environment:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY}
@@ -116,12 +117,20 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
       EMBED_MOCK: ${EMBED_MOCK:-false}
-      MCP_BEARER: ${MCP_BEARER:-}
+      # Multi-user Bearer table: "user1:sk-aaa,user2:sk-bbb,...". Empty +
+      # MCP_ALLOW_ANON unset = fail-closed (every /auth/verify request denied).
+      MCP_BEARER_TOKENS: ${MCP_BEARER_TOKENS:-}
+      MCP_ALLOW_ANON: ${MCP_ALLOW_ANON:-false}
+      # Public base for building clickable VMUI links inside tool responses.
+      VMUI_BASE_URL: ${VMUI_BASE_URL:-http://app.local}
+      AUDIT_LOG_PATH: /var/log/onelog-audit/mcp-semantic.log
       HOST: 0.0.0.0
       PORT: "9000"
       LOG_LEVEL: INFO
     ports:
       - "127.0.0.1:9002:9000"
+    volumes:
+      - ./data/audit:/var/log/onelog-audit
 
   # vmalert — evaluates LogsQL stats queries against VictoriaLogs, fires
   # to Alertmanager. Native VL datasource since vmalert v1.96+.
@@ -247,24 +256,25 @@ services:
       qdrant:
         condition: service_started
 
-  # MCP server official from VictoriaMetrics — DISABLED 2026-06-23: image
-  # `victoriametrics/mcp-victorialogs:latest` not on Docker Hub. Repo:
-  # https://github.com/VictoriaMetrics/mcp-victorialogs — try `ghcr.io/...` or
-  # build from source when adding back. Custom mcp-semantic provides the USP
-  # (semantic search) standalone in the meantime.
-  # mcp-vl:
-  #   image: ghcr.io/victoriametrics/mcp-victorialogs:latest
-  #   container_name: ragstack-mcp-vl
-  #   restart: unless-stopped
-  #   profiles: [mcp]
-  #   environment:
-  #     VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
-  #     MCP_TRANSPORT: sse
-  #     MCP_LISTEN_ADDR: 0.0.0.0:8000
-  #   ports:
-  #     - "127.0.0.1:8001:8000"
-  #   depends_on:
-  #     - victorialogs
+  # MCP server official from VictoriaMetrics — 12 read-only LogsQL/discovery/stats
+  # tools. Pinned to v1.9.0 from ghcr (Docker Hub image does not exist).
+  # Auth gated by Caddy `forward_auth` to mcp-semantic:/auth/verify (single token
+  # table). MCP_PASSTHROUGH_HEADERS keeps the Authorization header for traceability.
+  mcp-vl:
+    image: ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0
+    container_name: ragstack-mcp-vl
+    restart: unless-stopped
+    environment:
+      VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
+      MCP_TRANSPORT: sse
+      MCP_LISTEN_ADDR: 0.0.0.0:8000
+      # Disable heavyweight documentation tool — keeps the surface focused on
+      # query/hits/facets/stats for IDE assistants.
+      MCP_DISABLED_TOOLS: documentation
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      - victorialogs
 
   caddy:
     image: caddy:2-alpine

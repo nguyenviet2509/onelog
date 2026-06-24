@@ -33,14 +33,28 @@
         handle /metrics {
             reverse_proxy victorialogs:9428
         }
-        # MCP server official (mcp-victorialogs) — 12 read-only tools
-        # Requires Bearer auth (set MCP_BEARER in env when going public)
+        # Single Bearer table for both MCPs — Caddy calls mcp-semantic's
+        # /auth/verify, which knows the user table. On 204 the upstream request
+        # gains X-Mcp-User so downstream services (mcp-vl + mcp-semantic) attribute
+        # audit lines correctly without re-parsing tokens.
         handle_path /mcp/vl/* {
-            reverse_proxy mcp-vl:8000
+            forward_auth mcp-semantic:9000 {
+                uri /auth/verify
+                copy_headers X-Mcp-User
+            }
+            reverse_proxy mcp-vl:8000 {
+                flush_interval -1
+            }
         }
         # MCP custom semantic — Phase 08, expose search_log_templates only.
-        # SSE transport on /sse path under mcp-semantic:9000.
+        # SSE transport on /sse path under mcp-semantic:9000. Same forward_auth
+        # so anonymous Caddy bypass is impossible — even if attacker reaches the
+        # LAN IP whitelist, no token = 401.
         handle_path /mcp/semantic/* {
+            forward_auth mcp-semantic:9000 {
+                uri /auth/verify
+                copy_headers X-Mcp-User
+            }
             reverse_proxy mcp-semantic:9000 {
                 flush_interval -1
             }

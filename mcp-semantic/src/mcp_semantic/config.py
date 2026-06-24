@@ -22,10 +22,23 @@ class Settings(BaseSettings):
     # MCP transport
     host: str = "0.0.0.0"
     port: int = 9000
-    # Static bearer for MVP — set MCP_BEARER in env; clients send it as
-    # `Authorization: Bearer ...`. Empty disables auth (lab only, Caddy IP
-    # whitelist must guard).
+
+    # Multi-user Bearer table. Format: "user1:sk-aaa,user2:sk-bbb". Empty +
+    # mcp_allow_anon=false = fail-closed (every request denied at /auth/verify).
+    mcp_bearer_tokens: str = ""
+    # Legacy single-token toggle kept for backward compat — verified after
+    # mcp_bearer_tokens. Deprecated, prefer mcp_bearer_tokens.
     mcp_bearer: str = ""
+    # Explicit opt-in for anon dev mode. Without this, an empty token table
+    # denies every request — production cannot silently fail-open by forgetting
+    # MCP_BEARER_TOKENS.
+    mcp_allow_anon: bool = False
+
+    # Public base URL for clickable VMUI links emitted in tool responses.
+    vmui_base_url: str = "http://app.local"
+
+    # Audit log destination. Container mounts ./data/audit; host owns retention.
+    audit_log_path: str = "/var/log/onelog-audit/mcp-semantic.log"
 
     log_level: str = "INFO"
 

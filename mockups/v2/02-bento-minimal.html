@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Mock 02 · Bento Minimal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{--bg:#0a0a0b;--card:#111114;--line:#1f1f25;--mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc}
+  body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui;font-feature-settings:"ss01","cv11"}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .bar{height:4px;border-radius:2px;background:#1f1f25;overflow:hidden}
+  .bar>span{display:block;height:100%;background:var(--acc)}
+  .spark path{fill:none;stroke:var(--acc);stroke-width:1.5}
+  kbd{background:#1f1f25;border:1px solid #2a2a30;border-radius:4px;padding:1px 5px;font-size:10px;font-family:ui-monospace}
+</style>
+</head>
+<body>
+<div class="max-w-[1400px] mx-auto p-5">
+  <!-- header -->
+  <div class="flex items-center justify-between pb-4 border-b border-[#1f1f25]">
+    <div class="flex items-center gap-2.5">
+      <div class="size-7 rounded-lg bg-white text-black grid place-items-center font-black text-sm">O</div>
+      <span class="font-semibold">onelog</span>
+      <span class="mut text-xs ml-1">/ chat / mysql có lỗi gì không</span>
+    </div>
+    <div class="flex items-center gap-2 text-sm">
+      <button class="px-2.5 py-1 rounded-md hover:bg-[#15151a]">Chat</button>
+      <button class="px-2.5 py-1 rounded-md hover:bg-[#15151a]">Trace</button>
+      <button class="px-2.5 py-1 rounded-md bg-[#15151a]">Admin</button>
+      <div class="ml-2 size-7 rounded-full bg-gradient-to-br from-cyan-300 to-blue-500"></div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="grid grid-cols-[240px_1fr_280px] gap-3 mt-4">
+    <aside class="card p-2.5">
+      <button class="w-full text-sm bg-white text-black rounded-md py-1.5 font-medium">+ New chat <kbd class="ml-1">⌘N</kbd></button>
+      <div class="mt-3 mut text-[10px] uppercase tracking-widest px-1">Pinned</div>
+      <a class="mt-1 block px-2 py-1.5 rounded-md bg-[#15151a] text-sm">mysql có lỗi gì không</a>
+      <div class="mt-3 mut text-[10px] uppercase tracking-widest px-1">Recent</div>
+      <a class="mt-1 block px-2 py-1.5 rounded-md hover:bg-[#15151a] text-sm">nginx 5xx spike</a>
+      <a class="mt-1 block px-2 py-1.5 rounded-md hover:bg-[#15151a] text-sm">redis evict rate</a>
+      <a class="mt-1 block px-2 py-1.5 rounded-md hover:bg-[#15151a] text-sm">k8s OOMKilled</a>
+      <a class="mt-1 block px-2 py-1.5 rounded-md hover:bg-[#15151a] text-sm">tls cert expiry</a>
+    </aside>
+
+    <section class="card p-5 min-h-[60vh] flex flex-col">
+      <div class="flex justify-between items-start">
+        <div>
+          <h1 class="text-xl font-semibold">mysql có lỗi gì không</h1>
+          <div class="mut text-xs mt-1">claude-sonnet-4.6 · 12 turns · started 14:02</div>
+        </div>
+        <div class="flex gap-2 text-xs mut">
+          <span>↑ 8.2k</span><span>↓ 1.4k</span><span class="acc">$0.04</span>
+        </div>
+      </div>
+
+      <div class="mt-5 space-y-5 flex-1">
+        <div class="flex justify-end">
+          <div class="bg-[#15151a] border border-[#1f1f25] rounded-2xl rounded-tr-md px-3.5 py-2 text-sm max-w-[70%]">mysql có lỗi gì không trong 24h qua?</div>
+        </div>
+        <div class="max-w-[80%]">
+          <div class="mut text-[11px] mb-1">assistant</div>
+          <div class="text-sm leading-relaxed">
+            Tôi tìm log templates liên quan trước.
+            <div class="mt-2 inline-flex items-center gap-2 text-xs bg-[#15151a] border border-[#1f1f25] rounded-md px-2 py-1 font-mono">
+              <span class="dot bg-emerald-400"></span> search_log_templates <span class="mut">234ms · 18 hits</span>
+            </div>
+            <p class="mt-3">3 cluster lỗi lặp lại — chủ yếu <b>deadlock</b> trên bảng <code class="bg-[#15151a] px-1 rounded">orders</code>.</p>
+            <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <div class="card p-2.5"><div class="mut">Cluster A</div><div class="text-lg">142</div><div class="text-rose-300">deadlock</div></div>
+              <div class="card p-2.5"><div class="mut">Cluster B</div><div class="text-lg">38</div><div class="text-amber-300">slow query</div></div>
+              <div class="card p-2.5"><div class="mut">Cluster C</div><div class="text-lg">9</div><div class="text-rose-300">conn refused</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 card p-2 flex items-end gap-2">
+        <textarea rows="1" placeholder="Ask anything…" class="flex-1 bg-transparent outline-none px-2 py-1.5 text-sm resize-none"></textarea>
+        <kbd>/</kbd>
+        <button class="rounded-md bg-white text-black px-3 py-1.5 text-sm font-medium">Send</button>
+      </div>
+    </section>
+
+    <aside class="card p-3 space-y-3">
+      <div>
+        <div class="mut text-[10px] uppercase tracking-widest mb-2">Retrieval</div>
+        <div class="text-xs space-y-1.5">
+          <div class="flex justify-between"><span>Hit rate</span><span class="acc">94%</span></div>
+          <div class="bar"><span style="width:94%"></span></div>
+          <div class="flex justify-between mt-2"><span>Vector p95</span><span>180ms</span></div>
+          <div class="flex justify-between"><span>Rerank</span><span>on</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="mut text-[10px] uppercase tracking-widest mb-2">Sources</div>
+        <ul class="text-xs space-y-1.5 font-mono">
+          <li class="flex justify-between"><span>mock-audit:srv-01</span><span class="mut">12</span></li>
+          <li class="flex justify-between"><span>app-mysql:srv-04</span><span class="mut">38</span></li>
+          <li class="flex justify-between"><span>nginx-access:edge</span><span class="mut">9</span></li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="mt-10 flex items-end justify-between">
+    <div>
+      <div class="mut text-xs">Admin</div>
+      <h2 class="text-2xl font-semibold">Operations</h2>
+    </div>
+    <div class="flex gap-1 text-xs">
+      <button class="px-2 py-1 rounded-md hover:bg-[#15151a]">24h</button>
+      <button class="px-2 py-1 rounded-md bg-[#15151a]">7d</button>
+      <button class="px-2 py-1 rounded-md hover:bg-[#15151a]">30d</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 grid-rows-[auto_auto_auto] gap-3 mt-3">
+    <!-- KPI row -->
+    <div class="card p-4 col-span-3"><div class="mut text-xs">Conversations</div><div class="text-3xl font-semibold mt-1">1,284</div><div class="text-emerald-300 text-xs mt-1">▲ 12.4%</div><svg class="spark mt-1" viewBox="0 0 100 24"><path d="M0 18 L20 16 L40 13 L60 8 L80 10 L100 4"/></svg></div>
+    <div class="card p-4 col-span-3"><div class="mut text-xs">Tokens · Cost</div><div class="text-3xl font-semibold mt-1">38.4M</div><div class="acc text-xs mt-1">$94.10 · budget 74%</div><div class="bar mt-2"><span style="width:74%"></span></div></div>
+    <div class="card p-4 col-span-3"><div class="mut text-xs">Latency p50 / p95</div><div class="text-3xl font-semibold mt-1">0.9 / 3.4s</div><div class="text-emerald-300 text-xs mt-1">▼ 180ms</div></div>
+    <div class="card p-4 col-span-3"><div class="mut text-xs">Errors · open alerts</div><div class="text-3xl font-semibold mt-1 text-rose-300">12 / 2</div><div class="text-rose-300 text-xs mt-1">retrieval timeout srv-04</div></div>
+
+    <!-- big chart bento -->
+    <div class="card p-4 col-span-8 row-span-2">
+      <div class="flex justify-between items-center"><h3 class="text-sm font-semibold">Token usage by model · 7d</h3>
+        <div class="flex gap-3 text-xs mut"><span><span class="dot mr-1" style="background:#7dd3fc"></span>sonnet</span><span><span class="dot mr-1" style="background:#a7f3d0"></span>haiku</span><span><span class="dot mr-1" style="background:#fbbf24"></span>opus</span></div>
+      </div>
+      <svg viewBox="0 0 800 260" class="w-full mt-3">
+        <g stroke="#1f1f25"><line x1="0" y1="60" x2="800" y2="60"/><line x1="0" y1="120" x2="800" y2="120"/><line x1="0" y1="180" x2="800" y2="180"/></g>
+        <path d="M0 200 L80 180 L160 170 L240 140 L320 160 L400 110 L480 100 L560 130 L640 80 L720 105 L800 60" stroke="#7dd3fc" fill="none" stroke-width="2"/>
+        <path d="M0 220 L80 215 L160 210 L240 200 L320 190 L400 185 L480 180 L560 165 L640 160 L720 150 L800 145" stroke="#a7f3d0" fill="none" stroke-width="2"/>
+        <path d="M0 240 L80 238 L160 236 L240 234 L320 230 L400 228 L480 224 L560 220 L640 218 L720 215 L800 210" stroke="#fbbf24" fill="none" stroke-width="2"/>
+      </svg>
+      <div class="grid grid-cols-3 gap-3 mt-2 text-xs">
+        <div><div class="mut">sonnet</div><div class="text-base">28.1M · $71</div></div>
+        <div><div class="mut">haiku</div><div class="text-base">8.6M · $14</div></div>
+        <div><div class="mut">opus</div><div class="text-base">1.7M · $9</div></div>
+      </div>
+    </div>
+
+    <!-- health -->
+    <div class="card p-4 col-span-4">
+      <h3 class="text-sm font-semibold">Service health</h3>
+      <div class="space-y-1.5 mt-2 text-sm">
+        <div class="flex justify-between"><span><span class="dot bg-emerald-400 mr-2"></span>postgres</span><span class="mut text-xs">8ms</span></div>
+        <div class="flex justify-between"><span><span class="dot bg-emerald-400 mr-2"></span>opensearch</span><span class="mut text-xs">22ms</span></div>
+        <div class="flex justify-between"><span><span class="dot bg-amber-300 mr-2"></span>embed</span><span class="mut text-xs">340ms</span></div>
+        <div class="flex justify-between"><span><span class="dot bg-emerald-400 mr-2"></span>indexer</span><span class="mut text-xs">12ms</span></div>
+        <div class="flex justify-between"><span><span class="dot bg-rose-400 mr-2"></span>mcp-semantic</span><span class="mut text-xs">timeout</span></div>
+      </div>
+    </div>
+
+    <div class="card p-4 col-span-4">
+      <h3 class="text-sm font-semibold">Ingestion · last 1h</h3>
+      <div class="grid grid-cols-2 gap-2 mt-2 text-xs">
+        <div class="card p-2.5 bg-[#0a0a0b]"><div class="mut">Events/s</div><div class="text-xl">8.2k</div></div>
+        <div class="card p-2.5 bg-[#0a0a0b]"><div class="mut">Templates</div><div class="text-xl">1,204</div></div>
+        <div class="card p-2.5 bg-[#0a0a0b]"><div class="mut">Embed cache</div><div class="text-xl text-emerald-300">91%</div></div>
+        <div class="card p-2.5 bg-[#0a0a0b]"><div class="mut">Lag</div><div class="text-xl">1.2s</div></div>
+      </div>
+    </div>
+
+    <!-- top queries -->
+    <div class="card p-4 col-span-5">
+      <h3 class="text-sm font-semibold">Top queries · 7d</h3>
+      <table class="w-full text-sm mt-2">
+        <thead class="mut text-xs"><tr><th class="text-left font-normal pb-1">Query</th><th class="text-right font-normal">N</th><th class="text-right font-normal">p95</th><th class="text-right font-normal">$</th></tr></thead>
+        <tbody>
+          <tr class="border-t border-[#1f1f25]"><td class="py-1.5">mysql error last 24h</td><td class="text-right">142</td><td class="text-right mut">2.1s</td><td class="text-right">$6.10</td></tr>
+          <tr class="border-t border-[#1f1f25]"><td class="py-1.5">nginx 5xx spike</td><td class="text-right">96</td><td class="text-right mut">1.8s</td><td class="text-right">$4.20</td></tr>
+          <tr class="border-t border-[#1f1f25]"><td class="py-1.5">k8s OOMKilled</td><td class="text-right">71</td><td class="text-right mut">3.2s</td><td class="text-right">$5.80</td></tr>
+          <tr class="border-t border-[#1f1f25]"><td class="py-1.5">redis evict rate</td><td class="text-right">54</td><td class="text-right mut">1.4s</td><td class="text-right">$2.10</td></tr>
+          <tr class="border-t border-[#1f1f25]"><td class="py-1.5">tls cert expiry</td><td class="text-right">42</td><td class="text-right mut">0.9s</td><td class="text-right">$1.30</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- audit -->
+    <div class="card p-4 col-span-4">
+      <h3 class="text-sm font-semibold">Top log templates</h3>
+      <ul class="text-xs mt-2 space-y-1.5 font-mono">
+        <li class="flex justify-between"><span>Deadlock found when trying to get lock…</span><span class="text-rose-300">142</span></li>
+        <li class="flex justify-between"><span>Connection refused on 5432</span><span class="text-rose-300">38</span></li>
+        <li class="flex justify-between"><span>Slow query > 2s on orders.user_id</span><span class="text-amber-300">29</span></li>
+        <li class="flex justify-between"><span>nginx upstream timed out</span><span class="text-amber-300">17</span></li>
+        <li class="flex justify-between"><span>OOMKilled pod app-api-7d…</span><span class="text-rose-300">9</span></li>
+      </ul>
+    </div>
+
+    <div class="card p-4 col-span-3">
+      <h3 class="text-sm font-semibold">Alerts</h3>
+      <ul class="mt-2 space-y-2 text-xs">
+        <li><div class="text-rose-300">⚠ MCP timeout</div><div class="mut">srv-04 · 2m ago</div></li>
+        <li><div class="text-amber-300">↑ Cost spike</div><div class="mut">+$6 · 12m ago</div></li>
+        <li><div class="text-emerald-300">✓ Embed recovered</div><div class="mut">28m ago</div></li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Mock 03 · Cyber Terminal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{--bg:#04060a;--card:#0a0f14;--line:#103040;--fg:#c9f5e8;--acc:#00ff9c;--warn:#ffb454;--err:#ff5577;--mut:#5a7a85}
+  body{background:var(--bg);color:var(--fg);font-family:'JetBrains Mono','IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,255,156,.03) 0,rgba(0,255,156,.03) 1px,transparent 1px,transparent 3px);z-index:50}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:2px;position:relative}
+  .panel::before{content:"";position:absolute;left:-1px;top:-1px;right:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--acc),transparent)}
+  .glow{text-shadow:0 0 8px currentColor}
+  .chip{border:1px solid var(--line);padding:1px 6px;border-radius:2px;font-size:11px}
+  .bar{height:6px;background:#0a1a1f;border:1px solid var(--line)}
+  .bar>span{display:block;height:100%;background:var(--acc);box-shadow:0 0 8px var(--acc)}
+  .blink{animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  hr{border:none;border-top:1px dashed var(--line);margin:8px 0}
+  .ascii{white-space:pre;line-height:1.1;font-size:11px;color:var(--acc)}
+  a{color:var(--acc)}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-[1400px] mx-auto p-4">
+  <header class="panel p-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="glow text-[var(--acc)]">▮</span>
+      <span class="text-[var(--acc)] glow font-bold">ONELOG//term</span>
+      <span class="chip">v2.6.1</span>
+      <span class="chip text-[var(--acc)]">● uplink:OK</span>
+    </div>
+    <nav class="flex gap-1 text-xs">
+      <a class="chip">[F1] chat</a>
+      <a class="chip">[F2] trace</a>
+      <a class="chip text-[var(--acc)]">[F3] admin*</a>
+      <a class="chip">[F12] logout</a>
+    </nav>
+  </header>
+
+  <!-- CHAT -->
+  <div class="grid grid-cols-[220px_1fr_260px] gap-2 mt-2">
+    <aside class="panel p-2">
+      <div class="text-[var(--acc)] text-xs glow">// SESSIONS</div>
+      <hr/>
+      <div class="px-1 py-0.5">$ ./new --chat <span class="blink">_</span></div>
+      <hr/>
+      <ul class="text-xs space-y-0.5">
+        <li class="text-[var(--acc)]">▶ mysql_lỗi_24h</li>
+        <li class="text-[var(--mut)]">  nginx_5xx_spike</li>
+        <li class="text-[var(--mut)]">  redis_evict</li>
+        <li class="text-[var(--mut)]">  k8s_oomkill</li>
+        <li class="text-[var(--mut)]">  tls_expiry</li>
+      </ul>
+      <hr/>
+      <div class="text-xs">
+        <div>tokens.today: <span class="text-[var(--acc)]">182,412</span></div>
+        <div>budget.left:  <span class="text-[var(--warn)]">$67.90</span></div>
+      </div>
+    </aside>
+
+    <section class="panel p-3 flex flex-col min-h-[60vh]">
+      <div class="flex justify-between text-xs">
+        <span class="text-[var(--acc)] glow">// CHAT &gt; mysql_lỗi_24h</span>
+        <span class="text-[var(--mut)]">model=sonnet-4.6 ctx=8.2k turns=12</span>
+      </div>
+      <hr/>
+      <div class="flex-1 space-y-3 overflow-auto">
+        <div>
+          <span class="text-[var(--warn)]">user@vmui:~$</span> mysql có lỗi gì không trong 24h qua?
+        </div>
+        <div>
+          <div class="text-[var(--acc)]">assistant&gt;</div>
+          <div>Tôi tìm log templates liên quan trước.</div>
+          <div class="mt-1 chip inline-block text-[var(--acc)]">▷ exec search_log_templates(k=20) → 234ms · 18 hits</div>
+          <div class="mt-2">Phát hiện <span class="text-[var(--err)] glow">3 cluster</span> lỗi lặp lại:</div>
+<pre class="ascii mt-2">┌──────┬──────────────────────────┬───────┬─────┐
+│ CL   │ TEMPLATE                 │ TYPE  │  N  │
+├──────┼──────────────────────────┼───────┼─────┤
+│  A   │ Deadlock found on lock   │ ERROR │ 142 │
+│  B   │ Slow query &gt; 2s          │ WARN  │  38 │
+│  C   │ Connection refused 5432  │ ERROR │   9 │
+└──────┴──────────────────────────┴───────┴─────┘</pre>
+          <div class="mt-2 text-xs">cite: <span class="chip">mock-audit:srv-01</span> <span class="chip">srv-02</span> <span class="chip">srv-04</span></div>
+        </div>
+      </div>
+      <hr/>
+      <div class="flex items-center gap-2">
+        <span class="text-[var(--acc)] glow">$&gt;</span>
+        <input class="flex-1 bg-transparent outline-none" placeholder="Hỏi về log... ex: mysql có lỗi gì gần đây?"/>
+        <span class="chip">⏎ send</span>
+      </div>
+    </section>
+
+    <aside class="panel p-2 text-xs space-y-2">
+      <div>
+        <div class="text-[var(--acc)] glow">// RETRIEVAL</div>
+        <hr/>
+        <div>hit_rate     <span class="text-[var(--acc)]">94%</span></div>
+        <div class="bar mt-0.5"><span style="width:94%"></span></div>
+        <div class="mt-1">vector.p95   180ms</div>
+        <div>rerank       ON</div>
+        <div>topK         20</div>
+      </div>
+      <div>
+        <div class="text-[var(--acc)] glow">// SOURCES</div>
+        <hr/>
+        <div>mock-audit:srv-01  <span class="text-[var(--mut)]">[12]</span></div>
+        <div>app-mysql:srv-04   <span class="text-[var(--mut)]">[38]</span></div>
+        <div>nginx-access:edge  <span class="text-[var(--mut)]">[ 9]</span></div>
+      </div>
+      <div>
+        <div class="text-[var(--acc)] glow">// TOOL CALLS</div>
+        <hr/>
+        <div>search_log_templates <span class="text-[var(--mut)]">234ms</span></div>
+        <div>fetch_events         <span class="text-[var(--mut)]">112ms</span></div>
+        <div>summarize_cluster    <span class="text-[var(--mut)]">820ms</span></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="mt-4 panel p-3">
+    <div class="flex justify-between items-center">
+      <div class="text-[var(--acc)] glow">// ADMIN &gt; OPERATIONS &gt; 7d</div>
+      <div class="text-xs space-x-2"><span class="chip">[1] 24h</span><span class="chip text-[var(--acc)]">[2] 7d*</span><span class="chip">[3] 30d</span><span class="chip">[r] refresh</span></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-2 mt-2">
+    <!-- KPIs as readout -->
+    <div class="panel p-3 col-span-3">
+      <div class="text-xs text-[var(--mut)]">CONVERSATIONS.7d</div>
+      <div class="text-3xl glow text-[var(--acc)]">1284</div>
+      <div class="text-xs">Δ +12.4% ▲</div>
+<pre class="ascii mt-1">▁▂▂▃▃▄▅▆▆▇█</pre>
+    </div>
+    <div class="panel p-3 col-span-3">
+      <div class="text-xs text-[var(--mut)]">TOKENS · COST</div>
+      <div class="text-2xl text-[var(--acc)] glow">38.4M / $94.10</div>
+      <div class="text-xs text-[var(--warn)]">budget 74% — over $6</div>
+      <div class="bar mt-1"><span style="width:74%;background:var(--warn);box-shadow:0 0 8px var(--warn)"></span></div>
+    </div>
+    <div class="panel p-3 col-span-3">
+      <div class="text-xs text-[var(--mut)]">LATENCY p50 / p95</div>
+      <div class="text-2xl text-[var(--acc)] glow">0.9s / 3.4s</div>
+      <div class="text-xs">Δ −180ms ▼</div>
+    </div>
+    <div class="panel p-3 col-span-3">
+      <div class="text-xs text-[var(--mut)]">ERRORS · OPEN.ALERTS</div>
+      <div class="text-2xl text-[var(--err)] glow">12 / 2</div>
+      <div class="text-xs text-[var(--err)]">!! retrieval timeout srv-04</div>
+    </div>
+
+    <!-- ascii chart -->
+    <div class="panel p-3 col-span-8">
+      <div class="flex justify-between"><div class="text-[var(--acc)] glow">// TOKEN_USAGE × MODEL</div><div class="text-xs text-[var(--mut)]">█ sonnet  ░ haiku  ▒ opus</div></div>
+      <hr/>
+<pre class="ascii leading-tight">
+  10M ┤
+   8M ┤              ██                            ██
+   6M ┤        ██    ██    ██          ██    ██    ██
+   4M ┤  ██    ██    ██    ██    ██    ██    ██    ██
+   2M ┤  ██▒▒  ██▒▒  ██▒▒  ██▒▒  ██▒▒  ██▒▒  ██▒▒  ██▒▒
+   0M ┼░░██▒▒░░██▒▒░░██▒▒░░██▒▒░░██▒▒░░██▒▒░░██▒▒░░██▒▒
+       Mon    Tue    Wed    Thu    Fri    Sat    Sun    Now
+</pre>
+      <div class="grid grid-cols-3 gap-3 text-xs mt-1">
+        <div>sonnet  <span class="text-[var(--acc)]">28.1M</span>  $71</div>
+        <div>haiku   <span class="text-[var(--acc)]">8.6M</span>   $14</div>
+        <div>opus    <span class="text-[var(--acc)]">1.7M</span>   $9</div>
+      </div>
+    </div>
+
+    <!-- health -->
+    <div class="panel p-3 col-span-4">
+      <div class="text-[var(--acc)] glow">// SERVICE.HEALTH</div>
+      <hr/>
+<pre class="text-xs">[●] postgres        8ms   OK
+[●] opensearch     22ms   OK
+[◐] embed-service 340ms   <span class="text-[var(--warn)]">DEGRADED</span>
+[●] indexer        12ms   OK
+[○] mcp-semantic    —     <span class="text-[var(--err)]">TIMEOUT</span>
+[●] llm-gateway    98ms   OK</pre>
+    </div>
+
+    <!-- top queries -->
+    <div class="panel p-3 col-span-5">
+      <div class="text-[var(--acc)] glow">// TOP_QUERIES.7d</div>
+      <hr/>
+<pre class="text-xs">QUERY                       N    p95    $
+mysql error last 24h       142   2.1s   6.10
+nginx 5xx spike             96   1.8s   4.20
+k8s OOMKilled               71   3.2s   5.80
+redis evict rate            54   1.4s   2.10
+tls cert expiry             42   0.9s   1.30</pre>
+    </div>
+
+    <!-- ingestion -->
+    <div class="panel p-3 col-span-4">
+      <div class="text-[var(--acc)] glow">// INGEST.1h</div>
+      <hr/>
+<pre class="text-xs">events/s     8,234
+templates    1,204
+embed_cache  91%   ████████████░░
+ingest_lag   1.2s
+queue_depth  214</pre>
+    </div>
+
+    <!-- alerts -->
+    <div class="panel p-3 col-span-3">
+      <div class="text-[var(--acc)] glow">// ALERTS</div>
+      <hr/>
+<pre class="text-xs"><span class="text-[var(--err)]">[CRIT]</span> MCP timeout srv-04  2m
+<span class="text-[var(--warn)]">[WARN]</span> cost spike +$6     12m
+<span class="text-[var(--acc)]">[ OK ]</span> embed recovered    28m
+<span class="text-[var(--warn)]">[WARN]</span> queue depth high   45m
+<span class="text-[var(--acc)]">[ OK ]</span> rerank rolled out  1h</pre>
+    </div>
+
+    <!-- audit feed -->
+    <div class="panel p-3 col-span-12">
+      <div class="text-[var(--acc)] glow">// AUDIT.STREAM <span class="blink">▮</span></div>
+      <hr/>
+<pre class="text-xs leading-snug">
+2026-06-23T08:39:54Z  user=vmui     action=chat.send       conv=5510...da2db  tokens=412   <span class="text-[var(--acc)]">ok</span>
+2026-06-23T08:39:21Z  system        action=tool.call       name=search_log_templates  ms=234  <span class="text-[var(--acc)]">ok</span>
+2026-06-23T08:38:02Z  user=trihd    action=admin.health    result=degraded            <span class="text-[var(--warn)]">warn</span>
+2026-06-23T08:37:48Z  system        action=alert.fire      key=mcp.timeout            <span class="text-[var(--err)]">crit</span>
+2026-06-23T08:36:30Z  user=trihd    action=budget.update   from=$80 to=$100           <span class="text-[var(--acc)]">ok</span>
+</pre>
+    </div>
+  </div>
+</div>
+</body></html>

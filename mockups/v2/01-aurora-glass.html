@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>Mock 01 · Aurora Glass</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{background:#070713;color:#e6e9f5;font-family:Inter,ui-sans-serif,system-ui}
+  .aurora{position:fixed;inset:0;z-index:-1;overflow:hidden}
+  .aurora::before,.aurora::after{content:"";position:absolute;width:60vw;height:60vw;border-radius:50%;filter:blur(120px);opacity:.55}
+  .aurora::before{background:radial-gradient(circle,#7c5cff,#1a0b6b 60%,transparent);top:-10%;left:-10%}
+  .aurora::after{background:radial-gradient(circle,#22d3ee,#0e7490 60%,transparent);bottom:-15%;right:-15%}
+  .glass{background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(255,255,255,.02));backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.08)}
+  .glass-strong{background:rgba(255,255,255,.07);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.12)}
+  .chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+  .grad-text{background:linear-gradient(90deg,#a78bfa,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .spark path{fill:none;stroke:#a78bfa;stroke-width:1.5}
+  .ring-glow{box-shadow:0 0 0 1px rgba(167,139,250,.4),0 10px 40px -10px rgba(167,139,250,.35)}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="aurora"></div>
+
+<!-- Top nav -->
+<header class="glass sticky top-0 z-20 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div class="size-8 rounded-xl bg-gradient-to-br from-violet-400 to-cyan-400 grid place-items-center font-black text-slate-900">O</div>
+    <span class="font-semibold tracking-wide">onelog</span>
+    <span class="chip text-xs px-2 py-0.5 rounded-full ml-2">Aurora</span>
+  </div>
+  <nav class="flex items-center gap-1 text-sm">
+    <a class="px-3 py-1.5 rounded-lg glass-strong">Chat</a>
+    <a class="px-3 py-1.5 rounded-lg hover:bg-white/5">Trace</a>
+    <a class="px-3 py-1.5 rounded-lg hover:bg-white/5">Admin</a>
+    <div class="ml-3 size-8 rounded-full bg-gradient-to-tr from-fuchsia-400 to-amber-300"></div>
+  </nav>
+</header>
+
+<!-- CHAT layout -->
+<main class="grid grid-cols-[260px_1fr_320px] gap-4 p-4">
+  <!-- sidebar -->
+  <aside class="glass rounded-2xl p-3 h-[78vh] flex flex-col">
+    <button class="w-full rounded-xl bg-gradient-to-r from-violet-500 to-cyan-500 py-2 text-sm font-semibold">+ New chat</button>
+    <input placeholder="Search…" class="mt-3 w-full chip rounded-lg px-3 py-1.5 text-sm outline-none"/>
+    <div class="mt-3 text-[10px] uppercase tracking-widest text-white/40 px-1">Today</div>
+    <a class="mt-1 px-2 py-2 rounded-lg ring-glow text-sm">mysql có lỗi gì không</a>
+    <a class="mt-1 px-2 py-2 rounded-lg hover:bg-white/5 text-sm text-white/80">nginx 5xx spike</a>
+    <div class="mt-3 text-[10px] uppercase tracking-widest text-white/40 px-1">Yesterday</div>
+    <a class="mt-1 px-2 py-2 rounded-lg hover:bg-white/5 text-sm text-white/80">redis evict rate</a>
+    <a class="mt-1 px-2 py-2 rounded-lg hover:bg-white/5 text-sm text-white/80">k8s OOMKilled audit</a>
+    <div class="mt-auto glass rounded-xl p-3 text-xs text-white/60">
+      <div class="flex justify-between"><span>Tokens today</span><span class="text-white">182k</span></div>
+      <div class="flex justify-between mt-1"><span>Cost</span><span class="text-white">$2.31</span></div>
+    </div>
+  </aside>
+
+  <!-- chat -->
+  <section class="glass rounded-2xl p-6 h-[78vh] flex flex-col">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-semibold grad-text">mysql có lỗi gì không</h1>
+      <div class="flex gap-2 text-xs">
+        <span class="chip rounded-full px-2 py-1">claude-sonnet-4.6</span>
+        <span class="chip rounded-full px-2 py-1">12 turns</span>
+        <span class="chip rounded-full px-2 py-1">↑ 8.2k ↓ 1.4k</span>
+      </div>
+    </div>
+
+    <div class="flex-1 overflow-auto mt-4 space-y-4 pr-2">
+      <!-- user -->
+      <div class="flex justify-end">
+        <div class="max-w-[70%] glass-strong rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm bg-gradient-to-br from-violet-500/40 to-cyan-500/30">mysql có lỗi gì không trong 24h qua?</div>
+      </div>
+      <!-- assistant -->
+      <div class="max-w-[80%]">
+        <div class="text-xs text-white/50 mb-1">assistant · 1.2s</div>
+        <div class="glass rounded-2xl rounded-tl-sm p-4 text-sm leading-relaxed">
+          Tôi tìm log templates liên quan trước.
+          <div class="mt-3 chip rounded-lg px-3 py-2 font-mono text-xs flex items-center gap-2">
+            <span class="size-1.5 rounded-full bg-emerald-400"></span> search_log_templates <span class="text-white/40">· 234ms · 18 hits</span>
+          </div>
+          <p class="mt-3">Dựa trên templates, có <b class="text-rose-300">3 cluster lỗi</b> lặp lại — chủ yếu deadlock trên bảng <code class="chip px-1 rounded">orders</code>.</p>
+          <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <div class="chip rounded-lg p-2"><div class="text-white/50">Cluster A</div><div class="text-base">142</div><div class="text-rose-300">deadlock</div></div>
+            <div class="chip rounded-lg p-2"><div class="text-white/50">Cluster B</div><div class="text-base">38</div><div class="text-amber-300">slow query</div></div>
+            <div class="chip rounded-lg p-2"><div class="text-white/50">Cluster C</div><div class="text-base">9</div><div class="text-rose-300">conn refused</div></div>
+          </div>
+          <div class="mt-3 text-xs text-white/50">Citations: <span class="chip rounded px-1.5 py-0.5 font-mono">mock-audit:srv-01</span> <span class="chip rounded px-1.5 py-0.5 font-mono">srv-02</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 glass-strong rounded-2xl p-2 flex items-end gap-2 ring-glow">
+      <textarea rows="1" placeholder="Hỏi về log… ví dụ: mysql có lỗi gì gần đây?" class="flex-1 bg-transparent resize-none outline-none px-3 py-2 text-sm"></textarea>
+      <button class="rounded-xl px-4 py-2 text-sm font-semibold bg-gradient-to-r from-violet-500 to-cyan-500">Send ↵</button>
+    </div>
+  </section>
+
+  <!-- right context panel -->
+  <aside class="glass rounded-2xl p-4 h-[78vh] overflow-auto space-y-4">
+    <div>
+      <div class="text-xs uppercase tracking-widest text-white/40 mb-2">Live retrieval</div>
+      <div class="space-y-1.5 text-xs">
+        <div class="flex justify-between chip rounded-lg px-2 py-1.5"><span>k=20 · hit</span><span class="text-emerald-300">94%</span></div>
+        <div class="flex justify-between chip rounded-lg px-2 py-1.5"><span>vector p95</span><span>180ms</span></div>
+        <div class="flex justify-between chip rounded-lg px-2 py-1.5"><span>rerank</span><span>on</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-widest text-white/40 mb-2">Sources</div>
+      <div class="space-y-2 text-xs">
+        <div class="chip rounded-lg p-2"><div class="font-mono">mock-audit:srv-01</div><div class="text-white/50">12 events · 05:21:33</div></div>
+        <div class="chip rounded-lg p-2"><div class="font-mono">app-mysql:srv-04</div><div class="text-white/50">38 events · 05:18:00</div></div>
+        <div class="chip rounded-lg p-2"><div class="font-mono">nginx-access:edge</div><div class="text-white/50">9 events · 05:09:11</div></div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<!-- ADMIN section -->
+<section class="px-4 pb-12 mt-2">
+  <div class="flex items-end justify-between mb-4">
+    <div>
+      <div class="text-xs uppercase tracking-widest text-white/40">Admin</div>
+      <h2 class="text-3xl font-semibold grad-text">Operations dashboard</h2>
+    </div>
+    <div class="flex gap-2 text-xs">
+      <button class="chip rounded-lg px-3 py-1.5">24h</button>
+      <button class="chip rounded-lg px-3 py-1.5 ring-glow">7d</button>
+      <button class="chip rounded-lg px-3 py-1.5">30d</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-4">
+    <!-- KPIs -->
+    <div class="col-span-3 glass rounded-2xl p-4">
+      <div class="text-xs text-white/50">Conversations</div>
+      <div class="text-3xl font-semibold mt-1">1,284</div>
+      <div class="text-emerald-300 text-xs mt-1">▲ 12.4% vs prev week</div>
+      <svg class="spark mt-2" viewBox="0 0 100 30"><path d="M0 22 L10 20 L20 18 L30 15 L40 17 L50 12 L60 8 L70 13 L80 6 L90 9 L100 4"/></svg>
+    </div>
+    <div class="col-span-3 glass rounded-2xl p-4">
+      <div class="text-xs text-white/50">Tokens · cost</div>
+      <div class="text-3xl font-semibold mt-1">38.4M <span class="text-base text-white/50">/ $94.10</span></div>
+      <div class="text-amber-300 text-xs mt-1">▲ 4.1% · over budget by $6</div>
+      <div class="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-gradient-to-r from-violet-400 to-cyan-400" style="width:74%"></div></div>
+    </div>
+    <div class="col-span-3 glass rounded-2xl p-4">
+      <div class="text-xs text-white/50">Latency p50 / p95</div>
+      <div class="text-3xl font-semibold mt-1">0.9s <span class="text-base text-white/50">/ 3.4s</span></div>
+      <div class="text-emerald-300 text-xs mt-1">▼ 180ms vs prev</div>
+      <svg class="spark mt-2" viewBox="0 0 100 30"><path d="M0 8 L10 12 L20 10 L30 14 L40 9 L50 16 L60 11 L70 13 L80 17 L90 12 L100 10"/></svg>
+    </div>
+    <div class="col-span-3 glass rounded-2xl p-4 ring-glow">
+      <div class="text-xs text-white/50">Errors · alerts</div>
+      <div class="text-3xl font-semibold mt-1 text-rose-300">12 <span class="text-base text-white/50">/ 2 open</span></div>
+      <div class="text-rose-300 text-xs mt-1">retrieval timeout (srv-04)</div>
+    </div>
+
+    <!-- big chart -->
+    <div class="col-span-8 glass rounded-2xl p-4">
+      <div class="flex justify-between items-center"><h3 class="font-semibold">Token usage by model · 7d</h3>
+        <div class="flex gap-2 text-xs text-white/60"><span class="flex items-center gap-1"><span class="size-2 rounded-full bg-violet-400"></span>sonnet</span><span class="flex items-center gap-1"><span class="size-2 rounded-full bg-cyan-400"></span>haiku</span><span class="flex items-center gap-1"><span class="size-2 rounded-full bg-amber-300"></span>opus</span></div>
+      </div>
+      <svg viewBox="0 0 600 180" class="w-full mt-3">
+        <defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#a78bfa" stop-opacity=".5"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient></defs>
+        <path d="M0 150 L60 130 L120 120 L180 90 L240 110 L300 70 L360 60 L420 90 L480 50 L540 75 L600 40 L600 180 L0 180 Z" fill="url(#g1)"/>
+        <path d="M0 150 L60 130 L120 120 L180 90 L240 110 L300 70 L360 60 L420 90 L480 50 L540 75 L600 40" stroke="#a78bfa" fill="none" stroke-width="2"/>
+        <path d="M0 165 L60 160 L120 150 L180 145 L240 140 L300 130 L360 135 L420 120 L480 115 L540 110 L600 100" stroke="#22d3ee" fill="none" stroke-width="2"/>
+        <path d="M0 170 L60 168 L120 165 L180 163 L240 160 L300 158 L360 155 L420 152 L480 150 L540 148 L600 145" stroke="#fbbf24" fill="none" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <!-- health -->
+    <div class="col-span-4 glass rounded-2xl p-4">
+      <h3 class="font-semibold mb-3">Service health</h3>
+      <div class="space-y-2 text-sm">
+        <div class="flex items-center justify-between chip rounded-lg px-3 py-2"><span><span class="inline-block size-2 rounded-full bg-emerald-400 mr-2"></span>postgres</span><span class="text-white/60 text-xs">8ms</span></div>
+        <div class="flex items-center justify-between chip rounded-lg px-3 py-2"><span><span class="inline-block size-2 rounded-full bg-emerald-400 mr-2"></span>opensearch</span><span class="text-white/60 text-xs">22ms</span></div>
+        <div class="flex items-center justify-between chip rounded-lg px-3 py-2"><span><span class="inline-block size-2 rounded-full bg-amber-300 mr-2"></span>embed-service</span><span class="text-white/60 text-xs">340ms ⚠</span></div>
+        <div class="flex items-center justify-between chip rounded-lg px-3 py-2"><span><span class="inline-block size-2 rounded-full bg-emerald-400 mr-2"></span>indexer</span><span class="text-white/60 text-xs">12ms</span></div>
+        <div class="flex items-center justify-between chip rounded-lg px-3 py-2"><span><span class="inline-block size-2 rounded-full bg-rose-400 mr-2"></span>mcp-semantic</span><span class="text-white/60 text-xs">timeout</span></div>
+      </div>
+    </div>
+
+    <!-- top queries -->
+    <div class="col-span-5 glass rounded-2xl p-4">
+      <h3 class="font-semibold mb-3">Top queries · 7d</h3>
+      <table class="w-full text-sm">
+        <thead class="text-xs text-white/50"><tr><th class="text-left font-normal pb-2">Query</th><th class="text-right font-normal">N</th><th class="text-right font-normal">p95</th></tr></thead>
+        <tbody>
+          <tr class="border-t border-white/5"><td class="py-1.5">mysql error last 24h</td><td class="text-right">142</td><td class="text-right text-white/60">2.1s</td></tr>
+          <tr class="border-t border-white/5"><td class="py-1.5">nginx 5xx spike</td><td class="text-right">96</td><td class="text-right text-white/60">1.8s</td></tr>
+          <tr class="border-t border-white/5"><td class="py-1.5">k8s OOMKilled</td><td class="text-right">71</td><td class="text-right text-white/60">3.2s</td></tr>
+          <tr class="border-t border-white/5"><td class="py-1.5">redis evict rate</td><td class="text-right">54</td><td class="text-right text-white/60">1.4s</td></tr>
+          <tr class="border-t border-white/5"><td class="py-1.5">tls cert expiry</td><td class="text-right">42</td><td class="text-right text-white/60">0.9s</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ingestion -->
+    <div class="col-span-4 glass rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Ingestion · 1h</h3>
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div class="chip rounded-lg p-2"><div class="text-white/50">Events/s</div><div class="text-xl">8.2k</div></div>
+        <div class="chip rounded-lg p-2"><div class="text-white/50">Templates</div><div class="text-xl">1,204</div></div>
+        <div class="chip rounded-lg p-2"><div class="text-white/50">Embed cache</div><div class="text-xl text-emerald-300">91%</div></div>
+        <div class="chip rounded-lg p-2"><div class="text-white/50">Lag</div><div class="text-xl">1.2s</div></div>
+      </div>
+    </div>
+
+    <!-- alerts -->
+    <div class="col-span-3 glass rounded-2xl p-4">
+      <h3 class="font-semibold mb-2">Recent alerts</h3>
+      <ul class="space-y-2 text-xs">
+        <li class="chip rounded-lg p-2"><div class="text-rose-300">⚠ MCP timeout</div><div class="text-white/50">srv-04 · 2m ago</div></li>
+        <li class="chip rounded-lg p-2"><div class="text-amber-300">↑ Token cost spike</div><div class="text-white/50">+$6 today · 12m ago</div></li>
+        <li class="chip rounded-lg p-2"><div class="text-emerald-300">✓ Embed cache recovered</div><div class="text-white/50">28m ago</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</body></html>

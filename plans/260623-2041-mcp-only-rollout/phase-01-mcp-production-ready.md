@@ -96,7 +96,19 @@ Caddy (TLS + IP whitelist VPN/office)
 - [x] Caddy `forward_auth` cho cả `/mcp/vl/*` và `/mcp/semantic/*` → `mcp-semantic:9000/auth/verify` (copy_headers X-Mcp-User)
 - [x] `.env.example` cập nhật + `infra/scripts/gen-mcp-tokens.sh` (openssl/urandom fallback)
 - [x] Code review pass — fixes H1 (MCP_ALLOW_ANON explicit), H2 (lru_cache), M2 (singleton lock), M1 (token fingerprint in deny audit), L7 (drop dead ContextVar)
-- [ ] **End-to-end smoke trên Linux deploy box**: `docker compose up -d` → `curl -N -H "Authorization: Bearer sk-xxx" http://app.local/mcp/semantic/sse` (deferred — Docker không chạy được trên Windows dev machine)
+- [x] **End-to-end smoke trên Linux deploy box** — 6/6 test pass (2026-06-24, branch `feat/mcp-phase01` commit `9a327ac`). Audit log capture auth.deny/auth.allow với user attribution + auth_hint fingerprint, path, method.
+
+## Smoke iterations (debug history)
+1. `mcp.sse_app()` AttributeError — FastMCP 3.x dropped SSE → migrated to `mcp.http_app()` + Streamable HTTP (commit `41789c6`)
+2. `MCP_TRANSPORT=sse` không hiệu lực với mcp-vl v1.9.0 → đúng tên env là `MCP_SERVER_MODE=sse` (commit `5c650f4`)
+3. Caddyfile mới mount nhưng Caddy không reload tự động → cần `docker compose restart caddy` (no code change)
+4. curl Test 5 hang vì SSE long-lived → thêm `--max-time 3` tolerate exit 28 (commit `9a327ac`)
+
+## Known follow-ups (non-blocking)
+- `/healthz` hiện cũng bị forward_auth gate → smoke fallback dùng direct port. Production muốn k8s/lb probe hit `/healthz` không Bearer → expose 1 dedicated Caddy handle cho `/mcp/semantic/healthz` trước block forward_auth. Phase polish, tách commit riêng.
+- Test 4 trả 400 thay vì 200 vì GET trên Streamable HTTP — chấp nhận vì xác nhận endpoint reachable past auth. Real MCP traffic dùng POST JSON-RPC sẽ 200.
+- Docker compose env propagation: `docker compose up -d` không auto-restart container khi `.env` đổi (chỉ khi compose file thay đổi). Smoke đã workaround bằng up trước restart sau. Production rotate token = `docker compose restart mcp-semantic`.
+- Caddyfile reload: same rule — phải `docker compose restart caddy` sau khi đổi file dù `:ro` mount.
 
 ## Success criteria
 - `docker compose up -d` (không profile) start cả mcp-vl + mcp-semantic

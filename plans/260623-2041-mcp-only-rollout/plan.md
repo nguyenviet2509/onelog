@@ -31,7 +31,7 @@ Chuyển channel chính của onelog sang **MCP-only** (Claude Desktop + mcp-vl 
 
 | # | Phase | Status | File |
 |---|---|---|---|
-| 01 | MCP production-ready (image, compose, Caddy, auth, audit, URL format) | **done (code) — pending smoke on Linux** | [phase-01-mcp-production-ready.md](phase-01-mcp-production-ready.md) |
+| 01 | MCP production-ready (image, compose, Caddy, auth, audit, URL format) | **DONE** (smoke 6/6 pass on logserver-01, 2026-06-24) | [phase-01-mcp-production-ready.md](phase-01-mcp-production-ready.md) |
 | 02 | Onboard ops + deprecate Web/agent (giữ branch `legacy-web`) | pending | [phase-02-onboard-and-deprecate-web.md](phase-02-onboard-and-deprecate-web.md) |
 | 03 | **Review checkpoint** 1-2 tháng — quyết định resurrect Web UI hay giữ MCP-only | scheduled | [phase-03-review-checkpoint.md](phase-03-review-checkpoint.md) |
 

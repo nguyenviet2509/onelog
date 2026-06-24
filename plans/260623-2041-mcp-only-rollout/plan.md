@@ -5,7 +5,7 @@ created: 2026-06-23
 updated: 2026-06-23
 owner: trihd@inet.vn
 blockedBy: []
-blocks: []
+blocks: [plans/260624-1417-observability-integration]
 supersedes:
   - plans/260623-1606-ui-revamp-bento-minimal
   - plans/260623-1617-production-rollout

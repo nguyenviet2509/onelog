@@ -11,8 +11,9 @@ URL params (see VictoriaLogs vmui useTimePeriod hook).
 """
 from __future__ import annotations
 
+import re
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -59,6 +60,19 @@ def _duration_label(start: datetime, end: datetime) -> str:
     return f"{(seconds + 86399) // 86400}d"
 
 
+_RANGE_TOKEN = re.compile(r"^\d+[smhdw]$")
+
+
+def _normalize_time_range(value: str) -> Optional[str]:
+    """Accept VMUI-style tokens (5m / 2h / 2d / 1w). Reject anything else.
+
+    Claude is told to pass tokens directly; we still guard so a stray
+    "2 days" doesn't poison the URL.
+    """
+    token = value.strip().lower().replace(" ", "")
+    return token if _RANGE_TOKEN.match(token) else None
+
+
 def build_vmui_url(
     base_url: str,
     *,
@@ -67,22 +81,32 @@ def build_vmui_url(
     severity: Optional[str] = None,
     window_start: Optional[str] = None,
     window_end: Optional[str] = None,
+    time_range: Optional[str] = None,
 ) -> str:
     """Return a VMUI deep link, e.g. http://app.local/select/vmui/?#/?query=...
 
-    When a `[start, end]` window is supplied we encode it as an absolute time
-    range via VMUI's `g0.*` params; the time picker shows the exact window
-    instead of falling back to its default "Last 5 minutes".
+    Time range precedence (highest first):
+      1. `time_range` — the question's intent ("2 ngày qua" → "2d"). Anchored
+         to "now" so the user lands on a fresh window.
+      2. `[window_start, window_end]` — the cluster's own window from the
+         index (fallback when the question has no explicit time hint).
+      3. None → VMUI's default "Last 5 minutes".
     """
     query = build_logsql(service=service, host=host, severity=severity)
     qs: dict[str, str] = {"query": query}
 
-    start_dt = _parse_rfc3339(window_start) if window_start else None
-    end_dt = _parse_rfc3339(window_end) if window_end else None
-    if start_dt and end_dt and end_dt > start_dt:
+    range_token = _normalize_time_range(time_range) if time_range else None
+    if range_token:
         qs["g0.relative_time"] = "none"
-        qs["g0.end_input"] = window_end  # type: ignore[assignment]
-        qs["g0.range_input"] = _duration_label(start_dt, end_dt)
+        qs["g0.range_input"] = range_token
+        qs["g0.end_input"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    else:
+        start_dt = _parse_rfc3339(window_start) if window_start else None
+        end_dt = _parse_rfc3339(window_end) if window_end else None
+        if start_dt and end_dt and end_dt > start_dt:
+            qs["g0.relative_time"] = "none"
+            qs["g0.end_input"] = window_end  # type: ignore[assignment]
+            qs["g0.range_input"] = _duration_label(start_dt, end_dt)
 
     # VMUI lives under /select/vmui/ and uses hash routing. Querystring goes
     # *after* the hash so JS reads it from `location.hash`.

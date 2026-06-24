@@ -142,7 +142,7 @@ async def auth_verify(request: Request) -> Response:
     return Response(status_code=204, headers={"X-Mcp-User": user})
 
 
-def _hit_to_dict(point: Any, vmui_base: str) -> dict[str, Any]:
+def _hit_to_dict(point: Any, vmui_base: str, time_range: str | None = None) -> dict[str, Any]:
     payload = point.payload or {}
     service = payload.get("service")
     host = payload.get("host")
@@ -166,6 +166,7 @@ def _hit_to_dict(point: Any, vmui_base: str) -> dict[str, Any]:
             severity=severity,
             window_start=window_start,
             window_end=window_end,
+            time_range=time_range,
         ),
     }
 
@@ -177,6 +178,18 @@ async def search_log_templates(
     host: Annotated[str | None, Field(description="Optional host filter.")] = None,
     severity: Annotated[str | None, Field(description="Optional severity filter (warning/err/...).")] = None,
     limit: Annotated[int, Field(description="Top-K (1-20, default 10).", ge=1, le=20)] = 10,
+    time_range: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Time window hinted by the user's question, anchored to now. "
+                "Use VMUI tokens: '5m', '15m', '1h', '6h', '24h', '2d', '7d', '1w'. "
+                "Examples: '2 ngày qua' → '2d', 'last hour' → '1h', 'hôm nay' → '24h'. "
+                "Omit when the question has no time hint — VMUI then falls back to "
+                "the cluster's indexed window. Drives the VMUI deep link time picker."
+            )
+        ),
+    ] = None,
 ) -> list[dict]:
     """
     Search clustered log templates by semantic similarity.
@@ -234,9 +247,9 @@ async def search_log_templates(
         )
         raise
 
-    hits = [_hit_to_dict(point, settings.vmui_base_url) for point in resp.points]
+    hits = [_hit_to_dict(point, settings.vmui_base_url, time_range) for point in resp.points]
     log.info("tool.search", user=user, query=query, hits=len(hits),
-             service=service, host=host)
+             service=service, host=host, time_range=time_range)
     audit.write(
         source="mcp_semantic",
         user=user,
@@ -246,6 +259,7 @@ async def search_log_templates(
         host=host,
         severity=severity,
         limit=limit,
+        time_range=time_range,
         result_size=len(hits),
     )
     return hits

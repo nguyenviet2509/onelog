@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · System Model & Hoạt động</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--acc2:#a5f3fc;
+    --warn:#fbbf24;--ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui;font-feature-settings:"ss01","cv11"}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--mut);background:#0d0d11}
+  .chip.on{color:var(--fg);background:#15151a}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .h-title{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  kbd{background:#1f1f25;border:1px solid #2a2a30;border-radius:4px;padding:1px 5px;font-size:10px;font-family:ui-monospace}
+  pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .step-num{width:22px;height:22px;border-radius:6px;background:#15151a;border:1px solid var(--line);display:inline-grid;place-items:center;font-size:11px;color:var(--acc);font-weight:600}
+  .grid-bg{background-image:linear-gradient(#15151a 1px,transparent 1px),linear-gradient(90deg,#15151a 1px,transparent 1px);background-size:24px 24px;background-position:-1px -1px}
+  details>summary{cursor:pointer;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  .anchor{scroll-margin-top:24px}
+  .toc a{color:var(--mut)} .toc a:hover{color:var(--fg)}
+  /* mermaid theme */
+  .mermaid{background:transparent}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:18px 0}
+  .pill{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .arrow{color:#3a3a44}
+  table.k{width:100%;font-size:13px;border-collapse:collapse}
+  table.k th,table.k td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+  .legend i{font-style:normal}
+</style>
+</head>
+<body>
+<div class="max-w-[1280px] mx-auto p-6">
+
+  <!-- HEADER -->
+  <header class="flex items-center justify-between pb-5 border-b border-[#1f1f25]">
+    <div class="flex items-center gap-3">
+      <div class="size-9 rounded-xl bg-white text-black grid place-items-center font-black">O</div>
+      <div>
+        <div class="font-semibold leading-tight">OneLog <span class="mut font-normal">/ system explainer</span></div>
+        <div class="text-[11px] mut">RAG Log Server · Claude Desktop ↔ MCP · Lab 3-VM</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+      <span class="chip"><span class="dot" style="background:var(--ok)"></span> v2026.06 · MCP-only</span>
+      <span class="chip on">5 ops · Claude Team plan</span>
+    </div>
+  </header>
+
+  <!-- Decommission banner -->
+  <div class="mt-4 card p-3.5 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
+    <span class="pill amber mt-0.5">DECOMMISSIONED 2026-06-24</span>
+    <div class="text-[13px] leading-relaxed">
+      Web UI (Next.js :3000) + FastAPI rag-agent (server-side Anthropic API) đã <b>commented out</b> trong <code>infra/docker-compose.yml</code>.
+      Workflow hiện tại: <b>Claude Desktop ↔ MCP servers</b> (<span class="pill cyan">mcp-vl</span> + <span class="pill vio">mcp-semantic</span>) — 5 ops dùng Claude Team subscription, không còn duplicate LLM cost.
+      Code <code>web/</code> &amp; <code>agent/</code> giữ trên master để resurrect (branch <code>legacy-web</code> snapshot).
+      Drill: <code>infra/scripts/resurrect-drill.sh</code>.
+    </div>
+  </div>
+
+  <!-- TOC + Hero -->
+  <section class="grid grid-cols-[1fr_280px] gap-4 mt-5">
+    <div class="card p-6 grid-bg">
+      <div class="h-title">What is OneLog</div>
+      <h1 class="text-2xl font-semibold mt-2">Một "log brain" duy nhất cho 5 ops — hỏi tiếng Việt, ra log production kèm citation.</h1>
+      <p class="mut mt-3 text-sm leading-relaxed max-w-[780px]">
+        OneLog gom log từ tất cả VM về một <b class="acc">VictoriaLogs</b> trung tâm, đồng thời index semantic
+        các <i>template log</i> vào <b class="acc">Qdrant</b>. Ops mở <b>Claude Desktop</b>, hỏi
+        <i>"mysql có lỗi gì 1 giờ qua không?"</i> — Claude tự chọn tool MCP phù hợp
+        (<span class="pill cyan">mcp-vl</span> precise LogsQL hoặc <span class="pill vio">mcp-semantic</span> fuzzy template search),
+        trả về trích dẫn <code class="text-[12px]">[service:host:ts]</code> + URL VMUI để bấm xem raw log.
+        <b>Không còn web UI</b> — toàn bộ UX nằm trong Claude Desktop.
+      </p>
+      <div class="flex flex-wrap gap-2 mt-4 text-xs">
+        <span class="chip on">📥 syslog 514/udp · 6514/tcp-tls</span>
+        <span class="chip on">🧠 RAG semantic templates</span>
+        <span class="chip on">🔐 IP whitelist 192.168.122.0/24</span>
+        <span class="chip on">📑 Audit per tool call</span>
+        <span class="chip on">🪵 Shared investigations across team</span>
+      </div>
+    </div>
+    <nav class="card p-4 toc text-sm">
+      <div class="h-title mb-2">Mục lục</div>
+      <ol class="space-y-1.5">
+        <li><a href="#topology">1. Topology 3 VM</a></li>
+        <li><a href="#components">2. Components stack</a></li>
+        <li><a href="#ingest">3. Ingest pipeline</a></li>
+        <li><a href="#query">4. Query pipeline</a></li>
+        <li><a href="#tools">5. MCP tools</a></li>
+        <li><a href="#workflow">6. Ops workflow</a></li>
+        <li><a href="#data">7. Data model</a></li>
+        <li><a href="#security">8. Security & audit</a></li>
+        <li><a href="#runbook">9. Quick runbook</a></li>
+      </ol>
+    </nav>
+  </section>
+
+  <!-- 1. TOPOLOGY -->
+  <section id="topology" class="anchor mt-8">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-lg font-semibold"><span class="step-num">1</span> &nbsp;Topology — Lab subnet 192.168.122.0/24</h2>
+      <span class="mut text-xs">Source: <code>docs/deployment-guide.md</code></span>
+    </div>
+    <div class="card p-5 mt-3">
+      <div class="mermaid">
+flowchart LR
+  subgraph SRV1["srv-01 · 192.168.122.52"]
+    R1["rsyslog / vector-agent"]
+  end
+  subgraph SRV2["srv-02 · 192.168.122.51"]
+    R2["rsyslog / vector-agent"]
+  end
+  subgraph LOG["logserver · 192.168.122.53 (docker compose)"]
+    V["vector<br/>514 udp · 6514 tcp-tls"]
+    VL[("VictoriaLogs<br/>:9428")]
+    IDX["indexer<br/>(NATS consumer)"]
+    Q[("Qdrant<br/>:6333")]
+    PG[("Postgres<br/>:5432 · audit/meta")]
+    NA[["NATS<br/>:4222"]]
+    MVL["mcp-vl<br/>(official mcp-victorialogs)"]
+    MSE["mcp-semantic<br/>(FastMCP · search_log_templates)"]
+    CAD["Caddy 80/443<br/>IP allowlist + Bearer"]
+    DECOM["~~web (Next.js) :3000~~<br/>~~rag-agent :8000~~<br/><i>decommissioned</i>"]
+  end
+  CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
+  R1 -- "syslog UDP 514" --> V
+  R2 -- "syslog UDP 514" --> V
+  V -- "JSON push" --> VL
+  V -- "publish logs.batch.*" --> NA
+  NA --> IDX
+  IDX -- "embed + upsert" --> Q
+  IDX -- "template meta · audit" --> PG
+  CL -- "HTTPS Bearer<br/>/mcp/vl/sse" --> CAD
+  CL -- "HTTPS Bearer<br/>/mcp/semantic/sse" --> CAD
+  CAD --> MVL
+  CAD --> MSE
+  MVL -- "LogsQL" --> VL
+  MSE -- "vector search" --> Q
+  MSE -- "audit insert" --> PG
+      </div>
+      <div class="legend mt-4 text-[11px] mut flex flex-wrap gap-4">
+        <span><i class="pill cyan">cyan</i> &nbsp;precise path (mcp-vl)</span>
+        <span><i class="pill vio">vio</i> &nbsp;semantic path (mcp-semantic)</span>
+        <span><i class="pill lime">lime</i> &nbsp;storage</span>
+        <span><i class="pill amber">amber</i> &nbsp;ingress · decommission marker</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. COMPONENTS -->
+  <section id="components" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">2</span> &nbsp;Components stack</h2>
+    <div class="card mt-3 p-2">
+      <table class="k">
+        <thead>
+          <tr><th>Service</th><th>Cổng</th><th>Vai trò</th><th>Vì sao chọn</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp-tls · 8686</td><td>Nhận syslog, parse, route song song sang VictoriaLogs + NATS</td><td>Single agent thay rsyslog/fluentd; pipeline declarative</td></tr>
+          <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Time-series log storage, LogsQL query, low RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
+          <tr><td><span class="pill vio">qdrant</span></td><td>6333 (127.0.0.1)</td><td>Vector DB cho semantic search template log</td><td>Rust, single-binary, payload filter mạnh</td></tr>
+          <tr><td><span class="pill gray">postgres</span></td><td>5432</td><td>Audit log (mỗi tool call) + template metadata</td><td>SQL chuẩn cho join/aggregate, grep audit</td></tr>
+          <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>Pub/sub <code>logs.batch.*</code> cho indexer</td><td>At-least-once, decouple vector ↔ indexer</td></tr>
+          <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Async, throttle theo cost embedding API</td></tr>
+          <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Official <code>mcp-victorialogs</code> server — expose LogsQL tools (query / hits / stats_query)</td><td>Precise filter path; không cần code riêng</td></tr>
+          <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Fuzzy intent path; Claude tự pick khi câu hỏi mơ hồ</td></tr>
+          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy: <code>/mcp/vl/sse</code> + <code>/mcp/semantic/sse</code> · IP allowlist · Bearer pass-through</td><td>Single ingress, audit dễ</td></tr>
+          <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 3. INGEST -->
+  <section id="ingest" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">3</span> &nbsp;Ingest pipeline — log đi từ VM tới storage</h2>
+    <div class="grid grid-cols-[1.4fr_1fr] gap-4 mt-3">
+      <div class="card p-5">
+        <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant App as App on srv-01/02
+  participant Rs as rsyslog/vector-agent
+  participant V as vector (logserver)
+  participant VL as VictoriaLogs
+  participant N as NATS
+  participant I as indexer
+  participant Q as Qdrant
+  participant P as Postgres
+  App->>Rs: stdout / /var/log/*
+  Rs->>V: syslog UDP 514 (or TLS 6514)
+  V->>V: parse · enrich (service,host,severity)
+  par
+    V->>VL: bulk JSON insert (LogsQL-ready)
+  and
+    V->>N: publish "logs.batch.{service}"
+  end
+  N->>I: consume batch
+  I->>I: extract template (drain3) + embed (small-model)
+  I->>Q: upsert vector + payload{template,service,host,first_seen,last_seen,count}
+  Note over Q: Qdrant payload là<br/>source of truth template meta
+        </div>
+      </div>
+      <div class="card p-5 text-sm leading-relaxed">
+        <div class="h-title">Highlights</div>
+        <ul class="mt-3 space-y-2.5">
+          <li>• <b>Fan-out tại vector:</b> 1 line log → đồng thời ghi <span class="pill lime">VictoriaLogs</span> (raw, queryable) và publish <span class="pill gray">NATS</span> (cho semantic).</li>
+          <li>• <b>Template extraction (drain3):</b> gom các line giống nhau về 1 "template" (ví dụ <code>Connection refused to &lt;host&gt;:&lt;port&gt;</code>) → giảm 100× lượng embedding.</li>
+          <li>• <b>NTP bắt buộc:</b> chronyd 3 VM, lệch &gt;1s sẽ phá trace.</li>
+          <li>• <b>Backpressure:</b> nếu Qdrant chậm, NATS giữ queue; vector vẫn ghi VL bình thường — query precise không bị block.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. QUERY -->
+  <section id="query" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">4</span> &nbsp;Query pipeline — từ câu hỏi tiếng Việt tới citation</h2>
+    <div class="card p-5 mt-3">
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Ops engineer
+  participant CD as Claude Desktop
+  participant MR as mcp-remote (npx bridge)
+  participant CA as Caddy
+  participant MSE as mcp-semantic
+  participant MVL as mcp-vl
+  participant Q as Qdrant
+  participant VL as VictoriaLogs
+  participant P as Postgres
+  U->>CD: "mysql có lỗi gì 1 giờ qua không?"
+  CD->>CD: LLM classify intent → fuzzy
+  CD->>MR: tool_call search_log_templates(q,...)
+  MR->>CA: HTTPS /mcp/semantic/sse  Bearer sk-mcp-*
+  CA->>MSE: forward (allowlist + auth OK)
+  MSE->>MSE: embed(q) via OpenAI/local
+  MSE->>Q: vector search top-k + payload filter
+  Q-->>MSE: template hits + scores
+  MSE->>P: audit insert (user,tool,query,size)
+  MSE-->>CD: hits + vmui_url per template
+  CD->>CD: cần raw line? → tool_call vl
+  CD->>MR: tool_call query(logsql="service:mysql _time:1h error")
+  MR->>CA: HTTPS /mcp/vl/sse
+  CA->>MVL: forward
+  MVL->>VL: LogsQL
+  VL-->>MVL: log lines
+  MVL-->>CD: lines + vmui_url
+  CD-->>U: trả lời + [mysql:srv-02:14:31:02] · click → VMUI
+      </div>
+      <div class="grid grid-cols-3 gap-3 mt-5 text-sm">
+        <div class="card2 p-4">
+          <div class="h-title">Fuzzy intent</div>
+          <p class="mut mt-2">"vì sao", "có vấn đề gì", "bất thường"... → <span class="pill vio">mcp-semantic</span>. Embed → Qdrant top-k.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Precise filter</div>
+          <p class="mut mt-2">"service=nginx AND status=502 AND _time:1h" → <span class="pill cyan">mcp-vl</span>. LogsQL trực tiếp.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Citation contract</div>
+          <p class="mut mt-2">Mọi câu trả lời PHẢI có <code class="text-[11px]">[service:host:ts]</code> + <code class="text-[11px]">vmui_url</code>. Không cite = không trust.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. TOOLS -->
+  <section id="tools" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">5</span> &nbsp;MCP tools Claude có thể gọi</h2>
+    <div class="grid grid-cols-2 gap-4 mt-3">
+      <div class="card p-5">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">onelog-vl <span class="pill cyan ml-1">precise</span></div>
+          <code class="text-[11px] mut">/mcp/vl/sse</code>
+        </div>
+        <p class="mut text-[12px] mt-2">Official <code>mcp-victorialogs</code> upstream — không tự code, expose toàn bộ LogsQL tools.</p>
+        <ul class="mt-3 text-sm space-y-2">
+          <li><code class="acc">query(logsql, time_range)</code> — raw LogsQL, trả lines</li>
+          <li><code class="acc">hits(filter, top_n)</code> — top N theo field</li>
+          <li><code class="acc">stats_query(group_by, agg)</code> — count/percentile</li>
+          <li><code class="acc">vmui_url(query)</code> — sinh deeplink</li>
+        </ul>
+        <pre class="mt-3 card2 p-3 text-[12px] overflow-auto"><span class="mut"># ví dụ</span>
+hits(filter="service:nginx status:5*",
+     range="_time:30m", top_n=10)</pre>
+      </div>
+      <div class="card p-5">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">onelog-semantic <span class="pill vio ml-1">fuzzy</span></div>
+          <code class="text-[11px] mut">/mcp/semantic/sse</code>
+        </div>
+        <p class="mut text-[12px] mt-2">FastMCP custom · <b>single tool by design (KISS)</b> · Streamable HTTP transport.</p>
+        <ul class="mt-3 text-sm space-y-2">
+          <li><code class="acc">search_log_templates(query, filters?, top_k?)</code> — embed → Qdrant top-k → trả template + sample line + vmui_url để drill xuống mcp-vl</li>
+        </ul>
+        <pre class="mt-3 card2 p-3 text-[12px] overflow-auto"><span class="mut"># Claude tự chain:</span>
+1. search_log_templates(
+     query="mysql connection pool exhausted",
+     filters={"service":"mysql"})
+   → trả về template_id + vmui_url
+
+2. mcp-vl.query(logsql=vmui_url.logsql)
+   → raw lines kèm citation</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. WORKFLOW -->
+  <section id="workflow" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">6</span> &nbsp;Ops workflow — 5 người, 1 bộ nhớ chung</h2>
+    <div class="card p-5 mt-3">
+      <div class="mermaid">
+flowchart TB
+  A[["Ops nhận alert / cảm thấy bất thường"]] --> B{Đã có conversation tương tự trong<br/><b>Project onelog-investigations</b> &lt; 30 ngày?}
+  B -- "Có" --> C[Mở conversation cũ<br/>đọc root cause + fix]
+  C --> D[Apply fix tương ứng]
+  B -- "Không" --> E["+ New chat trong Project<br/>đặt câu hỏi tự nhiên"]
+  E --> F["Claude chọn tool<br/>(vl precise / semantic fuzzy)"]
+  F --> G["Đọc kết quả có citation<br/>+ vmui_url"]
+  G --> H{Đủ root cause?}
+  H -- "Chưa" --> F
+  H -- "Rồi" --> I["Rename conversation:<br/>[YYYY-MM-DD] service - symptom"]
+  I --> J["Comment cuối: Root cause / Fix / Prevention"]
+  J --> K{Fix lâu dài?}
+  K -- "Có" --> L[(docs/runbooks/&lt;service&gt;.md)]
+  K -- "Không" --> M[(Stay trong Project<br/>5 ops cùng thấy)]
+      </div>
+      <div class="mt-5 grid grid-cols-3 gap-3 text-sm">
+        <div class="card2 p-4">
+          <div class="h-title">Realtime collab</div>
+          <p class="mut mt-2">Member 1 paste link conversation vào Slack → member 2 click vào reply tiếp.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Async</div>
+          <p class="mut mt-2">Mọi conversation tự visible cho 5 ops. Daily standup scan 5 cái gần nhất.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Weekly</div>
+          <p class="mut mt-2">Ops trực T6 extract highlight → cập nhật <code>docs/runbooks/*</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. DATA MODEL -->
+  <section id="data" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">7</span> &nbsp;Data model rút gọn</h2>
+    <div class="grid grid-cols-3 gap-4 mt-3">
+      <div class="card p-5">
+        <div class="h-title">VictoriaLogs · "log line"</div>
+<pre class="mt-3 card2 p-3 text-[12px] overflow-auto">{
+  "_time": "2026-06-24T07:31:02Z",
+  "service": "mysql",
+  "host": "srv-02",
+  "severity": "ERROR",
+  "_msg": "Too many connections (max=151)"
+}</pre>
+        <p class="mut mt-2 text-xs">Query: <code>service:mysql severity:ERROR _time:1h</code></p>
+      </div>
+      <div class="card p-5">
+        <div class="h-title">Qdrant · "template vector"</div>
+<pre class="mt-3 card2 p-3 text-[12px] overflow-auto">id: tpl_8af3
+vector: [0.012, -0.43, ...] (1536d)
+payload: {
+  template: "Too many connections (max=&lt;N&gt;)",
+  service: "mysql",
+  first_seen: "2026-06-01",
+  last_seen: "2026-06-24",
+  count_24h: 142
+}</pre>
+      </div>
+      <div class="card p-5">
+        <div class="h-title">Postgres · "audit per MCP call"</div>
+<pre class="mt-3 card2 p-3 text-[12px] overflow-auto">CREATE TABLE audit_call (
+  id          BIGSERIAL PRIMARY KEY,
+  ts          TIMESTAMPTZ DEFAULT now(),
+  user_fp     TEXT,        -- token fingerprint
+  tool        TEXT,        -- search_log_templates / query
+  query       TEXT,
+  filters     JSONB,
+  result_size INT,
+  latency_ms  INT
+);
+-- grep audit: ai gọi tool gì lúc nào.
+-- Template meta ở payload Qdrant
+-- (không duplicate trong PG).</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. SECURITY -->
+  <section id="security" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">8</span> &nbsp;Security &amp; audit</h2>
+    <div class="card mt-3 p-2">
+      <table class="k">
+        <thead><tr><th>Lớp</th><th>Cơ chế</th><th>Lý do</th></tr></thead>
+        <tbody>
+          <tr><td>Network</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog TLS 6514 optional</td><td>Lab subnet trusted, không expose public</td></tr>
+          <tr><td>Auth</td><td>Bearer token cá nhân <code>sk-mcp-...</code> cấp riêng từng ops</td><td>Audit theo user, revoke khi nghỉ</td></tr>
+          <tr><td>TLS</td><td>Caddy <code>tls internal</code> (self-signed)</td><td>Lab; chuyển Let's Encrypt khi public</td></tr>
+          <tr><td>Audit</td><td><code>/var/log/onelog-audit/mcp-semantic.log</code> mỗi tool call: user, tool, query, result_size</td><td>Truy vết hành vi, debug rate limit</td></tr>
+          <tr><td>Privacy</td><td>Project Claude Team — không train trên data (per Anthropic ToS)</td><td>Log có thể chứa info nhạy cảm</td></tr>
+          <tr><td>Secrets</td><td>"Không paste secret vào chat" + lint server-side</td><td>5 ops cùng đọc Project</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 9. RUNBOOK -->
+  <section id="runbook" class="anchor mt-8">
+    <h2 class="text-lg font-semibold"><span class="step-num">9</span> &nbsp;Quick runbook — onboard 10 phút</h2>
+    <div class="grid grid-cols-2 gap-4 mt-3">
+      <div class="card p-5">
+        <div class="h-title">Setup máy ops (1 lần)</div>
+        <ol class="mt-3 text-sm space-y-2 list-decimal pl-5">
+          <li>Map <code>192.168.122.53 app.local</code> trong hosts file</li>
+          <li>Cài Claude Desktop · login workspace</li>
+          <li>Sửa <code>%APPDATA%\Claude\claude_desktop_config.json</code> → 2 server <code>onelog-vl</code> &amp; <code>onelog-semantic</code></li>
+          <li>Restart Claude · verify icon tool-use sáng</li>
+          <li>Test: <i>"show last 10 error logs"</i></li>
+        </ol>
+      </div>
+      <div class="card p-5">
+        <div class="h-title">Investigation hằng ngày</div>
+        <ol class="mt-3 text-sm space-y-2 list-decimal pl-5">
+          <li>Mở Project <b>onelog-investigations</b></li>
+          <li>Search keyword trước khi tạo mới (mysql, 502, redis...)</li>
+          <li>Đặt câu hỏi → đọc kết quả + bấm <code>vmui_url</code></li>
+          <li>Tìm ra root cause → rename <code>[YYYY-MM-DD] svc - symptom</code></li>
+          <li>Tin nhắn cuối: Root cause / Fix / Prevention</li>
+          <li>Fix lâu dài → <code>docs/runbooks/&lt;svc&gt;.md</code></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="mt-8">
+    <h2 class="text-lg font-semibold">FAQ nhanh</h2>
+    <div class="card mt-3 divide-y divide-[#1f1f25]">
+      <details class="p-4" open>
+        <summary class="flex justify-between items-center"><span>Vì sao bỏ web UI + rag-agent? Chỉ dùng MCP qua Claude Desktop?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Trước đây có Next.js UI :3000 + FastAPI agent :8000 tự gọi Anthropic API → duplicate cost với Claude Team subscription mà 5 ops đã trả. Phase 02 (2026-06-24): decommission, chỉ giữ 2 MCP server thin (mcp-vl + mcp-semantic). Claude Desktop làm UI + LLM. Đổi lại: mất chart/admin view, nhưng UX chat trong Desktop tốt + chi phí giảm 1 đầu LLM.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Tách 2 MCP server (vl + semantic) thay vì gộp 1?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Để Claude tự routing theo intent. mcp-vl chạy LogsQL trực tiếp (nhanh, rẻ, không embed). mcp-semantic phải embed query (chậm hơn, có cost). Tách giúp audit + rate-limit theo loại, và mcp-vl tận dụng upstream <code>mcp-victorialogs</code> không phải code.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Resurrect web UI khi cần?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Uncomment 2 block <code>web</code> + <code>agent</code> trong <code>infra/docker-compose.yml</code>, set <code>ANTHROPIC_API_KEY</code> trong <code>.env</code>, chạy <code>docker compose --profile web --profile agent up -d</code>. Drill: <code>infra/scripts/resurrect-drill.sh</code>. Branch <code>legacy-web</code> giữ snapshot bootable.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Vì sao Qdrant lưu <i>template</i> chứ không phải từng log line?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Một service đẩy ~10⁶ line/ngày nhưng chỉ ~10² template. Embed line-by-line = đốt cost &amp; nhiễu vector space. Template (drain3) gom các line cùng pattern → semantic chính xác hơn.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Mất internet — OneLog còn dùng được không?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Ingest + LogsQL query nội bộ vẫn chạy. Nhưng Claude Desktop cần Anthropic API → mất internet thì không hỏi natural language được. Fallback: vào VMUI :9428 query LogsQL tay.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Scale lên 30 VM thì kiến trúc đổi gì?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Xem <code>docs/ha-roadmap.md</code>. Tóm tắt: vector multi-node, VictoriaLogs cluster mode, Qdrant replica, NATS jetstream cluster, Caddy → HAProxy/Nginx LB.</p>
+      </details>
+    </div>
+  </section>
+
+  <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
+    <span>OneLog · system explainer · 2026-06-24</span>
+    <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code></span>
+  </footer>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:'base',
+    themeVariables:{
+      darkMode:true,
+      background:'#0a0a0b',
+      primaryColor:'#15151a',
+      primaryTextColor:'#ededf0',
+      primaryBorderColor:'#2a2a30',
+      lineColor:'#3a3a44',
+      secondaryColor:'#0e0e12',
+      tertiaryColor:'#111114',
+      fontFamily:'Geist, Inter, ui-sans-serif',
+      actorBkg:'#15151a', actorBorder:'#2a2a30', actorTextColor:'#ededf0',
+      signalColor:'#7dd3fc', signalTextColor:'#cdd2d8',
+      labelBoxBkgColor:'#0e0e12', labelBoxBorderColor:'#2a2a30',
+      noteBkgColor:'#1f1a3a', noteBorderColor:'#3a3a44', noteTextColor:'#c4b5fd'
+    },
+    flowchart:{curve:'basis',htmlLabels:true},
+    sequence:{actorMargin:50, boxMargin:10, mirrorActors:false}
+  });
+</script>
+</body>
+</html>

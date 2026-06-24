@@ -66,6 +66,20 @@
                 flush_interval -1
             }
         }
+        # mcp-victorialogs SSE callback path. The upstream is hardcoded to emit
+        # `event: endpoint\ndata: /message?sessionId=...` (no base URL config
+        # available — see VictoriaMetrics/mcp-victorialogs README). mcp-remote
+        # resolves that absolute path against host root, so we MUST expose
+        # /message at top level. Same forward_auth applies — no anon bypass.
+        handle /message* {
+            forward_auth mcp-semantic:9000 {
+                uri /auth/verify
+                copy_headers X-Mcp-User
+            }
+            reverse_proxy mcp-vl:8000 {
+                flush_interval -1
+            }
+        }
         # DECOMMISSIONED 2026-06-24 — web/agent moved to Claude Desktop + MCP.
         # Resurrect: uncomment + restart caddy after un-decommissioning web in
         # docker-compose.yml. See plans/260623-2041-mcp-only-rollout/phase-03.

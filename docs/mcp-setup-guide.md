@@ -51,6 +51,7 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
         "-y",
         "mcp-remote@latest",
         "http://app.local/mcp/vl/sse",
+        "--allow-http",
         "--header",
         "Authorization: Bearer <YOUR_TOKEN>"
       ]
@@ -76,6 +77,7 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
     "onelog-vl": {
       "command": "npx",
       "args": ["-y", "mcp-remote@latest", "http://app.local/mcp/vl/sse",
+               "--allow-http",
                "--header", "Authorization: Bearer <YOUR_TOKEN>"]
     },
     "onelog-semantic": {
@@ -93,6 +95,7 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
 - `onelog-semantic` endpoint là `/mcp/semantic/mcp` (Streamable HTTP — FastMCP 3.x)
 - Path khác nhau là do upstream version khác nhau, không phải lỗi config
 - **Windows `npx.cmd` thay vì `npx`**: Claude Desktop spawn qua `cmd /C` không xử lý path có space (`C:\Program Files\nodejs\`) — dùng `.cmd` extension bypass wrapper, fix lỗi `'C:\Program' is not recognized`
+- **`--allow-http` bắt buộc**: mcp-remote mặc định reject HTTP non-localhost. Bỏ flag này = `Error: Non-HTTPS URLs are only allowed for localhost`. Khi onelog có HTTPS (Caddy + LE TLS hoặc cert nội bộ) thì bỏ flag được.
 
 ## 4. Restart Claude Desktop
 
@@ -141,6 +144,7 @@ Claude sẽ gọi tool, trả về list templates với `score`, `template`, `se
 | `401 Unauthorized` từ tool | Token sai hoặc bị revoke | Hỏi admin token mới |
 | `npx mcp-remote` fail | Node cũ <18 hoặc network firewall block npm | `node --version`; nếu OK, check `npm ping` |
 | Windows: `'C:\Program' is not recognized` trong log | `"command": "npx"` mà PATH có space | Đổi sang `"command": "npx.cmd"` |
+| `Non-HTTPS URLs are only allowed for localhost` | mcp-remote default block HTTP non-localhost | Thêm `--allow-http` vào args trước `--header` |
 | Tool list show nhưng gọi không response | Server-side issue | Báo admin check `docker compose logs mcp-semantic` |
 | `vmui_url` click không mở | `app.local` resolve fail trong browser | Cùng fix Step 2 (browser dùng cùng hosts file) |
 

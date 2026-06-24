@@ -41,11 +41,12 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
 
 ### Nội dung (replace `<YOUR_TOKEN>` bằng token admin cấp)
 
+**Windows** (`command` phải là `npx.cmd`, không phải `npx`):
 ```json
 {
   "mcpServers": {
     "onelog-vl": {
-      "command": "npx",
+      "command": "npx.cmd",
       "args": [
         "-y",
         "mcp-remote@latest",
@@ -55,7 +56,7 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
       ]
     },
     "onelog-semantic": {
-      "command": "npx",
+      "command": "npx.cmd",
       "args": [
         "-y",
         "mcp-remote@latest",
@@ -68,11 +69,30 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
 }
 ```
 
+**macOS / Linux** (dùng `npx` thường):
+```json
+{
+  "mcpServers": {
+    "onelog-vl": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@latest", "http://app.local/mcp/vl/sse",
+               "--header", "Authorization: Bearer <YOUR_TOKEN>"]
+    },
+    "onelog-semantic": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@latest", "http://app.local/mcp/semantic/mcp",
+               "--header", "Authorization: Bearer <YOUR_TOKEN>"]
+    }
+  }
+}
+```
+
 **Lưu ý quan trọng:**
 - Cả 2 server **dùng cùng 1 token** — không phải 2 token riêng
 - `onelog-vl` endpoint là `/mcp/vl/sse` (SSE transport — official mcp-victorialogs v1.9.0)
 - `onelog-semantic` endpoint là `/mcp/semantic/mcp` (Streamable HTTP — FastMCP 3.x)
 - Path khác nhau là do upstream version khác nhau, không phải lỗi config
+- **Windows `npx.cmd` thay vì `npx`**: Claude Desktop spawn qua `cmd /C` không xử lý path có space (`C:\Program Files\nodejs\`) — dùng `.cmd` extension bypass wrapper, fix lỗi `'C:\Program' is not recognized`
 
 ## 4. Restart Claude Desktop
 
@@ -120,6 +140,7 @@ Claude sẽ gọi tool, trả về list templates với `score`, `template`, `se
 | `Failed to connect to onelog-*` | `app.local` không resolve | `ping app.local` — nếu fail, Step 2 |
 | `401 Unauthorized` từ tool | Token sai hoặc bị revoke | Hỏi admin token mới |
 | `npx mcp-remote` fail | Node cũ <18 hoặc network firewall block npm | `node --version`; nếu OK, check `npm ping` |
+| Windows: `'C:\Program' is not recognized` trong log | `"command": "npx"` mà PATH có space | Đổi sang `"command": "npx.cmd"` |
 | Tool list show nhưng gọi không response | Server-side issue | Báo admin check `docker compose logs mcp-semantic` |
 | `vmui_url` click không mở | `app.local` resolve fail trong browser | Cùng fix Step 2 (browser dùng cùng hosts file) |
 

@@ -29,6 +29,19 @@
 **Delete (sau soak 1 tuần):**
 - Không xóa code `web/` `agent/` ngay — giữ branch `legacy-web` checkout từ master trước decommission
 
+## Session 2026-06-24 bonus fixes
+
+Beyond original scope, completed in `feat/phase02-onboarding` branch before Phase 02 kickoff:
+
+| Commit | Fix | Impact |
+|--------|-----|--------|
+| `577d26e` | VMUI: use `g0.relative_time/range_input/end_input` (was ignoring start/end) | Correct time range picker in mcp-vl response links |
+| `fd766de` | Caddy `/message*` route to mcp-vl for SSE callback (mcp-victorialogs hardcoded endpoint) | Unblock SSE session management |
+| `ac5a129` | WWW-Authenticate Bearer header + clean /.well-known JSON 404 | Stop mcp-remote OAuth fallback, avoid HTML parsing crash |
+| `ee7e9a5` | Docs: require `--allow-http` flag for mcp-remote on plain HTTP endpoints | Prevent CI/doc gaps, ops don't skip on Windows |
+
+Result: **E2E verified 2026-06-24** — Claude Desktop → mcp-remote → onelog-vl + onelog-semantic both passing smoke test. Real query verified: "tìm error mock-mysql 24h" returned 3,859 logs clustered to 1 template (error 28 disk full).
+
 ## Implementation steps
 
 ### Step 1 — Verify subscription type (BLOCKING, 0.1d)
@@ -146,6 +159,8 @@ Mục đích: verify branch `legacy-web` THẬT SỰ bootable, không phải "t�
 - [x] **Keep folders** `web/`, `agent/` trên master (chưa đụng)
 - [x] Update `infra/caddy/Caddyfile`: bỏ default `reverse_proxy web:3000`, fallback 410 link doc
 - [x] `infra/scripts/resurrect-drill.sh` — automated drill script (mock LLM, target <30 phút, append RESURRECT-NOTES.md)
+- [ ] **Gen 5 real MCP tokens** via `infra/scripts/gen-mcp-tokens.sh` — distinct Bearer tokens for each ops (1 token/person)
+- [ ] **Distribute tokens** to 5 ops privately (token format `sk-mcp-*`, email/password manager, NOT Slack)
 - [ ] (Trên logserver) `docker compose stop web agent && docker compose rm web agent` — chỉ nếu container đang chạy (profile [web]/[agent] chưa được up từ trước thì skip)
 - [ ] (Trên logserver) Remove `ANTHROPIC_API_KEY` từ `.env` prod + rotate Anthropic key
 - [ ] (Sau decommission) **KEEP Postgres schema** (users/conversations/messages/audit_log) ≥6 tháng — không drop

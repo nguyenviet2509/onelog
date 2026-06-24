@@ -59,12 +59,17 @@
                 flush_interval -1
             }
         }
-        # Next.js web app — chat UI + BFF /api/* routes
-        # Phase 04 MVP: chat only. /api/chat proxies SSE to agent.
+        # DECOMMISSIONED 2026-06-24 — web/agent moved to Claude Desktop + MCP.
+        # Resurrect: uncomment + restart caddy after un-decommissioning web in
+        # docker-compose.yml. See plans/260623-2041-mcp-only-rollout/phase-03.
+        # handle {
+        #     reverse_proxy web:3000 {
+        #         flush_interval -1   # streaming SSE — no buffering
+        #     }
+        # }
+        # Fallback for any unmatched path — landing note pointing at MCP guides.
         handle {
-            reverse_proxy web:3000 {
-                flush_interval -1   # streaming SSE — no buffering
-            }
+            respond "onelog: web UI deprecated — use Claude Desktop + MCP. See docs/mcp-setup-guide.md" 410
         }
     }
     handle {

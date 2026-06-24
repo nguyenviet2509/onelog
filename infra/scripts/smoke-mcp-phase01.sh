@@ -82,8 +82,17 @@ fi
 
 echo
 echo "═ Test 5: /mcp/vl/sse with valid Bearer → 200 (mcp-vl still SSE in v1.9.0)"
-assert_status "GET /mcp/vl/sse (valid)" "$BASE/mcp/vl/sse" 200 \
-  -H "Authorization: Bearer $TOKEN"
+# SSE keeps the connection open; --max-time bounds the test. curl prints the
+# status as soon as headers arrive, then exits with code 28 on timeout — we
+# tolerate that exit by short-circuiting with `|| true`.
+got5=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
+  -H "Authorization: Bearer $TOKEN" "$BASE/mcp/vl/sse" || true)
+if [[ "$got5" == "200" ]]; then
+  echo "✓ GET /mcp/vl/sse (valid) → 200"
+else
+  echo "✗ GET /mcp/vl/sse (valid) → $got5 (expected 200)"
+  exit 1
+fi
 
 echo
 echo "═ Test 6: audit log file has entries"

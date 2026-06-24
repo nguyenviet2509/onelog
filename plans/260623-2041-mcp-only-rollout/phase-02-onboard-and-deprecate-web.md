@@ -136,10 +136,10 @@ Mục đích: verify branch `legacy-web` THẬT SỰ bootable, không phải "t�
 5. End of week 2: write retro `plans/reports/retro-260707-mcp-only-rollout.md`
 
 ## Todo
-- [ ] Verify subscription = Claude.ai Team
-- [ ] Tạo Project + invite 5 member + system prompt
-- [ ] Doc mcp-setup-guide.md
-- [ ] Doc onelog-team-project-guide.md
+- [x] Verify subscription = Claude.ai Team (confirmed 2026-06-24: workspace có Projects + tab Team + Cowork)
+- [ ] Tạo Project + invite 5 member + system prompt (user thực hiện qua claude.ai UI)
+- [x] Doc `docs/mcp-setup-guide.md` (claude_desktop_config.json template, hosts file, troubleshooting, token rotation)
+- [x] Doc `docs/onelog-team-project-guide.md` (Project workflow, naming convention, search trước hỏi, share guideline)
 - [ ] Meeting onboarding 5 ops + smoke test
 - [ ] Branch legacy-web checkpoint
 - [ ] **Comment block** web/agent trong docker-compose (KHÔNG xóa)

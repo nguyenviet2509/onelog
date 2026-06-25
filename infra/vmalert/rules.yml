@@ -60,18 +60,20 @@ groups:
       # Thresholds tuned for the 5m group window — scale down vs 15m original
       # design (rules.yml-design 2026-06-25). Re-tune after 1-week baseline soak.
 
-      # 1 source IP fail SSH across cluster = coordinated brute force.
-      # Per-host rule (SshBruteForce above) cannot detect when attacker spreads
-      # attempts across hosts to stay under per-host threshold.
+      # 1 attacker IP fail SSH across cluster = coordinated brute force.
+      # `host_ip` = sender server IP (sshd host) → group by sender = same as
+      # per-host SshBruteForce above. Real "multi-host same IP" requires
+      # extracting the ATTACKER IP from the message body via LogsQL `extract`.
+      # Format: "Failed password for <user> from <attacker_ip> port ..."
       - alert: SshFailMultiHostSameIp
-        expr: 'facility:auth "Failed password" | stats by (host_ip) count() as value | filter value:>10'
+        expr: 'facility:auth "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value | filter value:>10'
         for: 1m
         labels:
           severity: critical
           category: security
         annotations:
-          summary: "SSH brute force from {{ $labels.host_ip }}"
-          description: "{{ $value }} failed SSH attempts in 5m from source IP {{ $labels.host_ip }} across cluster"
+          summary: "SSH brute force from {{ $labels.attacker_ip }}"
+          description: "{{ $value }} failed SSH attempts in 5m from attacker {{ $labels.attacker_ip }} across cluster"
 
       # Kernel-level errors = hardware/driver/disk fail. Catch early before
       # silent data loss. facility:kern was dropped pre-schema-unify, now queryable.

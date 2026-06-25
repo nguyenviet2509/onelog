@@ -157,15 +157,27 @@ services:
       - victorialogs
       - alertmanager
 
-  # Alertmanager — dedupe / group / route fired alerts to agent webhook.
+  # Alertmanager — dedupe / group / route fired alerts to Telegram.
+  # Entrypoint renders __TELEGRAM_BOT_TOKEN__ + __TELEGRAM_CHAT_ID__ placeholders
+  # from infra/.env via sed at container start. Run as root to avoid
+  # /data permission issues on bind mount.
   alertmanager:
     image: prom/alertmanager:latest
     container_name: ragstack-alertmanager
     restart: unless-stopped
     profiles: [alerts]
+    user: "0:0"
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    entrypoint: ["/bin/sh"]
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/data"
+      - "-c"
+      - |
+        sed -e "s|__TELEGRAM_BOT_TOKEN__|$$TELEGRAM_BOT_TOKEN|g" \
+            -e "s|__TELEGRAM_CHAT_ID__|$$TELEGRAM_CHAT_ID|g" \
+            /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/data
     ports:
       - "127.0.0.1:9093:9093"
     volumes:

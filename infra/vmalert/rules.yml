@@ -12,6 +12,10 @@
 #     refused spikes, crashloop). 5-6m latency by design.
 #
 # Threshold tuning protocol: observe baseline 1 week, set threshold = 2 × p95.
+#
+# Facility caveat: user-space syslog calls (incl `logger -p kern.*`) get
+# remapped to facility=user by Linux. Rules now match by `service:` tag or
+# message pattern instead of `facility:` to stay forwarding-agnostic.
 
 groups:
   # ─────────────────────────────────────────────────────────────────────────
@@ -23,8 +27,11 @@ groups:
     rules:
       # Kernel OOM-killer fired = process killed for memory pressure. Every
       # event = real incident, no waiting.
+      # NOTE: dropped `facility:kern` filter — Linux remaps user-space syslog to
+      # facility=user even with -p kern.*, so forwarded kernel-themed logs miss.
+      # Message pattern "oom-killer" / "Out of memory: Killed" is specific enough.
       - alert: OomKillEvent
-        expr: 'facility:kern (_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host, host_ip) count() as value | filter value:>0'
+        expr: '(_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host, host_ip) count() as value | filter value:>0'
         for: 0s
         labels:
           severity: critical
@@ -47,8 +54,10 @@ groups:
           description: "ENOSPC / disk-full event on {{ $labels.host }} — investigate / df -h"
 
       # User creation / sudoer modification = audit event, rare and high-signal.
+      # NOTE: facility filter dropped (syslog forwarding can remap auth → user).
+      # Match by service tag (useradd/groupadd/usermod) OR explicit msg patterns.
       - alert: NewUserOrSudoer
-        expr: 'facility:auth (_msg:"new user:" OR _msg:"useradd" OR _msg:"usermod" OR _msg:"new group:" OR _msg:"groupadd") | stats by (host, host_ip) count() as value | filter value:>0'
+        expr: '(service:useradd OR service:usermod OR service:groupadd OR _msg:"new user:" OR _msg:"new group:") | stats by (host, host_ip) count() as value | filter value:>0'
         for: 0s
         labels:
           severity: warning
@@ -108,8 +117,9 @@ groups:
 
       # 1 attacker IP fail SSH across cluster = coordinated brute force.
       # Pattern: "Failed password for <user> from <attacker_ip> port ..."
+      # facility:auth dropped — match by service (sshd/mock-sshd) instead.
       - alert: SshFailMultiHostSameIp
-        expr: 'facility:auth "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value | filter value:>10'
+        expr: '(service:sshd OR service:mock-sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value | filter value:>10'
         for: 1m
         labels:
           severity: critical
@@ -119,8 +129,9 @@ groups:
           description: "{{ $value }} failed SSH attempts in 5m from attacker {{ $labels.attacker_ip }} across cluster"
 
       # Kernel-level errs (non-OOM) — need burst pattern, single err có thể benign.
+      # facility:kern dropped (forwarding remap) → match by service:kernel tag.
       - alert: KernelErrorBurst
-        expr: 'facility:kern severity:err | stats by (host, host_ip) count() as value | filter value:>5'
+        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value | filter value:>5'
         for: 1m
         labels:
           severity: critical
@@ -130,8 +141,9 @@ groups:
           description: "{{ $value }} kern err events in 5m on {{ $labels.host }} — check dmesg / hardware"
 
       # Sudo spike — anomalous frequency suggests compromise / insider threat.
+      # facility:auth dropped (forwarding remap) → match service:sudo OR sudo msg.
       - alert: SudoEscalation
-        expr: 'facility:auth _msg:"sudo:" _msg:"COMMAND=" | stats by (host, host_ip) count() as value | filter value:>10'
+        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" | stats by (host, host_ip) count() as value | filter value:>10'
         for: 1m
         labels:
           severity: warning

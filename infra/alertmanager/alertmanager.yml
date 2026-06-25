@@ -45,6 +45,7 @@ receivers:
           {{ end }}{{ with .Labels.attacker_ip }}<b>attacker_ip:</b> <code>{{ . }}</code>
           {{ end }}{{ if not .StartsAt.IsZero }}<b>started:</b>     <code>{{ .StartsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
           {{ end }}{{ if and (eq $.Status "resolved") (not .EndsAt.IsZero) }}<b>ended:</b>       <code>{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
+          {{ end }}{{ with .Labels.sample_msg }}<b>msg:</b>         <code>{{ . }}</code>
           {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
           {{ end }}{{ with .Annotations.description }}<b>detail:</b>      <i>{{ . }}</i>
           {{ end }}

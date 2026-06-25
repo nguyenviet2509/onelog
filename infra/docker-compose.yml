@@ -165,6 +165,10 @@ services:
   # Entrypoint renders __TELEGRAM_BOT_TOKEN__ + __TELEGRAM_CHAT_ID__ placeholders
   # from infra/.env via sed at container start. Run as root to avoid
   # /data permission issues on bind mount.
+  #
+  # ⚠ NOTE: `curl -X POST /-/reload` reloads /tmp/alertmanager.yml (rendered
+  # at start) — NOT the bind-mounted source. Any edit to alertmanager.yml
+  # requires `up -d --force-recreate alertmanager` to re-run sed.
   alertmanager:
     image: prom/alertmanager:latest
     container_name: ragstack-alertmanager

@@ -31,7 +31,7 @@ groups:
       # facility=user even with -p kern.*, so forwarded kernel-themed logs miss.
       # Message pattern "oom-killer" / "Out of memory: Killed" is specific enough.
       - alert: OomKillEvent
-        expr: '(_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host, host_ip) count() as value | filter value:>0'
+        expr: '(_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>0'
         for: 0s
         labels:
           severity: critical
@@ -43,7 +43,7 @@ groups:
 
       # Disk full event surfaces từ app stderr. First ENOSPC = đã broken.
       - alert: DiskFullErrors
-        expr: '(_msg:"No space left" OR _msg:"ENOSPC" OR _msg:"disk full") | stats by (host, host_ip) count() as value | filter value:>0'
+        expr: '(_msg:"No space left" OR _msg:"ENOSPC" OR _msg:"disk full") | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>0'
         for: 0s
         labels:
           severity: critical
@@ -57,7 +57,7 @@ groups:
       # NOTE: facility filter dropped (syslog forwarding can remap auth → user).
       # Match by service tag (useradd/groupadd/usermod) OR explicit msg patterns.
       - alert: NewUserOrSudoer
-        expr: '(service:useradd OR service:usermod OR service:groupadd OR _msg:"new user:" OR _msg:"new group:") | stats by (host, host_ip) count() as value | filter value:>0'
+        expr: '(service:useradd OR service:usermod OR service:groupadd OR _msg:"new user:" OR _msg:"new group:") | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>0'
         for: 0s
         labels:
           severity: warning
@@ -76,7 +76,7 @@ groups:
     rules:
       # Per-host SSH brute force. Per-attacker version below catches cross-host.
       - alert: SshBruteForce
-        expr: 'service:mock-sshd "Failed password" | stats by (host, host_ip) count() as value | filter value:>20'
+        expr: 'service:mock-sshd "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
         for: 1m
         labels:
           severity: warning
@@ -86,7 +86,7 @@ groups:
           description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
 
       - alert: MysqlErrorBurst
-        expr: 'service:mock-mysql severity:err | stats by (host, host_ip) count() as value | filter value:>30'
+        expr: 'service:mock-mysql severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
         for: 1m
         labels:
           severity: warning
@@ -96,7 +96,7 @@ groups:
           description: "{{ $value }} mysql err events in last 5m on {{ $labels.host }}"
 
       - alert: AuditLoginFailures
-        expr: 'service:mock-audit "res=failed" | stats by (host, host_ip) count() as value | filter value:>10'
+        expr: 'service:mock-audit "res=failed" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 1m
         labels:
           severity: warning
@@ -106,7 +106,7 @@ groups:
           description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
 
       - alert: NginxServerErrors
-        expr: 'service:mock-nginx severity:err | stats by (host, host_ip) count() as value | filter value:>100'
+        expr: 'service:mock-nginx severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
         for: 1m
         labels:
           severity: warning
@@ -119,7 +119,7 @@ groups:
       # Pattern: "Failed password for <user> from <attacker_ip> port ..."
       # facility:auth dropped — match by service (sshd/mock-sshd) instead.
       - alert: SshFailMultiHostSameIp
-        expr: '(service:sshd OR service:mock-sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value | filter value:>10'
+        expr: '(service:sshd OR service:mock-sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 1m
         labels:
           severity: critical
@@ -131,7 +131,7 @@ groups:
       # Kernel-level errs (non-OOM) — need burst pattern, single err có thể benign.
       # facility:kern dropped (forwarding remap) → match by service:kernel tag.
       - alert: KernelErrorBurst
-        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value | filter value:>5'
+        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>5'
         for: 1m
         labels:
           severity: critical
@@ -143,7 +143,7 @@ groups:
       # Sudo spike — anomalous frequency suggests compromise / insider threat.
       # facility:auth dropped (forwarding remap) → match service:sudo OR sudo msg.
       - alert: SudoEscalation
-        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" | stats by (host, host_ip) count() as value | filter value:>10'
+        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 1m
         labels:
           severity: warning
@@ -154,7 +154,7 @@ groups:
 
       # Systemd reports service failed repeatedly = crashloop.
       - alert: SystemdServiceFailed
-        expr: '_msg:"Failed with result" | stats by (host, host_ip) count() as value | filter value:>2'
+        expr: '_msg:"Failed with result" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>2'
         for: 1m
         labels:
           severity: warning
@@ -165,7 +165,7 @@ groups:
 
       # DB client conn refused repeats — single blip ignored, ≥6 in 5m = real.
       - alert: DbConnectionRefused
-        expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can''t connect to MySQL" OR _msg:"FATAL: connection") | stats by (host, host_ip) count() as value | filter value:>5'
+        expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can''t connect to MySQL" OR _msg:"FATAL: connection") | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>5'
         for: 1m
         labels:
           severity: warning

@@ -29,6 +29,7 @@ groups:
         labels:
           severity: critical
           category: capacity
+          notify_style: event   # alertmanager skip RESOLVED notif for one-shot events
         annotations:
           summary: "OOM-killer fired on {{ $labels.host }}"
           description: "Kernel OOM-kill event on {{ $labels.host }} — check process list / cgroup limits"
@@ -40,6 +41,7 @@ groups:
         labels:
           severity: critical
           category: capacity
+          notify_style: event
         annotations:
           summary: "Disk-full error on {{ $labels.host }}"
           description: "ENOSPC / disk-full event on {{ $labels.host }} — investigate / df -h"
@@ -51,6 +53,7 @@ groups:
         labels:
           severity: warning
           category: audit
+          notify_style: event
         annotations:
           summary: "User/sudoer change on {{ $labels.host }}"
           description: "useradd/usermod/group-change event on {{ $labels.host }} — verify intentional"

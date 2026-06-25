@@ -1,7 +1,11 @@
-# Alertmanager — Telegram receiver for OneLog (MCP-only rollout).
+# Alertmanager — Telegram receivers for OneLog (MCP-only rollout).
 #
 # Pipeline: vmalert (LogsQL stats) → alertmanager → Telegram Bot API.
-# Triage flow: ops nhận alert → mở VMUI bằng query gợi ý / dùng Claude+MCP.
+# Triage flow: ops nhận alert → mở VMUI / dùng Claude+MCP.
+#
+# Two receivers differ ONLY by send_resolved (anti RESOLVED noise for
+# one-shot events). Route matches `notify_style=event` label (set in rules.yml
+# for instant/event-style rules).
 #
 # Token + chat_id render từ infra/.env (TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID)
 # qua sed entrypoint trong docker-compose. KHÔNG run alertmanager trực tiếp trên
@@ -11,22 +15,26 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: telegram
+  receiver: telegram-trend          # default: burst/trend rules → send RESOLVED
   group_by: ["alertname", "host"]
   group_wait: 10s
   group_interval: 5m
-  # 15m: balance giữa test-friendly + chống spam cho team ops 5 người.
-  # Tăng lên 30m-1h khi ops có SLO ack rõ + log alert hằng ngày.
   repeat_interval: 15m
+  routes:
+    # Event-style rules (OomKillEvent, DiskFullErrors, NewUserOrSudoer):
+    # event đã xảy ra rồi, RESOLVED chỉ nói "không có thêm trong 5m" → noise.
+    - matchers:
+        - notify_style="event"
+      receiver: telegram-event
 
 receivers:
-  - name: telegram
+  - name: telegram-trend
     telegram_configs:
       - bot_token: "__TELEGRAM_BOT_TOKEN__"
         chat_id: __TELEGRAM_CHAT_ID__
         parse_mode: HTML
         send_resolved: true
-        message: |
+        message: &telegram_message_template |
           {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — {{ .CommonLabels.alertname }}
           {{ range .Alerts }}
           {{ if eq .Labels.severity "critical" }}🔴{{ else if eq .Labels.severity "warning" }}⚠️{{ else }}ℹ️{{ end }} <b>{{ .Labels.alertname }}</b> on <code>{{ .Labels.host }}</code>{{ if .Labels.host_ip }} (<code>{{ .Labels.host_ip }}</code>){{ end }}
@@ -39,5 +47,13 @@ receivers:
 
           → Investigate: VMUI query <code>host:{{ .Labels.host }}</code>{{ if .Labels.attacker_ip }} or <code>_msg:"{{ .Labels.attacker_ip }}"</code>{{ end }} · Claude+MCP for triage
           {{ end }}
+
+  - name: telegram-event
+    telegram_configs:
+      - bot_token: "__TELEGRAM_BOT_TOKEN__"
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        send_resolved: false   # event-style: chỉ FIRING, không gửi RESOLVED
+        message: *telegram_message_template
 
 inhibit_rules: []

@@ -51,6 +51,30 @@
   .role .b .x{font-size:12.5px;margin-top:4px;color:#cdd2d8;line-height:1.5}
   .role ul{margin:0;padding-left:18px;font-size:13px;line-height:1.7;color:#cdd2d8}
   .role ul li::marker{color:var(--acc)}
+  .files{background:linear-gradient(180deg,#0e1308,#0e0e12);border:1px solid #1d2a14;border-radius:10px;padding:12px 14px;margin-top:12px}
+  .files h4{font-size:11px;text-transform:uppercase;letter-spacing:.16em;color:var(--lime);margin:0 0 8px}
+  .files table{width:100%;font-size:12.5px;border-collapse:collapse}
+  .files td{padding:6px 8px;border-bottom:1px dashed #1c2a14;vertical-align:top}
+  .files td:first-child{width:38%;color:#cdd2d8}
+  .files td code{font-size:11.5px;color:#d6f5b0}
+  .files td:last-child{color:#a8b5b8;line-height:1.5}
+  .files .reload{margin-top:8px;font-size:11.5px;color:#8a8a96}
+  .files .reload code{color:#fbbf24}
+  /* Floating service nav — icon-only collapsed, hover to expand */
+  .svc-nav{position:fixed;top:16px;right:16px;width:44px;max-height:calc(100vh - 32px);overflow:hidden;z-index:50;padding:6px;transition:width .2s ease}
+  .svc-nav:hover{width:230px;overflow-y:auto}
+  .svc-nav::-webkit-scrollbar{width:6px}
+  .svc-nav::-webkit-scrollbar-thumb{background:#2a2a32;border-radius:3px}
+  .svc-nav .h-title{opacity:0;transition:opacity .15s ease;white-space:nowrap}
+  .svc-nav:hover .h-title{opacity:1}
+  .svc-nav a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden}
+  .svc-nav a:hover{background:#15151a;color:var(--fg)}
+  .svc-nav a.cur{background:#15151a;color:var(--fg)}
+  .svc-nav a .ico{flex:0 0 auto;width:24px;text-align:center;font-size:14px;color:var(--acc)}
+  .svc-nav a .lbl{flex:1;opacity:0;transition:opacity .15s ease}
+  .svc-nav:hover a .lbl{opacity:1}
+  .svc-nav a.cur .ico{color:#fff}
+  @media (max-width:1280px){.svc-nav{display:none}}
 </style>
 </head>
 <body>
@@ -71,17 +95,36 @@
     </div>
   </header>
 
+  <!-- FLOATING SERVICE NAV — icon-only collapsed, hover-to-expand -->
+  <nav class="svc-nav card">
+    <div class="h-title px-2 mb-1">Services</div>
+    <a href="#victorialogs"><span class="ico">①</span><span class="lbl">victorialogs</span></a>
+    <a href="#qdrant"><span class="ico">②</span><span class="lbl">qdrant</span></a>
+    <a href="#postgres"><span class="ico">③</span><span class="lbl">postgres</span></a>
+    <a href="#rsyslog"><span class="ico">③·⁵</span><span class="lbl">rsyslog <span class="badge ml-1">client</span></span></a>
+    <a href="#vector"><span class="ico">④</span><span class="lbl">vector</span></a>
+    <a href="#nats"><span class="ico">⑤</span><span class="lbl">nats (jetstream)</span></a>
+    <a href="#indexer"><span class="ico">⑥</span><span class="lbl">indexer</span></a>
+    <a href="#mcp-semantic"><span class="ico">⑦</span><span class="lbl">mcp-semantic</span></a>
+    <a href="#mcp-vl"><span class="ico">⑧</span><span class="lbl">mcp-vl</span></a>
+    <a href="#caddy"><span class="ico">⑨</span><span class="lbl">caddy</span></a>
+    <a href="#vmalert"><span class="ico">⑩</span><span class="lbl">vmalert</span></a>
+    <a href="#alertmanager"><span class="ico">⑪</span><span class="lbl">alertmanager</span></a>
+    <a href="#redis"><span class="ico">⑫</span><span class="lbl">redis <span class="badge ml-1">off</span></span></a>
+    <a href="#decom"><span class="ico">—</span><span class="lbl">decommissioned</span></a>
+  </nav>
+
   <!-- INTRO -->
-  <section class="grid grid-cols-[1fr_280px] gap-4 mt-5">
+  <section class="mt-5">
     <div class="card p-5">
       <div class="h-title">Stack overview</div>
       <p class="mt-2 text-sm leading-relaxed mut">
-        Toàn bộ OneLog là <b class="acc">12 containers</b> trên 1 docker-compose, network <code>ragstack</code>. Chia 4 nhóm:
+        Toàn bộ OneLog là <b class="acc">12 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 4 nhóm:
         <span class="pill amber">ingestion</span> nhận log từ ngoài,
         <span class="pill lime">storage</span> lưu trữ,
         <span class="pill cyan">query / mcp</span> phục vụ Claude Desktop,
         <span class="pill vio">alerting</span> opt-in.
-        Hầu hết bind <code>127.0.0.1</code> — chỉ <span class="pill amber">vector :514/6514</span> và <span class="pill amber">caddy :80/:443</span> mở ra ngoài.
+        Hầu hết bind <code>127.0.0.1</code> — chỉ <span class="pill amber">vector :514/6514/6515</span> và <span class="pill amber">caddy :80/:443</span> mở ra LAN.
       </p>
       <div class="grid grid-cols-4 gap-2 mt-4 text-[11px]">
         <div class="card2 p-3"><div class="h-title">always-on</div><div class="mt-1 acc">8 services</div><div class="mut text-[10px] mt-0.5">vl · qdrant · pg · vector · nats · mcp-semantic · mcp-vl · caddy</div></div>
@@ -90,22 +133,6 @@
         <div class="card2 p-3"><div class="h-title">profile=agent</div><div class="mt-1 mut">1 (off)</div><div class="mut text-[10px] mt-0.5">redis · chờ resurrect</div></div>
       </div>
     </div>
-    <nav class="card p-3 sticky top-3 self-start h-fit">
-      <div class="h-title px-2 mb-1">Services</div>
-      <a href="#victorialogs">① victorialogs</a>
-      <a href="#qdrant">② qdrant</a>
-      <a href="#postgres">③ postgres</a>
-      <a href="#vector">④ vector</a>
-      <a href="#nats">⑤ nats (jetstream)</a>
-      <a href="#indexer">⑥ indexer</a>
-      <a href="#mcp-semantic">⑦ mcp-semantic</a>
-      <a href="#mcp-vl">⑧ mcp-vl</a>
-      <a href="#caddy">⑨ caddy</a>
-      <a href="#vmalert">⑩ vmalert</a>
-      <a href="#alertmanager">⑪ alertmanager</a>
-      <a href="#redis">⑫ redis <span class="badge ml-1">off</span></a>
-      <a href="#decom">— decommissioned</a>
-    </nav>
   </section>
 
   <!-- ① VICTORIALOGS -->
@@ -159,6 +186,16 @@ interval 30s · timeout 5s · retries 3</pre>
         <div class="b"><div class="t">Tiết kiệm</div><div class="x">~10% RAM của ELK cùng volume. 512MB cap đủ cho lab 5 VM. Không cần JVM tuning.</div></div>
         <div class="b"><div class="t">Retention</div><div class="x">7 ngày default → đổi <code>VL_RETENTION=30d</code>. Compactor tự xoá segment cũ.</div></div>
       </div>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>victorialogs</code>)</span></td><td>Image · command flags (<code>-retentionPeriod</code>, <code>-memory.allowedBytes</code>) · volume <code>./data/victorialogs</code> · healthcheck</td></tr>
+        <tr><td><code>infra/scripts/snapshot-daily.sh</code></td><td>Daily snapshot endpoint <code>/snapshot/create</code> → tar về <code>./data/snapshots/</code>. Cron 02:00 do <code>setup-log-server.sh</code> cài</td></tr>
+        <tr><td><code>infra/scripts/restore-snapshot.sh</code></td><td>Khôi phục từ snapshot tar — dùng khi crash data dir</td></tr>
+        <tr><td><code>.env</code> <span class="mut">(repo root)</span></td><td>Biến <code>VL_RETENTION</code> (default 7d)</td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart victorialogs</code> · Health: <code>curl http://localhost:9428/health</code> · UI: <code>http://app.local:9428/select/vmui/</code></div>
     </div>
   </section>
 
@@ -219,6 +256,16 @@ payload:
         <div class="b"><div class="t">RAM cost</div><div class="x">~150MB cho 10⁵ template (1536d float32). Rust no-GC → predictable latency p99 &lt;20ms.</div></div>
       </div>
     </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>qdrant</code>)</span></td><td>Image · env <code>QDRANT__SERVICE__API_KEY</code>, <code>QDRANT__SERVICE__HTTP_PORT</code> · volume <code>./data/qdrant</code></td></tr>
+        <tr><td><code>indexer/src/indexer/qdrant_writer.py</code></td><td>Collection bootstrap (create nếu chưa có, dim=1536, Cosine) · upsert API · payload schema</td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/main.py</code></td><td>Read path: <code>AsyncQdrantClient</code> search + payload filter trong tool <code>search_log_templates</code></td></tr>
+        <tr><td><code>.env</code></td><td><code>QDRANT_API_KEY</code> (bắt buộc — fail-closed nếu thiếu) · <code>QDRANT_COLLECTION=log_templates</code></td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart qdrant</code> · UI: <code>http://localhost:6333/dashboard</code> (cần API key trong header)</div>
+    </div>
   </section>
 
   <!-- ③ POSTGRES -->
@@ -270,6 +317,130 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}</pre>
         <div class="b"><div class="t">Bind 127.0.0.1</div><div class="x">Không expose LAN. Container khác trong network <code>ragstack</code> mới connect được.</div></div>
       </div>
     </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>postgres</code>)</span></td><td>Image <code>postgres:16-alpine</code> · env <code>POSTGRES_DB=rag</code> · volume <code>./data/postgres</code> · healthcheck <code>pg_isready</code></td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/audit.py</code></td><td>Module <code>get_audit()</code> — schema <code>audit_call</code>, insert sau mỗi tool call</td></tr>
+        <tr><td><code>.env</code></td><td><code>POSTGRES_USER</code> · <code>POSTGRES_PASSWORD</code></td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart postgres</code> · Connect: <code>docker exec -it ragstack-postgres psql -U $POSTGRES_USER rag</code></div>
+    </div>
+  </section>
+
+  <!-- ③·⁵ RSYSLOG CLIENT FORWARDERS -->
+  <section id="rsyslog" class="anchor mt-4 card p-5" style="border-color:#1f2a14;background:linear-gradient(180deg,#0d130a,#0e0e12)">
+    <div class="svc-header">
+      <div>
+        <div class="text-lg font-semibold"><span class="num">3·⁵</span>rsyslog client forwarders <span class="pill amber ml-1">client-side</span> <span class="pill lime ml-1">ingestion</span></div>
+        <div class="mut text-xs mt-1">Drop-in config trên mỗi client VM · KHÔNG phải container · upstream feeder của <span class="pill amber">vector</span></div>
+      </div>
+      <div class="flex gap-1.5">
+        <span class="chip on">path: <code>/etc/rsyslog.d/*.conf</code></span>
+        <span class="chip">repo: <code>infra/clients/</code></span>
+      </div>
+    </div>
+    <hr class="sep"/>
+    <div class="grid-2">
+      <!-- Option A -->
+      <div>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold text-sm">Option A — RFC5424 syslog text</div>
+          <span class="pill gray">default · simple</span>
+        </div>
+        <div class="h-title mt-2">File &amp; port</div>
+        <table class="k mt-1">
+          <tr><td><code>rsyslog-forward.conf</code></td><td>→ <code>/etc/rsyslog.d/90-forward-onelog.conf</code></td></tr>
+          <tr><td>Server port</td><td>TCP <b>6514</b> (UDP 514 legacy cũng ok)</td></tr>
+          <tr><td>Format</td><td>RFC5424 syslog text, ISO timestamp</td></tr>
+          <tr><td>Best for</td><td>Client greenfield, không có JSON pipeline</td></tr>
+        </table>
+<pre class="card2 p-2 mt-2">sudo cp rsyslog-forward.conf \
+  /etc/rsyslog.d/90-forward-onelog.conf
+sudo sed -i 's/LOG_SERVER_IP/&lt;onelog-host&gt;/' $_
+sudo rsyslogd -N1               <span class="mut"># config check</span>
+sudo systemctl restart rsyslog
+ss -tnp | grep ':6514'          <span class="mut"># must ESTAB</span></pre>
+      </div>
+      <!-- Option B -->
+      <div>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold text-sm">Option B — ECS-lite JSON <span class="pill cyan ml-1">new</span></div>
+          <span class="pill cyan">structured</span>
+        </div>
+        <div class="h-title mt-2">File &amp; port</div>
+        <table class="k mt-1">
+          <tr><td><code>rsyslog-forward-json.conf</code></td><td>→ <code>/etc/rsyslog.d/91-forward-onelog-json.conf</code></td></tr>
+          <tr><td>Server port</td><td>TCP <b>6515</b></td></tr>
+          <tr><td>Format</td><td>JSON line-delimited, schema ECS-lite</td></tr>
+          <tr><td>rsyslog</td><td>≥ 8.x (modern <code>omfwd</code> + <code>jsonf</code>)</td></tr>
+          <tr><td>Best for</td><td>Client đã forward JSON sang ELK/SIEM — OneLog làm additional sink</td></tr>
+        </table>
+<pre class="card2 p-2 mt-2">sudo cp rsyslog-forward-json.conf \
+  /etc/rsyslog.d/91-forward-onelog-json.conf
+sudo sed -i 's/LOG_SERVER_IP/&lt;onelog-host&gt;/' $_
+sudo rsyslogd -N1
+sudo systemctl restart rsyslog
+ss -tnp | grep ':6515'</pre>
+      </div>
+    </div>
+
+    <!-- ECS schema + queue -->
+    <div class="grid-2 mt-3">
+      <div>
+        <div class="h-title">ECS-lite schema (Option B — required)</div>
+<pre class="card2 p-2 mt-1">{
+  "@timestamp": "2026-06-25T09:06:55+07:00",   <span class="mut"># RFC3339</span>
+  "host":    { "name": "srv-02" },
+  "log":     { "level": "error" },             <span class="mut"># info|warn|error|...</span>
+  "service": { "name": "mysql" },
+  "message": "Too many connections (max=151)",
+  "labels":  { "env": "prod", "az": "lab" },   <span class="mut"># optional pass-through</span>
+  "trace":   { "id": "..." }                   <span class="mut"># optional</span>
+}</pre>
+        <div class="mut text-[11px] mt-2"><b>Unknown top-level fields bị drop</b> ở Vector <code>rsyslog_json_normalize</code> — anti schema-drift.</div>
+      </div>
+      <div>
+        <div class="h-title">rsyslog disk-assisted queue (cả 2 option)</div>
+<pre class="card2 p-2 mt-1">queue.type="LinkedList"
+queue.size="10000"
+queue.filename="onelog_json_fwd"
+queue.saveOnShutdown="on"
+queue.maxDiskSpace="500m"
+action.resumeRetryCount="-1"   <span class="mut"># retry forever</span></pre>
+        <div class="mut text-[11px] mt-2">Logserver hoặc network down → rsyslog buffer ra disk (max 500MB/client), replay khi server up. Tương đương <i>disk buffer</i> của Vector phía server — defence in depth.</div>
+      </div>
+    </div>
+
+    <div class="role">
+      <h4>Tác dụng chi tiết</h4>
+      <ul>
+        <li><b>Giải quyết:</b> Vector listen :6514/:6515 nhưng <i>không tự đến lấy log</i> ở client. Phải có agent chạy trên từng client VM <b>push</b> log sang. rsyslog là agent có sẵn trên mọi Linux distro → KISS, không cài thêm gì. 2 option vì 2 use-case: greenfield (text) hoặc đã có JSON pipeline (structured).</li>
+        <li><b>Vị trí:</b> trên srv-01 / srv-02 / mọi client tương lai. Đẩy TCP → vector trên logserver. Là <b>biên ngoài cùng</b> của OneLog data plane.</li>
+        <li><b>Nếu thiếu:</b> Vector chỉ có log từ mock-logs.py (UDP 514 local). Không có log thật từ client → toàn bộ stack chạy không tải.</li>
+      </ul>
+      <div class="grid4">
+        <div class="b"><div class="t">Schema contract</div><div class="x">Option B bắt buộc 5 field <code>@timestamp</code>, <code>host.name</code>, <code>log.level</code>, <code>service.name</code>, <code>message</code>. Thiếu = Vector drop / VL field rỗng.</div></div>
+        <div class="b"><div class="t">Nested via constant()</div><div class="x">rsyslog template không hỗ trợ nested JSON natively → glue bằng <code>constant("\"host\":{\"name\":\"")</code> + <code>property(format="json")</code>.</div></div>
+        <div class="b"><div class="t">No TLS · no auth (PoC)</div><div class="x">Plain TCP. Bắt buộc firewall whitelist client IP trên logserver. TLS + token = plan riêng (roadmap).</div></div>
+        <div class="b"><div class="t">Troubleshoot</div><div class="x"><code>ss</code> không ESTAB → firewall / IP sai. <code>rsyslogd -N1</code> báo <code>jsonf</code> → rsyslog &lt;8.x, dùng Option A. <code>_msg</code> rỗng ở VL → escape quote trong template.</div></div>
+      </div>
+    </div>
+
+    <div class="mt-3 mut text-[12px]">Dev / smoke test dùng <code>mock-logs.py</code> + <code>mock-logs.service</code> (UDP 514 local, không cần client thực). Production: chọn 1 option Đối với mỗi client — đừng bật cả 2 cùng lúc (duplicate ingestion).</div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/clients/rsyslog-forward.conf</code></td><td>Option A — RFC5424 syslog text, đẩy TCP 6514. Replace <code>LOG_SERVER_IP</code></td></tr>
+        <tr><td><code>infra/clients/rsyslog-forward-json.conf</code></td><td>Option B — ECS-lite JSON template (<code>OneLogJSON</code>), omfwd TCP 6515, disk-assisted queue 500MB</td></tr>
+        <tr><td><code>infra/clients/README.md</code></td><td>Hướng dẫn install / chọn A vs B / schema contract / troubleshoot</td></tr>
+        <tr><td><code>infra/scripts/setup-rsyslog-client.sh</code></td><td>One-shot installer: copy conf → sed IP → validate → restart rsyslog → smoke <code>ss</code></td></tr>
+        <tr><td><code>infra/clients/mock-logs.py</code> + <code>mock-logs.service</code></td><td>Synthetic log generator qua <code>logger</code> CLI (UDP 514 local) cho dev smoke</td></tr>
+        <tr><td><code>infra/scripts/setup-mock-logs.sh</code></td><td>Cài <code>mock-logs.service</code> systemd unit, enable + start</td></tr>
+        <tr><td><span class="mut">(client server)</span> <code>/etc/rsyslog.d/90-*.conf</code> · <code>91-*.conf</code></td><td>Vị trí drop-in trên client thực. Reload <code>systemctl restart rsyslog</code></td></tr>
+      </table>
+      <div class="reload">Verify trên client: <code>ss -tnp | grep ':6514\|:6515'</code> phải ESTAB · Validate config: <code>sudo rsyslogd -N1</code></div>
+    </div>
   </section>
 
   <!-- ④ VECTOR -->
@@ -289,8 +460,9 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}</pre>
       <div>
         <div class="h-title">Ports (public to LAN)</div>
         <table class="k mt-1">
-          <tr><td><code>:514/udp</code></td><td>syslog RFC3164 (mặc định rsyslog)</td></tr>
-          <tr><td><code>:6514/tcp</code></td><td>syslog RFC5424 TLS optional</td></tr>
+          <tr><td><code>:514/udp</code></td><td>syslog RFC3164 (mock-logs, fallback)</td></tr>
+          <tr><td><code>:6514/tcp</code></td><td>syslog RFC5424 — rsyslog Option A</td></tr>
+          <tr><td><code>:6515/tcp</code></td><td>ECS-lite JSON line-delimited — rsyslog Option B <span class="pill cyan ml-1">new</span></td></tr>
           <tr><td><code>127.0.0.1:8686</code></td><td>Vector API (debug)</td></tr>
         </table>
         <div class="h-title mt-3">Volumes</div>
@@ -302,19 +474,25 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}</pre>
       <div>
         <div class="h-title">Pipeline (vector.yaml)</div>
 <pre class="card2 p-2 mt-1">sources:
-  syslog_udp: {type: syslog, mode: udp, address: 0.0.0.0:514}
-  syslog_tcp: {type: syslog, mode: tcp, address: 0.0.0.0:6514}
+  syslog_udp:        {type: syslog, mode: udp, :514}
+  syslog_tcp:        {type: syslog, mode: tcp, :6514}
+  rsyslog_json_tcp:  {type: socket, mode: tcp, :6515,
+                      decoding: json,
+                      framing: newline_delimited}
 
 transforms:
-  parse: parse_syslog → enrich service/host
+  enrich:                  # syslog → flat schema
+    inputs: [syslog_udp, syslog_tcp]
+    .service/.host/.severity/._msg/._time
+  rsyslog_json_normalize:  # ECS-lite → flat schema (NEW)
+    inputs: [rsyslog_json_tcp]
+    whitelist @timestamp,host.name,log.level,
+              service.name,message,labels.*,trace.*
   to_warn: filter severity in [WARN,ERROR,CRIT]
 
 sinks:
-  victoria_logs:        # tất cả log
-    type: elasticsearch-compat → http://vl:9428
-  nats_warn:            # chỉ WARN+ cho semantic indexing
-    type: nats
-    subject: logs.warn</pre>
+  victoria_logs: → http://vl:9428  (raw 100%)
+  nats_warn:     → subject logs.warn  (filter)</pre>
       </div>
     </div>
     <div class="role">
@@ -325,11 +503,21 @@ sinks:
         <li><b>Nếu thiếu:</b> <b>không có log nào vào hệ thống</b>. Toàn bộ OneLog tê liệt. Vector là single point of failure → cần HA ở phase 04 (xem <code>docs/ha-roadmap.md</code>).</li>
       </ul>
       <div class="grid4">
+        <div class="b"><div class="t">3 sources</div><div class="x"><code>:514/udp</code> mock-logs · <code>:6514/tcp</code> rsyslog text (Opt A) · <code>:6515/tcp</code> rsyslog JSON ECS-lite (Opt B).</div></div>
         <div class="b"><div class="t">Fan-out</div><div class="x">Sink VL = raw 100%. Sink NATS = filter <code>severity in [WARN,ERROR,CRIT]</code> để tiết kiệm embedding cost.</div></div>
         <div class="b"><div class="t">Disk buffer</div><div class="x"><code>/var/lib/vector</code> buffer 256MB. VL/NATS down vẫn nhận syslog → replay khi up. Không mất line.</div></div>
-        <div class="b"><div class="t">Enrich</div><div class="x">VRL transform thêm field <code>service</code>, <code>host</code>, <code>severity</code> từ regex / hostname → schema VictoriaLogs đồng nhất.</div></div>
+        <div class="b"><div class="t">2 transforms</div><div class="x"><code>enrich</code> (syslog → flat) + <code>rsyslog_json_normalize</code> (ECS-lite → flat, whitelist top-level field, drop unknown).</div></div>
         <div class="b"><div class="t">Performance</div><div class="x">Rust async. Throughput ~50k lines/s trên 1 vCPU. RAM &lt;100MB ở lab.</div></div>
       </div>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/vector/vector.yaml</code></td><td>Pipeline duy nhất — sources (<code>syslog_udp</code>/<code>_tcp</code>/<code>rsyslog_json_tcp</code>) · transforms (<code>enrich</code>/<code>rsyslog_json_normalize</code>/<code>to_warn</code>) · sinks (VL/NATS)</td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>vector</code>)</span></td><td>Image pin v0.40 · port mapping 514/6514/6515/8686 · mount config + buffer · depends_on VL+NATS</td></tr>
+        <tr><td><code>plans/260624-1642-rsyslog-json-ingest/phase-01-vector-source-normalize.md</code></td><td>Context cho source <code>rsyslog_json_tcp</code> + transform <code>rsyslog_json_normalize</code> (whitelist field, anti schema-drift)</td></tr>
+      </table>
+      <div class="reload">Validate trước reload: <code>docker compose exec vector vector validate /etc/vector/vector.yaml</code> · Reload soft: <code>docker compose kill -s HUP vector</code> · API: <code>http://localhost:8686/playground</code></div>
     </div>
   </section>
 
@@ -382,6 +570,15 @@ durable:  indexer-v1  (consumer)</pre>
         <div class="b"><div class="t">Single node</div><div class="x">Lab 1 node đủ. Scale lên HA: thêm <code>-cluster</code> + 3 nodes, đổi RAFT (xem ha-roadmap).</div></div>
         <div class="b"><div class="t">Monitoring</div><div class="x"><code>:8222/healthz</code> + <code>/jsz</code> JSON stream stats để Prometheus scrape sau này.</div></div>
       </div>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>nats</code>)</span></td><td>Image · command <code>-js -sd=/data -m=8222</code> · volume <code>./data/nats</code> · healthcheck</td></tr>
+        <tr><td><code>indexer/src/indexer/nats_consumer.py</code></td><td>Stream/consumer bootstrap khi indexer start — tạo stream <code>LOGS</code> nếu chưa có, bind durable <code>indexer-v1</code></td></tr>
+        <tr><td><code>infra/vector/vector.yaml</code> <span class="mut">(sink <code>nats_warn</code>)</span></td><td>Publish side — subject <code>logs.warn</code>, filter <code>to_warn</code> upstream</td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart nats</code> · Inspect: <code>docker exec ragstack-nats nats stream ls</code> · Monitor: <code>http://localhost:8222/jsz</code></div>
     </div>
   </section>
 
@@ -443,6 +640,22 @@ DRAIN_STATE_DIR=/data/drain_state</pre>
       </div>
     </div>
     <div class="mt-3 mut text-[12px]">Profile <code>indexer</code> = opt-in: <code>docker compose --profile indexer up -d</code>. Tách profile để dev/lab có thể chạy stack base mà không tốn OpenAI quota.</div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>indexer/src/indexer/main.py</code></td><td>Entrypoint — wire NATS → drain3 → embed → Qdrant, expose <code>/metrics</code>+<code>/health</code></td></tr>
+        <tr><td><code>indexer/src/indexer/nats_consumer.py</code></td><td>JetStream subscribe <code>logs.warn</code>, batch 500 line / 30s, ack sau khi upsert</td></tr>
+        <tr><td><code>indexer/src/indexer/drain_cluster.py</code></td><td>Drain3 wrapper · persist state <code>/data/drain_state</code> · gom log line → template</td></tr>
+        <tr><td><code>indexer/src/indexer/embed_client.py</code></td><td>OpenAI embed client (text-embedding-3-small) + mock mode (<code>EMBED_MOCK=true</code> → hash vector)</td></tr>
+        <tr><td><code>indexer/src/indexer/qdrant_writer.py</code></td><td>Upsert vector + payload, update <code>count</code>/<code>last_seen</code> nếu template đã có</td></tr>
+        <tr><td><code>indexer/src/indexer/redact.py</code></td><td>Strip PII trước khi embed (email, IP, token)</td></tr>
+        <tr><td><code>indexer/src/indexer/metrics.py</code></td><td>Prometheus counters/histograms · <code>:9100/metrics</code></td></tr>
+        <tr><td><code>indexer/src/indexer/config.py</code></td><td>Pydantic settings — map toàn bộ env vars</td></tr>
+        <tr><td><code>indexer/Dockerfile</code></td><td>Build image · slim Python + uv</td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>indexer</code>)</span></td><td>Profile <code>indexer</code> · env mapping · depends_on NATS healthy + Qdrant</td></tr>
+      </table>
+      <div class="reload">Bring up: <code>docker compose --profile indexer up -d</code> · Logs: <code>docker compose logs -f indexer</code> · Health: <code>curl localhost:9100/health</code></div>
+    </div>
   </section>
 
   <!-- ⑦ MCP-SEMANTIC -->
@@ -498,6 +711,22 @@ AUDIT_LOG_PATH=/var/log/onelog-audit/mcp-semantic.log</pre>
         <div class="b"><div class="t">VMUI link</div><div class="x">Mỗi hit có <code>vmui_url</code> tự build từ <code>VMUI_BASE_URL</code> + LogsQL → click 1 phát ra raw line.</div></div>
       </div>
     </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/main.py</code></td><td>FastMCP app · tool <code>search_log_templates</code> · route <code>/auth/verify</code> cho Caddy forward_auth · serve qua <code>mcp.http_app()</code> (Streamable HTTP)</td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/auth.py</code></td><td>Parse <code>MCP_BEARER_TOKENS</code> table · <code>verify_bearer()</code> · token fingerprint cho audit</td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/audit.py</code></td><td>Async audit writer — file <code>/var/log/onelog-audit/mcp-semantic.log</code> + Postgres <code>audit_call</code></td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/embed.py</code></td><td>Wrap OpenAI embed; <code>EMBED_MOCK=true</code> = hash deterministic vector</td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/vmui.py</code></td><td><code>build_vmui_url(template, filters)</code> — sinh deeplink VMUI cho từng hit</td></tr>
+        <tr><td><code>mcp-semantic/src/mcp_semantic/config.py</code></td><td>Pydantic settings — map env vars</td></tr>
+        <tr><td><code>mcp-semantic/Dockerfile</code></td><td>Build image · expose :9000</td></tr>
+        <tr><td><code>infra/scripts/gen-mcp-tokens.sh</code></td><td>Sinh 5 token <code>sk-mcp-*</code> + export thành <code>MCP_BEARER_TOKENS=user1:sk-aaa,...</code></td></tr>
+        <tr><td><code>infra/scripts/smoke-mcp-phase01.sh</code></td><td>Smoke test: HTTP /auth/verify · /mcp/semantic/sse · gọi tool thử</td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>mcp-semantic</code>)</span></td><td>Build context · env (Qdrant URL, OPENAI key, BEARER tokens, VMUI base) · mount audit volume</td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart mcp-semantic</code> · Test auth: <code>curl -H 'Authorization: Bearer sk-mcp-...' http://localhost:9002/auth/verify</code></div>
+    </div>
   </section>
 
   <!-- ⑧ MCP-VL -->
@@ -546,6 +775,15 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <div class="b"><div class="t">Disable doc tool</div><div class="x">Tool <code>documentation</code> dump cả MD file → tốn context Claude. Tắt để giữ surface gọn.</div></div>
         <div class="b"><div class="t">Auth pass-through</div><div class="x">Caddy <code>forward_auth</code> verify Bearer trước, sau đó pass <code>X-User</code> vào mcp-vl → audit traceable.</div></div>
       </div>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>mcp-vl</code>)</span></td><td>Image pin <code>ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0</code> · env <code>VL_INSTANCE_ENTRYPOINT</code>, <code>MCP_SERVER_MODE=sse</code>, <code>MCP_LISTEN_ADDR=:8000</code>, <code>MCP_DISABLED_TOOLS=documentation</code></td></tr>
+        <tr><td><code>infra/caddy/Caddyfile</code></td><td>Route <code>/mcp/vl/*</code> → <code>mcp-vl:8000</code>, gắn <code>forward_auth</code> tới mcp-semantic</td></tr>
+        <tr><td><span class="mut">(upstream)</span> github.com/VictoriaMetrics/mcp-victorialogs</td><td>Source code chính chủ — không tự fork, chỉ pin version</td></tr>
+      </table>
+      <div class="reload">Reload: <code>docker compose restart mcp-vl</code> · Smoke: <code>curl -H 'Authorization: Bearer sk-mcp-...' http://app.local/mcp/vl/sse</code> phải streaming</div>
     </div>
   </section>
 
@@ -603,6 +841,15 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <div class="b"><div class="t">Static mockup</div><div class="x">Mount <code>./mockups</code> → <code>/srv/mockups</code> để preview HTML trực tiếp qua <code>http://app.local/mockups/*.html</code>.</div></div>
       </div>
     </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/caddy/Caddyfile</code></td><td>Single source of truth — site block <code>app.local</code>, IP allowlist, forward_auth, reverse_proxy routes, file_server cho mockup</td></tr>
+        <tr><td><code>infra/caddy/data/</code> · <code>infra/caddy/config/</code></td><td>Cert + state Caddy tự sinh (tls internal). KHÔNG commit — đã trong <code>.gitignore</code></td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>caddy</code>)</span></td><td>Image <code>caddy:2-alpine</code> · port 80/443 (public) · mount Caddyfile + data + config + mockups</td></tr>
+      </table>
+      <div class="reload">Validate: <code>docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile</code> · Reload soft: <code>docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile</code> (không restart container, giữ connection)</div>
+    </div>
   </section>
 
   <!-- ⑩ VMALERT -->
@@ -610,7 +857,7 @@ MCP_DISABLED_TOOLS=documentation</pre>
     <div class="svc-header">
       <div>
         <div class="text-lg font-semibold"><span class="num">10</span>vmalert <span class="pill vio ml-1">alerting</span> <span class="badge ml-1">profile=alerts</span></div>
-        <div class="mut text-xs mt-1">Evaluate LogsQL stats query → fire alert tới Alertmanager (vlogs datasource v1.96+)</div>
+        <div class="mut text-xs mt-1">Evaluate LogsQL stats query → fire alert tới Alertmanager · 2 group split instant (sub-1m) vs burst (5m trend)</div>
       </div>
       <span class="chip on">image: <code>victoriametrics/vmalert:latest</code></span>
     </div>
@@ -629,22 +876,36 @@ MCP_DISABLED_TOOLS=documentation</pre>
 -rule=/etc/vmalert/rules.yml
 -evaluationInterval=30s
 -rule.resendDelay=1m</pre>
-        <div class="mut text-[12px] mt-2">Rule type <code>vlogs</code> — vmalert tự append <code>/select/logsql/stats_query</code>. Vd rule: <code>nginx_5xx_rate &gt; 0.05 for 2m</code>.</div>
+        <div class="mut text-[12px] mt-2">Rule type <code>vlogs</code> — vmalert inject time window từ <code>interval</code>, expr LogsQL KHÔNG được chứa <code>_time:Nm</code>.</div>
       </div>
     </div>
     <div class="role">
       <h4>Tác dụng chi tiết</h4>
       <ul>
-        <li><b>Giải quyết:</b> ops không ngồi staring vào log 24/7. Cần <b>chủ động phát hiện</b> khi metric bất thường (vd nginx 5xx burst, mysql connection &gt;80%). vmalert <i>poll</i> VictoriaLogs theo rule LogsQL stats query mỗi 30s, vượt threshold → fire alert.</li>
+        <li><b>Giải quyết:</b> ops không stare log 24/7. Cần chủ động phát hiện anomaly (OOM, disk full, SSH brute, kernel err burst). vmalert poll VL theo LogsQL stats query, vượt threshold → fire.</li>
         <li><b>Vị trí:</b> chạy độc lập (profile <code>alerts</code>). Datasource = VictoriaLogs. Notifier = Alertmanager.</li>
-        <li><b>Nếu thiếu:</b> chuyển sang <i>reactive mode</i> — ops chỉ biết khi user complain. OK trong lab; production thì là gap nghiêm trọng.</li>
+        <li><b>Nếu thiếu:</b> reactive mode — chỉ biết khi user complain. Production gap nghiêm trọng.</li>
       </ul>
       <div class="grid4">
-        <div class="b"><div class="t">vlogs datasource</div><div class="x">vmalert v1.96+ hỗ trợ native VictoriaLogs (không cần promql adapter). Group rule <code>type: vlogs</code>.</div></div>
-        <div class="b"><div class="t">Evaluation</div><div class="x">30s interval đủ kịp pháp hiện burst &lt;1 phút. Resend delay 1m tránh spam Alertmanager.</div></div>
-        <div class="b"><div class="t">Rule examples</div><div class="x"><code>count(error) &gt; 100 for 2m</code> · <code>nginx 5xx rate &gt; 5%</code> · <code>mysql connection_count &gt; 140</code>.</div></div>
-        <div class="b"><div class="t">Opt-in</div><div class="x">Profile <code>alerts</code> — chỉ bật khi đã viết rules. Lab demo có thể bỏ qua.</div></div>
+        <div class="b"><div class="t">Group: instant</div><div class="x"><code>interval=30s</code> · <code>for=0s</code> · sub-1m latency. Event-style rules (ANY occurrence = actionable). Label <code>notify_style=event</code> → AM skip RESOLVED.</div></div>
+        <div class="b"><div class="t">Group: burst</div><div class="x"><code>interval=5m</code> · <code>for=1m</code> · trend rules cần đủ sample để confirm pattern (SSH brute, err burst, crashloop). 5–6m latency by design.</div></div>
+        <div class="b"><div class="t">Schema labels</div><div class="x">Mọi rule emit labels: <code>severity</code> (critical/warning) · <code>category</code> (capacity/security/audit/system/availability/database/app) · optional <code>notify_style</code> · <code>attacker_ip</code> (extracted).</div></div>
+        <div class="b"><div class="t">Threshold tuning</div><div class="x">Observe baseline 1 tuần → set <code>filter value:&gt;N</code> với <code>N = 2 × p95</code>. Tránh FP từ traffic spike normal.</div></div>
       </div>
+
+      <h4 class="mt-4">Rules hiện tại (12 rule, 2 group)</h4>
+      <table class="k mt-1 text-[12px]">
+        <tr><td class="mut" style="width:30%">log-alerts-instant (3 rule)</td><td><code>OomKillEvent</code> (kern oom-killer · severity=critical · category=capacity) · <code>DiskFullErrors</code> (ENOSPC · critical · capacity) · <code>NewUserOrSudoer</code> (auth useradd/usermod · warning · audit)</td></tr>
+        <tr><td class="mut">log-alerts-burst (9 rule)</td><td><code>SshBruteForce</code> per-host &gt;20/5m · <code>SshFailMultiHostSameIp</code> per-attacker &gt;10/5m (<i>extract <code>from &lt;attacker_ip&gt; port</code></i>) · <code>MysqlErrorBurst</code> &gt;30/5m · <code>AuditLoginFailures</code> &gt;10/5m · <code>NginxServerErrors</code> &gt;100/5m · <code>KernelErrorBurst</code> kern err &gt;5/5m · <code>SudoEscalation</code> &gt;10/5m · <code>SystemdServiceFailed</code> &gt;2/5m · <code>DbConnectionRefused</code> &gt;5/5m</td></tr>
+      </table>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/vmalert/rules.yml</code></td><td>2 group <code>log-alerts-instant</code> + <code>log-alerts-burst</code> · LogsQL stats expr · labels (severity/category/notify_style/attacker_ip)</td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>vmalert</code>, profile <code>alerts</code>)</span></td><td>Command flags <code>-datasource.url</code>, <code>-notifier.url</code>, <code>-evaluationInterval=30s</code> · mount rules.yml ro</td></tr>
+      </table>
+      <div class="reload">Reload rules: <code>curl -X POST http://localhost:8880/-/reload</code> · UI: <code>http://localhost:8880</code> (list rules, trạng thái firing/pending)</div>
     </div>
   </section>
 
@@ -653,7 +914,7 @@ MCP_DISABLED_TOOLS=documentation</pre>
     <div class="svc-header">
       <div>
         <div class="text-lg font-semibold"><span class="num">11</span>alertmanager <span class="pill vio ml-1">alerting</span> <span class="badge ml-1">profile=alerts</span></div>
-        <div class="mut text-xs mt-1">Dedupe / group / route alert tới webhook (Slack / Telegram / agent — tuỳ cấu hình)</div>
+        <div class="mut text-xs mt-1">Dedupe / group / route alert → Telegram Bot API · split route theo <code>notify_style</code> (event vs trend)</div>
       </div>
       <span class="chip on">image: <code>prom/alertmanager:latest</code></span>
     </div>
@@ -664,32 +925,59 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <table class="k mt-1"><tr><td><code>127.0.0.1:9093</code></td><td>UI + API</td></tr></table>
         <div class="h-title mt-3">Volumes</div>
         <table class="k mt-1">
-          <tr><td><code>./alertmanager/alertmanager.yml</code></td><td>config</td></tr>
+          <tr><td><code>./alertmanager/alertmanager.yml</code></td><td>config (placeholder template)</td></tr>
           <tr><td><code>./data/alertmanager</code></td><td>silence + nflog state</td></tr>
         </table>
+        <div class="h-title mt-3">Env / entrypoint</div>
+<pre class="card2 p-2 mt-1 text-[11px]">user: "0:0"
+env: TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (.env)
+entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
+  -e s|__CHAT__|$CHAT|g /etc/alertmanager.yml \
+  &gt; /tmp/am.yml; exec /bin/alertmanager \
+  --config.file=/tmp/am.yml --storage.path=/data'</pre>
+        <div class="mut text-[11px] mt-1">AM v0.27+ KHÔNG expand env vars trong YAML → sed entrypoint substitute placeholder <code>__TELEGRAM_BOT_TOKEN__</code> / <code>__TELEGRAM_CHAT_ID__</code> trước khi start.</div>
       </div>
       <div>
-        <div class="h-title">Lưu ý sau MCP-only</div>
-        <ul class="text-sm mt-1 space-y-1.5 mut">
-          <li>• Trước đây receiver mặc định trỏ vào <code>rag-agent</code> webhook (đã decom)</li>
-          <li>• Hiện tại: chuyển sang Slack/Telegram webhook trực tiếp, hoặc tạm tắt profile <code>alerts</code> cho tới phase 03</li>
-          <li>• Khi resurrect rag-agent thì revert receiver</li>
+        <div class="h-title">Route tree</div>
+<pre class="card2 p-2 mt-1 text-[11px]">route:
+  receiver: telegram-trend   # default
+  group_by: [alertname, host]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 15m
+  routes:
+    - matchers: [notify_style="event"]
+      receiver: telegram-event</pre>
+        <div class="h-title mt-3">Receivers (2)</div>
+        <ul class="text-sm mt-1 space-y-1 mut">
+          <li>• <code>telegram-trend</code> — <b>send_resolved: true</b> (burst rules cần biết khi anomaly hết)</li>
+          <li>• <code>telegram-event</code> — <b>send_resolved: false</b> (event-style đã xảy ra, RESOLVED chỉ noise)</li>
+          <li>• Cùng <code>message</code> template HTML qua YAML anchor <code>&amp;telegram_message_template</code>: emoji severity, host + host_ip, attacker_ip (nếu có), VMUI investigate hint</li>
         </ul>
       </div>
     </div>
     <div class="role">
       <h4>Tác dụng chi tiết</h4>
       <ul>
-        <li><b>Giải quyết:</b> vmalert chỉ <i>fire alert</i>; cần ai đó lo <b>dedupe</b> (1 incident fire 100 lần → 1 noti), <b>grouping</b> (gom alert cùng cluster), <b>routing</b> (severity=critical → on-call, info → channel chung), <b>silencing</b> (tạm tắt khi maintenance). Đó là job Alertmanager.</li>
-        <li><b>Vị trí:</b> nhận từ vmalert · gửi ra Slack/Telegram/email/webhook. Stateless cho ops (chỉ silence là cần lưu).</li>
-        <li><b>Nếu thiếu:</b> mỗi rule fire thẳng Slack → spam. Không silence được trong window maintenance.</li>
+        <li><b>Giải quyết:</b> vmalert chỉ fire; AM lo <b>dedupe</b> (1 incident → 1 noti), <b>grouping</b> theo <code>alertname+host</code>, <b>routing</b> theo label <code>notify_style</code>, <b>silencing</b> trong maintenance.</li>
+        <li><b>Vị trí:</b> nhận webhook từ vmalert (port 9093) → render Go template → POST Telegram Bot API. Stateless trừ silence + nflog.</li>
+        <li><b>Nếu thiếu:</b> mỗi rule fire trực tiếp → spam Telegram. Không silence được, không group được host cluster.</li>
       </ul>
       <div class="grid4">
-        <div class="b"><div class="t">Dedupe</div><div class="x">Cùng label set <i>và</i> chưa resolved → gộp thành 1 notification. Tiết kiệm noi.</div></div>
-        <div class="b"><div class="t">Routing tree</div><div class="x">YAML config: <code>match { severity=critical } → receiver: oncall</code>. Mặc định → channel ops chung.</div></div>
-        <div class="b"><div class="t">Silence UI</div><div class="x"><code>:9093</code> có UI tạo silence theo matcher. Ops maintenance click vài lần là xong.</div></div>
-        <div class="b"><div class="t">nflog state</div><div class="x">Persistent ở <code>./data/alertmanager</code> để biết alert nào đã noti, tránh re-send sau restart.</div></div>
+        <div class="b"><div class="t">Split route</div><div class="x">Event rules (Oom/DiskFull/NewSudoer) skip RESOLVED — vì "không có thêm trong 5m" KHÔNG đồng nghĩa "đã fix".</div></div>
+        <div class="b"><div class="t">Group + repeat</div><div class="x"><code>group_wait=10s</code> chờ gom alert burst · <code>repeat_interval=15m</code> resend nếu vẫn firing · <code>resolve_timeout=5m</code>.</div></div>
+        <div class="b"><div class="t">Telegram template</div><div class="x">HTML parse_mode · 🔥 FIRING / ✅ RESOLVED header · per-alert: 🔴/⚠️/ℹ️ severity · <code>attacker_ip</code> highlight · VMUI query hint <code>host:{{host}}</code>.</div></div>
+        <div class="b"><div class="t">Silence UI</div><div class="x"><code>:9093</code> UI tạo silence theo matcher. Maintenance click vài lần xong.</div></div>
       </div>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/alertmanager/alertmanager.yml</code></td><td>route tree (default + matcher <code>notify_style=event</code>) · 2 receivers <code>telegram-trend</code>/<code>telegram-event</code> · YAML anchor template · placeholder <code>__TELEGRAM_*__</code></td></tr>
+        <tr><td><code>infra/.env</code></td><td><code>TELEGRAM_BOT_TOKEN</code> · <code>TELEGRAM_ALERT_CHAT_ID</code> (legacy name giữ nguyên)</td></tr>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>alertmanager</code>, profile <code>alerts</code>)</span></td><td><code>user: "0:0"</code> · env mapping · sed entrypoint substitute token · mount config ro · volume <code>./data/alertmanager</code></td></tr>
+      </table>
+      <div class="reload">Reload: <code>curl -X POST http://localhost:9093/-/reload</code> · UI: <code>http://localhost:9093</code> (active alerts, silences)</div>
     </div>
   </section>
 
@@ -770,14 +1058,15 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <tr><td><span class="pill lime">victorialogs</span></td><td>—</td><td>vector (write) · mcp-vl · vmalert</td></tr>
         <tr><td><span class="pill lime">qdrant</span></td><td>—</td><td>indexer (write) · mcp-semantic (read)</td></tr>
         <tr><td><span class="pill lime">postgres</span></td><td>—</td><td>mcp-semantic (audit) — token table sau phase 03</td></tr>
-        <tr><td><span class="pill amber">vector</span></td><td>victorialogs · nats</td><td>app log của srv-01/02</td></tr>
+        <tr><td><span class="pill amber">rsyslog (client)</span></td><td>—</td><td>vector (push TCP 6514/6515)</td></tr>
+        <tr><td><span class="pill amber">vector</span></td><td>victorialogs · nats</td><td>rsyslog clients (srv-01/02 + tương lai) · mock-logs</td></tr>
         <tr><td><span class="pill cyan">nats</span></td><td>—</td><td>vector (publish) · indexer (consume)</td></tr>
         <tr><td><span class="pill cyan">indexer</span></td><td>nats (healthy) · qdrant</td><td>—</td></tr>
         <tr><td><span class="pill vio">mcp-semantic</span></td><td>qdrant · postgres · OpenAI API</td><td>Claude Desktop (qua caddy) · caddy forward_auth</td></tr>
         <tr><td><span class="pill cyan">mcp-vl</span></td><td>victorialogs</td><td>Claude Desktop (qua caddy)</td></tr>
         <tr><td><span class="pill amber">caddy</span></td><td>mcp-vl · mcp-semantic</td><td>5 ops laptop</td></tr>
         <tr><td><span class="pill vio">vmalert</span></td><td>victorialogs · alertmanager</td><td>—</td></tr>
-        <tr><td><span class="pill vio">alertmanager</span></td><td>—</td><td>vmalert (notify) → external webhook</td></tr>
+        <tr><td><span class="pill vio">alertmanager</span></td><td>—</td><td>vmalert (notify) → Telegram Bot API (2 receivers: trend/event)</td></tr>
       </tbody>
     </table>
   </section>
@@ -801,6 +1090,45 @@ docker compose down
 docker compose down -v && rm -rf infra/data/*</pre>
   </section>
 
+  <!-- INFRA SCRIPTS -->
+  <section class="mt-6 card p-5">
+    <div class="h-title">Infra scripts <span class="mut text-[10px] ml-2">(<code>infra/scripts/</code>)</span></div>
+    <table class="k mt-2">
+      <thead><tr><th>Script</th><th>Chức năng</th><th>Khi nào chạy</th></tr></thead>
+      <tbody>
+        <tr><td><code>setup-log-server.sh</code></td><td>One-shot bootstrap logserver: Docker, UFW, NTP, tuning kernel, clone repo, <code>docker compose up</code></td><td>Lần đầu deploy VM 192.168.122.53</td></tr>
+        <tr><td><code>setup-rsyslog-client.sh</code></td><td>Cài rsyslog forward conf trên client (chọn Opt A hoặc B), sed IP, restart rsyslog, smoke <code>ss</code></td><td>Mỗi client VM mới</td></tr>
+        <tr><td><code>setup-mock-logs.sh</code></td><td>Cài <code>mock-logs.service</code> systemd unit cho dev/smoke</td><td>Lab không có client thực</td></tr>
+        <tr><td><code>install-systemd-unit.sh</code></td><td>Generic helper để cài unit file vào <code>/etc/systemd/system/</code></td><td>Wrap bởi 2 script trên</td></tr>
+        <tr><td><code>gen-mcp-tokens.sh</code></td><td>Sinh 5 token Bearer <code>sk-mcp-*</code> → in ra format <code>MCP_BEARER_TOKENS=user1:sk-...</code></td><td>Phát hành onboard 5 ops</td></tr>
+        <tr><td><code>smoke-mcp-phase01.sh</code></td><td>End-to-end test: auth, /mcp/vl/sse, /mcp/semantic/sse, tool call mẫu</td><td>Sau deploy / sau update MCP</td></tr>
+        <tr><td><code>healthcheck.sh</code></td><td>Loop curl health từng service · in PASS/FAIL · exit code</td><td>Cron 5 phút · CI smoke</td></tr>
+        <tr><td><code>snapshot-daily.sh</code></td><td>Backup VL <code>/snapshot/create</code> + dump Postgres → tar về <code>data/snapshots/</code></td><td>Cron 02:00</td></tr>
+        <tr><td><code>restore-snapshot.sh</code></td><td>Khôi phục từ snapshot tar — stop stack, replace data, start lại</td><td>Khi crash data dir</td></tr>
+        <tr><td><code>resurrect-drill.sh</code></td><td>Bật lại web+agent stack từ legacy: uncomment compose block, set env, up, smoke <code>/chat</code></td><td>Quarterly drill để đảm bảo legacy còn boot được</td></tr>
+        <tr><td><code>soak-check.sh</code></td><td>Sanity 5p liên tục: VL ingest rate, NATS pending, Qdrant count, MCP latency</td><td>Sau phase rollout lớn</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- RELOAD CHEATSHEET -->
+  <section class="mt-6 card p-5">
+    <div class="h-title">Reload / restart cheatsheet</div>
+    <table class="k mt-2">
+      <thead><tr><th>Mục đích</th><th>Lệnh</th><th>Lưu ý</th></tr></thead>
+      <tbody>
+        <tr><td>Reload toàn stack (kéo image mới)</td><td><code>docker compose pull &amp;&amp; docker compose up -d</code></td><td>Recreate container có image mới, giữ data volume</td></tr>
+        <tr><td>Restart 1 service</td><td><code>docker compose restart &lt;svc&gt;</code></td><td>Áp dụng env mới · NHƯNG không re-read Dockerfile</td></tr>
+        <tr><td>Rebuild image local (mcp-semantic, indexer)</td><td><code>docker compose build &lt;svc&gt; &amp;&amp; docker compose up -d &lt;svc&gt;</code></td><td>Sau sửa code Python</td></tr>
+        <tr><td>Caddy reload soft (giữ connection)</td><td><code>docker compose exec caddy caddy reload</code></td><td>Cấu hình route mới · token mới</td></tr>
+        <tr><td>Vector validate trước reload</td><td><code>docker compose exec vector vector validate /etc/vector/vector.yaml</code></td><td>VRL syntax error sẽ báo trước</td></tr>
+        <tr><td>vmalert / alertmanager reload rules</td><td><code>curl -X POST :8880/-/reload</code> · <code>:9093/-/reload</code></td><td>Không restart, chỉ re-read file</td></tr>
+        <tr><td>Tear down giữ data</td><td><code>docker compose down</code></td><td>Data còn ở <code>infra/data/*</code></td></tr>
+        <tr><td><span class="err">Tear down xoá data (cẩn thận)</span></td><td><code>docker compose down -v &amp;&amp; rm -rf infra/data/*</code></td><td>Mất hết log + audit + qdrant</td></tr>
+      </tbody>
+    </table>
+  </section>
+
   <footer class="mt-8 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
     <span>OneLog · services detail · sync with <code>infra/docker-compose.yml</code> @ 2026-06-24</span>
     <span>Xem kèm: <a class="acc" href="onelog-system-explainer.html">onelog-system-explainer.html</a></span>
@@ -809,7 +1137,7 @@ docker compose down -v && rm -rf infra/data/*</pre>
 
 <script>
   // sticky nav highlight
-  const links=[...document.querySelectorAll('nav.sticky a')];
+  const links=[...document.querySelectorAll('nav.svc-nav a')];
   const map=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
   const io=new IntersectionObserver(es=>{
     es.forEach(e=>{

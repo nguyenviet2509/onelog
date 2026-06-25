@@ -39,16 +39,21 @@ transforms:
     type: remap
     inputs: [syslog_udp, syslog_tcp]
     source: |
-      # Normalize fields for VictoriaLogs
-      .service = .appname || "unknown"
+      # Normalize syslog UDP/TCP → flat OneLog schema (unified with JSON path).
+      .host = .hostname || "unknown"
+      .host_ip = .source_ip || ""
       .severity = .severity || "info"
-      .host = .hostname || .source_ip || "unknown"
+      .facility = .facility || ""
+      .service = .appname || "unknown"
       ._msg = .message
       ._time = .timestamp
-      # Drop verbose fields
+      # Drop verbose / duplicate fields so VL doesn't store them twice.
       del(.appname)
       del(.hostname)
-      del(.facility)
+      del(.source_ip)
+      del(.source_type)
+      del(.message)
+      del(.timestamp)
       del(.version)
       del(.procid)
 

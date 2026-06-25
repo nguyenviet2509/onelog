@@ -149,6 +149,10 @@ services:
       - "-evaluationInterval=30s"
       - "-rule.resendDelay=1m"
       - "-httpListenAddr=:8880"
+      # GeneratorURL base — used in Alertmanager template "Rule" link so ops
+      # jump straight to the firing rule page. Default assumes SSH tunnel /
+      # local access; override via VMALERT_EXTERNAL_URL for VPN / public host.
+      - "-external.url=${VMALERT_EXTERNAL_URL:-http://localhost:8880}"
     ports:
       - "127.0.0.1:8880:8880"
     volumes:
@@ -171,6 +175,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Re-use existing .env convention (was set up for the decommissioned agent).
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      # Render .StartsAt.Local / .EndsAt.Local as Vietnam time (UTC+7) in template.
+      TZ: Asia/Ho_Chi_Minh
     entrypoint: ["/bin/sh"]
     command:
       - "-c"

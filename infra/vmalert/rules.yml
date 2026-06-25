@@ -55,3 +55,44 @@ groups:
         annotations:
           summary: "Nginx 5xx burst on {{ $labels.host }}"
           description: "{{ $value }} nginx err events in last 5m on {{ $labels.host }}"
+
+      # ───── Forensic rules (schema-driven: facility + host_ip) ─────────────
+      # Thresholds tuned for the 5m group window — scale down vs 15m original
+      # design (rules.yml-design 2026-06-25). Re-tune after 1-week baseline soak.
+
+      # 1 source IP fail SSH across cluster = coordinated brute force.
+      # Per-host rule (SshBruteForce above) cannot detect when attacker spreads
+      # attempts across hosts to stay under per-host threshold.
+      - alert: SshFailMultiHostSameIp
+        expr: 'facility:auth "Failed password" | stats by (host_ip) count() as value | filter value:>10'
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "SSH brute force from {{ $labels.host_ip }}"
+          description: "{{ $value }} failed SSH attempts in 5m from source IP {{ $labels.host_ip }} across cluster"
+
+      # Kernel-level errors = hardware/driver/disk fail. Catch early before
+      # silent data loss. facility:kern was dropped pre-schema-unify, now queryable.
+      - alert: KernelErrorBurst
+        expr: 'facility:kern severity:err | stats by (host) count() as value | filter value:>5'
+        for: 1m
+        labels:
+          severity: critical
+          category: system
+        annotations:
+          summary: "Kernel errors on {{ $labels.host }}"
+          description: "{{ $value }} kern err events in 5m on {{ $labels.host }} — check dmesg / hardware"
+
+      # Sudo activity spike — audit insider threat / compromised account.
+      # Matches both `sudo: ... COMMAND=...` (executed) and pam_unix sudo session.
+      - alert: SudoEscalation
+        expr: 'facility:auth _msg:"sudo:" _msg:"COMMAND=" | stats by (host) count() as value | filter value:>10'
+        for: 1m
+        labels:
+          severity: warning
+          category: audit
+        annotations:
+          summary: "Elevated sudo activity on {{ $labels.host }}"
+          description: "{{ $value }} sudo commands executed in 5m on {{ $labels.host }}"

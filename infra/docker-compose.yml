@@ -71,6 +71,7 @@ services:
     ports:
       - "514:514/udp"           # syslog UDP (RFC3164) from servers
       - "6514:6514/tcp"         # syslog TCP (RFC5424) optional
+      - "6515:6515/tcp"         # rsyslog JSON line-delimited (ECS-lite) — IP whitelist via firewall
       - "127.0.0.1:8686:8686"   # Vector API
     volumes:
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro

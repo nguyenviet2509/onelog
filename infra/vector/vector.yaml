@@ -18,6 +18,19 @@ sources:
     address: 0.0.0.0:6514
     mode: tcp
 
+  # rsyslog JSON line-delimited (ECS-lite schema) — for clients with existing
+  # rsyslog omfwd JSON pipelines (e.g. forwarding to ELK/SIEM). Plain TCP, IP
+  # whitelist enforced at firewall layer. TLS roadmap = separate plan.
+  rsyslog_json_tcp:
+    type: socket
+    mode: tcp
+    address: 0.0.0.0:6515
+    decoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    connection_limit: 1024
+
 transforms:
   enrich:
     type: remap
@@ -36,13 +49,46 @@ transforms:
       del(.version)
       del(.procid)
 
+  # Map ECS-lite JSON input → flat OneLog schema (_time/host/severity/service/_msg).
+  # Whitelist top-level fields = drop unknown keys → guards against schema drift.
+  # Optional pass-through: labels.*, trace.* (preserve nested objects).
+  rsyslog_json_normalize:
+    type: remap
+    inputs: [rsyslog_json_tcp]
+    source: |
+      # Capture optional pass-through before we rebuild `.`
+      labels = .labels ?? null
+      trace = .trace ?? null
+
+      # Extract with safe fallbacks (nested ECS-lite OR flat)
+      ts_raw = .@timestamp ?? .timestamp ?? null
+      host_str = .host.name ?? .host ?? "unknown"
+      level_str = .log.level ?? .severity ?? "info"
+      svc_str = .service.name ?? .service ?? "unknown"
+      msg_str = .message ?? .msg ?? ""
+
+      # Parse timestamp; fall back to ingest time if malformed/missing.
+      parsed_ts, err = to_timestamp(ts_raw)
+      if err != null { parsed_ts = now() }
+
+      # Rebuild event = drop every unknown top-level key.
+      . = {
+        "_time": parsed_ts,
+        "host": to_string(host_str) ?? "unknown",
+        "severity": downcase(to_string(level_str) ?? "info") ?? "info",
+        "service": to_string(svc_str) ?? "unknown",
+        "_msg": to_string(msg_str) ?? "",
+      }
+      if labels != null { .labels = labels }
+      if trace != null { .trace = trace }
+
   redact:
     # PII/secret redaction BEFORE log lands in VictoriaLogs
     # Anything downstream (MCP tools, indexer, agent) reads safe data.
     # Null-safe: nếu _msg thiếu (rare edge case từ syslog parser), fallback ""
     # để VRL không panic + drop event.
     type: remap
-    inputs: [enrich]
+    inputs: [enrich, rsyslog_json_normalize]
     source: |
       msg = string(._msg) ?? ""
       # Email

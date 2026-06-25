@@ -1,0 +1,13 @@
+name: onelog-rsyslog-e2e
+
+services:
+  rsyslog-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.rsyslog-client
+    container_name: onelog-e2e-rsyslog-client
+    # host network = container can reach OneLog Vector on host:6515 directly.
+    # Linux only. On Docker Desktop Windows/macOS, change to bridge + map ports
+    # + edit rsyslog.conf target to host.docker.internal.
+    network_mode: host
+    restart: "no"

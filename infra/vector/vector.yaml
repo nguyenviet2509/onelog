@@ -52,32 +52,38 @@ transforms:
   # Map ECS-lite JSON input → flat OneLog schema (_time/host/severity/service/_msg).
   # Whitelist top-level fields = drop unknown keys → guards against schema drift.
   # Optional pass-through: labels.*, trace.* (preserve nested objects).
+  # VRL note: path access (.foo) is infallible — never wrap with `??`. Use
+  # `string()` (fallible cast) for type-safe coercion that justifies `??`.
   rsyslog_json_normalize:
     type: remap
     inputs: [rsyslog_json_tcp]
     source: |
-      # Capture optional pass-through before we rebuild `.`
-      labels = .labels ?? null
-      trace = .trace ?? null
+      # Capture optional pass-through before we rebuild `.` (path = infallible).
+      labels = .labels
+      trace = .trace
 
-      # Extract with safe fallbacks (nested ECS-lite OR flat)
-      ts_raw = .@timestamp ?? .timestamp ?? null
-      host_str = .host.name ?? .host ?? "unknown"
-      level_str = .log.level ?? .severity ?? "info"
-      svc_str = .service.name ?? .service ?? "unknown"
-      msg_str = .message ?? .msg ?? ""
+      # Type-safe extraction. string() is fallible on null/non-string → ?? chain OK.
+      ts_str = string(.@timestamp) ?? string(.timestamp) ?? ""
+      host = string(.host.name) ?? string(.host) ?? "unknown"
+      level = string(.log.level) ?? string(.severity) ?? "info"
+      service = string(.service.name) ?? string(.service) ?? "unknown"
+      msg = string(.message) ?? string(.msg) ?? ""
 
-      # Parse timestamp; fall back to ingest time if malformed/missing.
-      parsed_ts, err = to_timestamp(ts_raw)
+      # Parse timestamp; fall back to ingest time if malformed/empty.
+      parsed_ts, err = to_timestamp(ts_str)
       if err != null { parsed_ts = now() }
+
+      # Downcase severity (input is string after extraction; downcase is fallible
+      # only for non-string inputs → keep `?? "info"` as final guard).
+      severity_lc = downcase(level) ?? "info"
 
       # Rebuild event = drop every unknown top-level key.
       . = {
         "_time": parsed_ts,
-        "host": to_string(host_str) ?? "unknown",
-        "severity": downcase(to_string(level_str) ?? "info") ?? "info",
-        "service": to_string(svc_str) ?? "unknown",
-        "_msg": to_string(msg_str) ?? "",
+        "host": host,
+        "severity": severity_lc,
+        "service": service,
+        "_msg": msg,
       }
       if labels != null { .labels = labels }
       if trace != null { .trace = trace }

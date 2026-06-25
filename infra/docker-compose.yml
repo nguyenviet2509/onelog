@@ -190,6 +190,10 @@ services:
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./data/alertmanager:/data
+      # Mount host tzdata so Go runtime can resolve Asia/Ho_Chi_Minh (TZ env
+      # alone is insufficient — distroless image lacks /usr/share/zoneinfo).
+      # Skip /etc/localtime mount (host may be UTC) — rely on TZ env instead.
+      - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
 
   # ────────────────────────────────────────────────────────────────────────
   # DECOMMISSIONED 2026-06-24 — MCP-only rollout (Phase 02)

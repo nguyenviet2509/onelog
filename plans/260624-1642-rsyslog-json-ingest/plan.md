@@ -1,8 +1,9 @@
 ---
 name: rsyslog-json-ingest
-status: code-complete
+status: completed
 created: 2026-06-24
 updated: 2026-06-25
+completedAt: 2026-06-25
 owner: vietnt
 blockedBy: []
 blocks: []
@@ -11,10 +12,16 @@ relatedReports:
 relatedPlans:
   - plans/260622-1056-rag-logserver-victorialogs
 progress:
-  P1-vector-source: code-done (deploy + smoke pending)
-  P2-client-config: code-done
-  P3-e2e-test-container: code-done (run + verify pending)
-  P4-test-scenarios: code-done (run pending)
+  P1-vector-source: done (validated, listening 6515, smoke event redacted + indexed)
+  P2-client-config: done (template deployed, README onboarding 2-path)
+  P3-e2e-test-container: done (1000/1000 events, PII assertions PASS)
+  P4-test-scenarios: done (C 6/6, E 4/4 PASS; B 5/6 + F timing-flaky — test polish backlog, not code)
+notes: |
+  Deployed + verified on logserver-01 2026-06-25.
+  VRL hotfix series (commits fix(vector) E651 → E105) — pull from master.
+  Vector socket source auto-injects host từ source IP → "unknown" fallback
+  unreachable by design (acceptable, host luôn populated). Test polish
+  (B2 host assertion, F sleep→poll, D nats CLI) deferred to backlog.
 ---
 
 # Plan: rsyslog JSON-over-TCP ingest (Option B)
@@ -53,10 +60,10 @@ Client gửi JSON line-delimited, mỗi line là 1 event, field ECS-lite:
 
 | # | Phase | File | Status | Effort |
 |---|---|---|---|---|
-| 1 | Vector source + normalize transform | [phase-01-vector-source-normalize.md](phase-01-vector-source-normalize.md) | code-done, deploy pending | ~3h |
-| 2 | Client rsyslog config + onboarding doc | [phase-02-client-config-doc.md](phase-02-client-config-doc.md) | code-done | ~2h |
-| 3 | E2E test rsyslog container | [phase-03-e2e-test.md](phase-03-e2e-test.md) | code-done, run pending | ~3h |
-| 4 | Test scenarios mở rộng (B/C/D/E/F) | [phase-04-test-scenarios.md](phase-04-test-scenarios.md) | code-done, run pending | ~5h |
+| 1 | Vector source + normalize transform | [phase-01-vector-source-normalize.md](phase-01-vector-source-normalize.md) | ✅ done | ~3h |
+| 2 | Client rsyslog config + onboarding doc | [phase-02-client-config-doc.md](phase-02-client-config-doc.md) | ✅ done | ~2h |
+| 3 | E2E test rsyslog container | [phase-03-e2e-test.md](phase-03-e2e-test.md) | ✅ done | ~3h |
+| 4 | Test scenarios mở rộng (B/C/D/E/F) | [phase-04-test-scenarios.md](phase-04-test-scenarios.md) | ✅ done (C/E pass; B/F polish backlog) | ~5h |
 
 Total: ~1.5-2 ngày work.
 

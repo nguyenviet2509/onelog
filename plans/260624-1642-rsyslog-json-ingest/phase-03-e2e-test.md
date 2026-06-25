@@ -76,11 +76,11 @@ echo "OK all assertions passed"
 
 ## Todo
 - [x] Tạo `tests/rsyslog-e2e/` directory + files (Dockerfile, rsyslog.conf, compose, generate, verify, README)
-- [ ] Chạy `docker compose -f tests/rsyslog-e2e/docker-compose.test.yml up -d --build`
-- [ ] Chạy `bash tests/rsyslog-e2e/generate-events.sh`
-- [ ] Chạy `bash tests/rsyslog-e2e/verify.sh`
-- [ ] Verify NATS branch: `nats sub 'logs.warn'` thấy event WARN với email đã masked
-- [ ] Cleanup: `docker compose -f tests/rsyslog-e2e/docker-compose.test.yml down`
+- [x] Chạy `docker compose -f tests/rsyslog-e2e/docker-compose.test.yml up -d --build`
+- [x] Chạy `bash tests/rsyslog-e2e/generate-events.sh` (1000 events sent)
+- [x] Chạy `bash tests/rsyslog-e2e/verify.sh` — all assertions PASS
+- [ ] Verify NATS branch via `nats sub` — deferred (nats CLI chưa cài trên logserver)
+- [ ] Cleanup compose down — deferred (container vẫn dùng cho P4 polish backlog)
 
 ## Success criteria
 - `verify.sh` exit 0.

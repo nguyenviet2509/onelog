@@ -79,8 +79,15 @@ curl 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=service
 - [x] Thêm transform `rsyslog_json_normalize`
 - [x] Sửa `redact.inputs` thêm normalize
 - [x] Expose port 6515 trong docker-compose
-- [ ] Reload vector + verify listener (deploy step — pending)
-- [ ] Test inject 1 JSON event → VL query thấy (smoke — pending)
+- [x] Reload vector + verify listener (0.0.0.0:6515 LISTEN confirmed)
+- [x] Test inject 1 JSON event → VL query thấy (PII redacted, ECS-lite mapped)
+
+## Hotfixes applied during deploy
+- VRL E651: `.foo ?? bar` → `string(.foo) ?? ...` (path access is infallible).
+- VRL E105: `to_timestamp()` → `parse_timestamp(value, format: "%+")`
+  (Vector 0.40 build does not accept string in `to_timestamp`).
+- VRL E651 #2: removed trailing `?? "info"` after `downcase(level)` (level is
+  typed string after `string()` chain → downcase infallible).
 
 ## Success criteria
 - `docker logs vector` không có error sau reload.

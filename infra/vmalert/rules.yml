@@ -1,21 +1,68 @@
-# vmalert rule group — LogsQL stats expressions evaluated against VictoriaLogs.
+# vmalert rule groups — LogsQL stats expressions against VictoriaLogs.
 #
-# `type: vlogs` tells vmalert this group's `expr` is LogsQL (not MetricsQL),
-# and to hit VL's `/select/logsql/stats_query` endpoint instead of metrics.
-# vmalert injects the time window from `interval`, so `_time:Nm` MUST NOT
-# appear in expr.
+# `type: vlogs` tells vmalert the `expr` is LogsQL; vmalert injects the time
+# window from `interval` so `_time:Nm` MUST NOT appear in expr.
+#
+# Two groups split by latency vs detection-style trade-off:
+#   • log-alerts-instant (interval=30s, for=0s): single-event rules where ANY
+#     occurrence is actionable (OOM, disk full, new sudoer). Threshold mostly >0.
+#     Sub-1m latency. Alertmanager group_by + repeat_interval=1h prevents spam.
+#   • log-alerts-burst   (interval=5m,  for=1m): trend/threshold rules needing
+#     enough samples to distinguish signal from noise (SSH brute force, conn
+#     refused spikes, crashloop). 5-6m latency by design.
+#
+# Threshold tuning protocol: observe baseline 1 week, set threshold = 2 × p95.
 
 groups:
-  - name: log-alerts
+  # ─────────────────────────────────────────────────────────────────────────
+  # INSTANT — sub-1m latency, threshold >0 / fire on first occurrence
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: log-alerts-instant
+    type: vlogs
+    interval: 30s
+    rules:
+      # Kernel OOM-killer fired = process killed for memory pressure. Every
+      # event = real incident, no waiting.
+      - alert: OomKillEvent
+        expr: 'facility:kern (_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host) count() as value | filter value:>0'
+        for: 0s
+        labels:
+          severity: critical
+          category: capacity
+        annotations:
+          summary: "OOM-killer fired on {{ $labels.host }}"
+          description: "Kernel OOM-kill event on {{ $labels.host }} — check process list / cgroup limits"
+
+      # Disk full event surfaces từ app stderr. First ENOSPC = đã broken.
+      - alert: DiskFullErrors
+        expr: '(_msg:"No space left" OR _msg:"ENOSPC" OR _msg:"disk full") | stats by (host) count() as value | filter value:>0'
+        for: 0s
+        labels:
+          severity: critical
+          category: capacity
+        annotations:
+          summary: "Disk-full error on {{ $labels.host }}"
+          description: "ENOSPC / disk-full event on {{ $labels.host }} — investigate / df -h"
+
+      # User creation / sudoer modification = audit event, rare and high-signal.
+      - alert: NewUserOrSudoer
+        expr: 'facility:auth (_msg:"new user:" OR _msg:"useradd" OR _msg:"usermod" OR _msg:"new group:" OR _msg:"groupadd") | stats by (host) count() as value | filter value:>0'
+        for: 0s
+        labels:
+          severity: warning
+          category: audit
+        annotations:
+          summary: "User/sudoer change on {{ $labels.host }}"
+          description: "useradd/usermod/group-change event on {{ $labels.host }} — verify intentional"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BURST — 5m window, threshold >N to confirm pattern
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: log-alerts-burst
     type: vlogs
     interval: 5m
     rules:
-      # LogsQL `| filter value:>N` keeps only series breaching threshold.
-      # Without filter vmalert fires on count >= 1 — too noisy.
-      #
-      # Thresholds are SMOKE-TEST level (low) so the alert pipeline triggers
-      # against current mock baseline. Production tuning: raise to numbers
-      # well above MOCK_RATE × service-weight × severity-weight × window.
+      # Per-host SSH brute force. Per-attacker version below catches cross-host.
       - alert: SshBruteForce
         expr: 'service:mock-sshd "Failed password" | stats by (host) count() as value | filter value:>20'
         for: 1m
@@ -56,15 +103,8 @@ groups:
           summary: "Nginx 5xx burst on {{ $labels.host }}"
           description: "{{ $value }} nginx err events in last 5m on {{ $labels.host }}"
 
-      # ───── Forensic rules (schema-driven: facility + host_ip) ─────────────
-      # Thresholds tuned for the 5m group window — scale down vs 15m original
-      # design (rules.yml-design 2026-06-25). Re-tune after 1-week baseline soak.
-
       # 1 attacker IP fail SSH across cluster = coordinated brute force.
-      # `host_ip` = sender server IP (sshd host) → group by sender = same as
-      # per-host SshBruteForce above. Real "multi-host same IP" requires
-      # extracting the ATTACKER IP from the message body via LogsQL `extract`.
-      # Format: "Failed password for <user> from <attacker_ip> port ..."
+      # Pattern: "Failed password for <user> from <attacker_ip> port ..."
       - alert: SshFailMultiHostSameIp
         expr: 'facility:auth "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value | filter value:>10'
         for: 1m
@@ -75,8 +115,7 @@ groups:
           summary: "SSH brute force from {{ $labels.attacker_ip }}"
           description: "{{ $value }} failed SSH attempts in 5m from attacker {{ $labels.attacker_ip }} across cluster"
 
-      # Kernel-level errors = hardware/driver/disk fail. Catch early before
-      # silent data loss. facility:kern was dropped pre-schema-unify, now queryable.
+      # Kernel-level errs (non-OOM) — need burst pattern, single err có thể benign.
       - alert: KernelErrorBurst
         expr: 'facility:kern severity:err | stats by (host) count() as value | filter value:>5'
         for: 1m
@@ -87,8 +126,7 @@ groups:
           summary: "Kernel errors on {{ $labels.host }}"
           description: "{{ $value }} kern err events in 5m on {{ $labels.host }} — check dmesg / hardware"
 
-      # Sudo activity spike — audit insider threat / compromised account.
-      # Matches both `sudo: ... COMMAND=...` (executed) and pam_unix sudo session.
+      # Sudo spike — anomalous frequency suggests compromise / insider threat.
       - alert: SudoEscalation
         expr: 'facility:auth _msg:"sudo:" _msg:"COMMAND=" | stats by (host) count() as value | filter value:>10'
         for: 1m
@@ -99,37 +137,7 @@ groups:
           summary: "Elevated sudo activity on {{ $labels.host }}"
           description: "{{ $value }} sudo commands executed in 5m on {{ $labels.host }}"
 
-      # ───── Ops-driven rules (capacity + availability + audit) ─────────────
-      # Brainstorm: plans/reports/brainstorm-260625-1003-vmalert-ops-rules.md
-      # Coverage: 2 capacity + 2 availability + 1 audit. State metrics (CPU,
-      # mem %, disk %) intentionally NOT here — delegate to Prometheus.
-
-      # Disk full event — caught when an app's stderr surfaces ENOSPC. High
-      # signal because the message only fires when something genuinely broke.
-      - alert: DiskFullErrors
-        expr: '(_msg:"No space left" OR _msg:"ENOSPC" OR _msg:"disk full") | stats by (host) count() as value | filter value:>1'
-        for: 1m
-        labels:
-          severity: critical
-          category: capacity
-        annotations:
-          summary: "Disk-full errors on {{ $labels.host }}"
-          description: "{{ $value }} disk-full / ENOSPC events in 5m on {{ $labels.host }} — investigate / df -h"
-
-      # Kernel OOM-killer fired = process killed for memory pressure. Catch
-      # before users notice service degradation.
-      - alert: OomKillEvent
-        expr: 'facility:kern (_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host) count() as value | filter value:>0'
-        for: 1m
-        labels:
-          severity: critical
-          category: capacity
-        annotations:
-          summary: "OOM-killer fired on {{ $labels.host }}"
-          description: "{{ $value }} kernel OOM-kill events in 5m on {{ $labels.host }} — check process list / cgroup limits"
-
-      # Systemd reports service failed (crash, core-dump, abnormal exit).
-      # >2 in 5m strongly suggests a crashloop, not a one-off restart.
+      # Systemd reports service failed repeatedly = crashloop.
       - alert: SystemdServiceFailed
         expr: '_msg:"Failed with result" | stats by (host) count() as value | filter value:>2'
         for: 1m
@@ -140,8 +148,7 @@ groups:
           summary: "Systemd service crashloop on {{ $labels.host }}"
           description: "{{ $value }} systemd 'Failed with result' events in 5m on {{ $labels.host }} — journalctl -xe"
 
-      # DB client-side connection refused — surfaces when MySQL/PG/Redis is
-      # unreachable. Threshold 5 to skip transient blips during planned restart.
+      # DB client conn refused repeats — single blip ignored, ≥6 in 5m = real.
       - alert: DbConnectionRefused
         expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can''t connect to MySQL" OR _msg:"FATAL: connection") | stats by (host) count() as value | filter value:>5'
         for: 1m
@@ -151,17 +158,3 @@ groups:
         annotations:
           summary: "Repeated DB connection refused on {{ $labels.host }}"
           description: "{{ $value }} DB conn-refused events in 5m on {{ $labels.host }} — check DB liveness + network"
-
-      # New user added or existing user granted group membership = audit gold.
-      # useradd/usermod/groupadd always log via facility:auth; matching these
-      # binaries catches both creation + sudo-group additions without the
-      # fragile literal-quote matching ("to group 'sudo'").
-      - alert: NewUserOrSudoer
-        expr: 'facility:auth (_msg:"new user:" OR _msg:"useradd" OR _msg:"usermod" OR _msg:"new group:" OR _msg:"groupadd") | stats by (host) count() as value | filter value:>0'
-        for: 1m
-        labels:
-          severity: warning
-          category: audit
-        annotations:
-          summary: "User/sudoer change on {{ $labels.host }}"
-          description: "{{ $value }} useradd/usermod/group-change events in 5m on {{ $labels.host }} — verify intentional"

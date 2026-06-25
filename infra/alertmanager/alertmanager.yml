@@ -35,22 +35,22 @@ receivers:
         parse_mode: HTML
         send_resolved: true
         message: &telegram_message_template |
-          {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — <b>{{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}không xác định{{ end }}</b>{{ if gt (len .Alerts) 1 }} (×{{ len .Alerts }}){{ end }}
+          {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — <b>{{ .CommonLabels.alertname }}</b>{{ if gt (len .Alerts) 1 }} (×{{ len .Alerts }}){{ end }}
           {{ range .Alerts }}
           ━━━━━━━━━━━━━━━━━━━━
-          {{ if eq .Labels.severity "critical" }}🔴{{ else if eq .Labels.severity "warning" }}⚠️{{ else }}ℹ️{{ end }} <b>severity:</b>    <code>{{ if .Labels.severity }}{{ .Labels.severity }}{{ else }}không xác định{{ end }}</code>
-          🏷 <b>category:</b>    <code>{{ if .Labels.category }}{{ .Labels.category }}{{ else }}không xác định{{ end }}</code>
-          🖥 <b>host:</b>        <code>{{ if .Labels.host }}{{ .Labels.host }}{{ else }}không xác định{{ end }}</code>
-          📡 <b>host_ip:</b>     <code>{{ if .Labels.host_ip }}{{ .Labels.host_ip }}{{ else }}không xác định{{ end }}</code>
-          🌐 <b>attacker_ip:</b> <code>{{ if .Labels.attacker_ip }}{{ .Labels.attacker_ip }}{{ else }}không xác định{{ end }}</code>
-          🕒 <b>started:</b>     <code>{{ if .StartsAt.IsZero }}không xác định{{ else }}{{ .StartsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}{{ end }}</code>
-          {{ if eq $.Status "resolved" }}🕓 <b>ended:</b>       <code>{{ if .EndsAt.IsZero }}không xác định{{ else }}{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}{{ end }}</code>
-          {{ end }}📝 <b>summary:</b>     {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ else }}không xác định{{ end }}
-          ℹ️ <b>detail:</b>      <i>{{ if .Annotations.description }}{{ .Annotations.description }}{{ else }}không xác định{{ end }}</i>
-
-          🔗 <b>VMUI:</b> <code>{{ if .Labels.host }}host:{{ .Labels.host }}{{ else if .Labels.attacker_ip }}_msg:"{{ .Labels.attacker_ip }}"{{ else }}không xác định{{ end }}</code>
-          {{ if .GeneratorURL }}🛠 <b>Rule:</b> <a href="{{ .GeneratorURL }}">vmalert</a>
-          {{ end }}🤖 <b>Triage:</b> Claude+MCP
+          {{ with .Labels.severity }}<b>severity:</b>    <code>{{ . }}</code>
+          {{ end }}{{ with .Labels.category }}<b>category:</b>    <code>{{ . }}</code>
+          {{ end }}{{ with .Labels.host }}<b>host:</b>        <code>{{ . }}</code>
+          {{ end }}{{ with .Labels.host_ip }}<b>host_ip:</b>     <code>{{ . }}</code>
+          {{ end }}{{ with .Labels.attacker_ip }}<b>attacker_ip:</b> <code>{{ . }}</code>
+          {{ end }}{{ if not .StartsAt.IsZero }}<b>started:</b>     <code>{{ .StartsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
+          {{ end }}{{ if and (eq $.Status "resolved") (not .EndsAt.IsZero) }}<b>ended:</b>       <code>{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
+          {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
+          {{ end }}{{ with .Annotations.description }}<b>detail:</b>      <i>{{ . }}</i>
+          {{ end }}
+          <b>VMUI:</b> <code>{{ if .Labels.host }}host:{{ .Labels.host }}{{ else if .Labels.attacker_ip }}_msg:"{{ .Labels.attacker_ip }}"{{ end }}</code>
+          {{ if .GeneratorURL }}<b>Rule:</b> <a href="{{ .GeneratorURL }}">vmalert</a>
+          {{ end }}<b>Triage:</b> Claude+MCP
           {{ end }}
 
   - name: telegram-event

@@ -47,12 +47,7 @@ receivers:
           {{ end }}{{ if and (eq $.Status "resolved") (not .EndsAt.IsZero) }}<b>ended:</b>       <code>{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
           {{ end }}{{ with .Labels.sample_msg }}<b>msg:</b>         <code>{{ . }}</code>
           {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
-          {{ end }}{{ with .Annotations.description }}<b>detail:</b>      <i>{{ . }}</i>
-          {{ end }}
-          {{ if or .Labels.host .Labels.attacker_ip }}<b>VMUI:</b> <code>{{ if .Labels.host }}host:{{ .Labels.host }}{{ else }}_msg:"{{ .Labels.attacker_ip }}"{{ end }}</code>
-          {{ end }}{{ if .GeneratorURL }}<b>Rule:</b> <a href="{{ .GeneratorURL }}">vmalert</a>
-          {{ end }}<b>Triage:</b> Claude+MCP
-          {{ end }}
+          {{ end }}{{ end }}
 
   - name: telegram-event
     telegram_configs:

@@ -169,13 +169,14 @@ services:
     user: "0:0"
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Re-use existing .env convention (was set up for the decommissioned agent).
+      TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
     entrypoint: ["/bin/sh"]
     command:
       - "-c"
       - |
         sed -e "s|__TELEGRAM_BOT_TOKEN__|$$TELEGRAM_BOT_TOKEN|g" \
-            -e "s|__TELEGRAM_CHAT_ID__|$$TELEGRAM_CHAT_ID|g" \
+            -e "s|__TELEGRAM_CHAT_ID__|$$TELEGRAM_ALERT_CHAT_ID|g" \
             /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/data
     ports:

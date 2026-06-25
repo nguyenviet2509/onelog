@@ -96,3 +96,70 @@ groups:
         annotations:
           summary: "Elevated sudo activity on {{ $labels.host }}"
           description: "{{ $value }} sudo commands executed in 5m on {{ $labels.host }}"
+
+      # ───── Ops-driven rules (capacity + availability + audit) ─────────────
+      # Brainstorm: plans/reports/brainstorm-260625-1003-vmalert-ops-rules.md
+      # Coverage: 2 capacity + 2 availability + 1 audit. State metrics (CPU,
+      # mem %, disk %) intentionally NOT here — delegate to Prometheus.
+
+      # Disk full event — caught when an app's stderr surfaces ENOSPC. High
+      # signal because the message only fires when something genuinely broke.
+      - alert: DiskFullErrors
+        expr: '(_msg:"No space left" OR _msg:"ENOSPC" OR _msg:"disk full") | stats by (host) count() as value | filter value:>1'
+        for: 1m
+        labels:
+          severity: critical
+          category: capacity
+        annotations:
+          summary: "Disk-full errors on {{ $labels.host }}"
+          description: "{{ $value }} disk-full / ENOSPC events in 5m on {{ $labels.host }} — investigate / df -h"
+
+      # Kernel OOM-killer fired = process killed for memory pressure. Catch
+      # before users notice service degradation.
+      - alert: OomKillEvent
+        expr: 'facility:kern (_msg:"oom-killer" OR _msg:"Out of memory: Killed") | stats by (host) count() as value | filter value:>0'
+        for: 1m
+        labels:
+          severity: critical
+          category: capacity
+        annotations:
+          summary: "OOM-killer fired on {{ $labels.host }}"
+          description: "{{ $value }} kernel OOM-kill events in 5m on {{ $labels.host }} — check process list / cgroup limits"
+
+      # Systemd reports service failed (crash, core-dump, abnormal exit).
+      # >2 in 5m strongly suggests a crashloop, not a one-off restart.
+      - alert: SystemdServiceFailed
+        expr: '_msg:"Failed with result" | stats by (host) count() as value | filter value:>2'
+        for: 1m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "Systemd service crashloop on {{ $labels.host }}"
+          description: "{{ $value }} systemd 'Failed with result' events in 5m on {{ $labels.host }} — journalctl -xe"
+
+      # DB client-side connection refused — surfaces when MySQL/PG/Redis is
+      # unreachable. Threshold 5 to skip transient blips during planned restart.
+      - alert: DbConnectionRefused
+        expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can't connect to MySQL" OR _msg:"FATAL: connection") | stats by (host) count() as value | filter value:>5'
+        for: 1m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "Repeated DB connection refused on {{ $labels.host }}"
+          description: "{{ $value }} DB conn-refused events in 5m on {{ $labels.host }} — check DB liveness + network"
+
+      # New user added or existing user granted group membership = audit gold.
+      # useradd/usermod/groupadd always log via facility:auth; matching these
+      # binaries catches both creation + sudo-group additions without the
+      # fragile literal-quote matching ("to group 'sudo'").
+      - alert: NewUserOrSudoer
+        expr: 'facility:auth (_msg:"new user:" OR _msg:"useradd" OR _msg:"usermod" OR _msg:"new group:" OR _msg:"groupadd") | stats by (host) count() as value | filter value:>0'
+        for: 1m
+        labels:
+          severity: warning
+          category: audit
+        annotations:
+          summary: "User/sudoer change on {{ $labels.host }}"
+          description: "{{ $value }} useradd/usermod/group-change events in 5m on {{ $labels.host }} — verify intentional"

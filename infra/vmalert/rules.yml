@@ -141,7 +141,7 @@ groups:
       # DB client-side connection refused — surfaces when MySQL/PG/Redis is
       # unreachable. Threshold 5 to skip transient blips during planned restart.
       - alert: DbConnectionRefused
-        expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can't connect to MySQL" OR _msg:"FATAL: connection") | stats by (host) count() as value | filter value:>5'
+        expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can''t connect to MySQL" OR _msg:"FATAL: connection") | stats by (host) count() as value | filter value:>5'
         for: 1m
         labels:
           severity: warning

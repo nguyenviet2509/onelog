@@ -48,10 +48,6 @@ receivers:
           {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
           {{ end }}{{ with .Annotations.description }}<b>detail:</b>      <i>{{ . }}</i>
           {{ end }}
-          <b>VMUI:</b> <code>{{ if .Labels.host }}host:{{ .Labels.host }}{{ else if .Labels.attacker_ip }}_msg:"{{ .Labels.attacker_ip }}"{{ end }}</code>
-          {{ if .GeneratorURL }}<b>Rule:</b> <a href="{{ .GeneratorURL }}">vmalert</a>
-          {{ end }}<b>Triage:</b> Claude+MCP
-          {{ end }}
 
   - name: telegram-event
     telegram_configs:

@@ -30,6 +30,9 @@ sources:
     framing:
       method: newline_delimited
     connection_limit: 1024
+    # Rename auto-injected peer IP key to avoid colliding with JSON `.host`
+    # field sent by client. Normalize transform reads `._peer_ip` → `host_ip`.
+    host_key: "_peer_ip"
 
 transforms:
   enrich:
@@ -58,7 +61,9 @@ transforms:
     type: remap
     inputs: [rsyslog_json_tcp]
     source: |
-      # Capture optional pass-through before we rebuild `.` (path = infallible).
+      # Capture peer IP (server-side enrichment) + optional pass-through fields
+      # BEFORE we rebuild `.`. Path access is infallible → no `??` needed.
+      peer_ip = ._peer_ip
       labels = .labels
       trace = .trace
 
@@ -66,6 +71,7 @@ transforms:
       ts_str = string(.@timestamp) ?? string(.timestamp) ?? ""
       host = string(.host.name) ?? string(.host) ?? "unknown"
       level = string(.log.level) ?? string(.severity) ?? "info"
+      facility = string(.log.syslog.facility) ?? ""
       service = string(.service.name) ?? string(.service) ?? "unknown"
       msg = string(.message) ?? string(.msg) ?? ""
 
@@ -81,7 +87,9 @@ transforms:
       . = {
         "_time": parsed_ts,
         "host": host,
+        "host_ip": string(peer_ip) ?? "",
         "severity": severity_lc,
+        "facility": facility,
         "service": service,
         "_msg": msg,
       }

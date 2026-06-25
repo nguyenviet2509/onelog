@@ -29,12 +29,17 @@ ss -tnp | grep ':6514'                  # must show ESTAB
 | Best for | Client already forwarding JSON to ELK/SIEM, OneLog as additional sink |
 | rsyslog | ≥ 8.x required (modern omfwd) |
 
-Schema contract (required):
-- `@timestamp` — RFC3339 string
-- `host.name` — string
-- `log.level` — info/warn/error/...
-- `service.name` — string
-- `message` — string
+Schema contract (client → server). Stored in VictoriaLogs as flat fields:
+
+| Client JSON path | Stored flat | Filled by | Required |
+|---|---|---|---|
+| `@timestamp` | `_time` | client (RFC3339) | yes |
+| `host.name` | `host` | client (hostname) | yes |
+| _(TCP peer addr)_ | `host_ip` | **server** (auto from socket) | n/a |
+| `log.level` | `severity` | client (info/warn/error/...) | yes |
+| `log.syslog.facility` | `facility` | client (auth/cron/user/local0...) | yes |
+| `service.name` | `service` | client (program name) | yes |
+| `message` | `_msg` | client (log body) | yes |
 
 Optional pass-through: `labels.*`, `trace.id`. **Unknown top-level fields are
 dropped** by server-side normalize (anti schema-drift).

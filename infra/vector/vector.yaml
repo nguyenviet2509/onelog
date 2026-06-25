@@ -69,13 +69,13 @@ transforms:
       service = string(.service.name) ?? string(.service) ?? "unknown"
       msg = string(.message) ?? string(.msg) ?? ""
 
-      # Parse timestamp; fall back to ingest time if malformed/empty.
-      parsed_ts, err = to_timestamp(ts_str)
+      # Parse timestamp (RFC3339); fall back to ingest time if malformed/empty.
+      # Vector 0.40 VRL has no string-accepting to_timestamp — use parse_timestamp.
+      parsed_ts, err = parse_timestamp(ts_str, format: "%+")
       if err != null { parsed_ts = now() }
 
-      # Downcase severity (input is string after extraction; downcase is fallible
-      # only for non-string inputs → keep `?? "info"` as final guard).
-      severity_lc = downcase(level) ?? "info"
+      # Downcase severity. `level` is string by construction → downcase infallible.
+      severity_lc = downcase(level)
 
       # Rebuild event = drop every unknown top-level key.
       . = {

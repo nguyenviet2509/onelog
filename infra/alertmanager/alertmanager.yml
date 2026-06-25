@@ -15,7 +15,9 @@ route:
   group_by: ["alertname", "host"]
   group_wait: 10s
   group_interval: 5m
-  repeat_interval: 1h
+  # 15m: balance giữa test-friendly + chống spam cho team ops 5 người.
+  # Tăng lên 30m-1h khi ops có SLO ack rõ + log alert hằng ngày.
+  repeat_interval: 15m
 
 receivers:
   - name: telegram

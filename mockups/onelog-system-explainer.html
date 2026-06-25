@@ -107,7 +107,8 @@
         <li><a href="#workflow">6. Ops workflow</a></li>
         <li><a href="#data">7. Data model</a></li>
         <li><a href="#security">8. Security & audit</a></li>
-        <li><a href="#runbook">9. Quick runbook</a></li>
+        <li><a href="#alerting">9. Alerting pipeline</a></li>
+        <li><a href="#runbook">10. Quick runbook</a></li>
       </ol>
     </nav>
   </section>
@@ -182,6 +183,8 @@ flowchart LR
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Official <code>mcp-victorialogs</code> server — expose LogsQL tools (query / hits / stats_query)</td><td>Precise filter path; không cần code riêng</td></tr>
           <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Fuzzy intent path; Claude tự pick khi câu hỏi mơ hồ</td></tr>
           <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy: <code>/mcp/vl/sse</code> + <code>/mcp/semantic/sse</code> · IP allowlist · Bearer pass-through</td><td>Single ingress, audit dễ</td></tr>
+          <tr><td><span class="pill cyan">vmalert</span></td><td>8880 (127.0.0.1)</td><td>Đánh giá LogsQL stats rule (instant 30s / burst 5m) → push alert sang Alertmanager</td><td>Native <code>type: vlogs</code> support, không cần exporter trung gian</td></tr>
+          <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · group · route fired alerts → Telegram Bot (template HTML)</td><td>Standard, hỗ trợ silence/inhibit khi cần</td></tr>
           <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
         </tbody>
       </table>
@@ -424,9 +427,83 @@ payload: {
     </div>
   </section>
 
-  <!-- 9. RUNBOOK -->
+  <!-- 9. ALERTING -->
+  <section id="alerting" class="anchor mt-8">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-lg font-semibold"><span class="step-num">9</span> &nbsp;Alerting pipeline — từ log tới Telegram</h2>
+      <span class="mut text-xs">Source: <code>docs/ops-cheatsheet.md</code> · <code>infra/vmalert/rules.yml</code> · <code>infra/alertmanager/alertmanager.yml</code></span>
+    </div>
+
+    <div class="card p-5 mt-3">
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant App as App/syslog srv-01/02
+  participant V as vector (logserver)
+  participant VL as VictoriaLogs
+  participant VA as vmalert
+  participant AM as alertmanager
+  participant TG as Telegram Bot
+  participant Ops as Ops chat
+  App->>V: syslog UDP 514 (kern.crit / user.err...)
+  V->>V: parse → enrich host, host_ip, service
+  V->>VL: insert {_time,_msg,host,host_ip,service,severity,facility}
+  loop mỗi 30s (instant) / 5m (burst)
+    VA->>VL: LogsQL stats_query (rule expr)
+    VL-->>VA: series {host, host_ip, value, sample_msg}
+    Note over VA: ghép với label rule<br/>(severity, category, notify_style)<br/>+ annotation (summary)
+    alt expr trả row
+      VA->>AM: POST /api/v2/alerts (firing)
+    else expr rỗng
+      VA->>AM: POST /api/v2/alerts (resolved, EndsAt=now)
+    end
+  end
+  AM->>AM: dedupe · group_by(alertname,host)<br/>route theo notify_style
+  AM->>TG: HTTPS sendMessage (HTML template)
+  TG->>Ops: 🔥 FIRING — DiskFullErrors<br/>host srv-01 · host_ip 192.168.122.52<br/>msg "write failed: No space left..."
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 mt-4">
+      <div class="card p-5">
+        <div class="h-title">Field trong Telegram — đến từ đâu</div>
+        <table class="k mt-2">
+          <thead><tr><th>Field</th><th>Nguồn</th><th>Mechanism</th></tr></thead>
+          <tbody>
+            <tr><td><code>alertname</code></td><td>rule</td><td><code>- alert: DiskFullErrors</code> trong rules.yml</td></tr>
+            <tr><td><code>severity</code> · <code>category</code></td><td>rule label</td><td>Hard-code <code>labels:</code> block</td></tr>
+            <tr><td><code>host</code> · <code>host_ip</code></td><td>VictoriaLogs</td><td>vector parse syslog → <code>stats by (host, host_ip)</code> đẩy thành label</td></tr>
+            <tr><td><code>sample_msg</code></td><td>VictoriaLogs</td><td><code>row_any(_msg)</code> trong stats — 1 dòng raw đại diện</td></tr>
+            <tr><td><code>started</code> · <code>ended</code></td><td>vmalert</td><td><code>.StartsAt</code> / <code>.EndsAt</code> render với <code>.Local</code> → giờ VN <code>+07:00</code></td></tr>
+            <tr><td><code>summary</code></td><td>rule annotation</td><td>Có thể template <code>{{ $labels.host }}</code></td></tr>
+            <tr><td>Status (🔥/✅)</td><td>alertmanager</td><td>firing nếu vmalert vẫn push, resolved khi expr rỗng</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card p-5">
+        <div class="h-title">Rule groups · routing</div>
+        <ul class="mt-3 text-sm space-y-2.5">
+          <li>• <b><span class="pill cyan">instant</span> (eval 30s, for=0s):</b> OomKill / DiskFull / NewUserOrSudoer — fire ngay khi 1 sự kiện match.</li>
+          <li>• <b><span class="pill vio">burst</span> (eval 5m, for=1m):</b> SSH brute force, MySQL err burst, kernel err... — cần &gt;N event/5m.</li>
+          <li>• <b>Route:</b> alert có label <code>notify_style=event</code> → receiver <code>telegram-event</code> (<code>send_resolved=false</code>); còn lại → <code>telegram-trend</code> (<code>send_resolved=true</code>).</li>
+          <li>• <b>Resolve data-driven:</b> RESOLVED chỉ về khi LogsQL không còn trả series cho host đó. Không có timer cố định.</li>
+        </ul>
+
+        <hr class="sep">
+        <div class="h-title">Gotchas đã gặp</div>
+        <ul class="mt-3 text-[12px] space-y-2 mut">
+          <li>• <span class="warn">Đổi <code>alertmanager.yml</code>:</span> entrypoint sed render vào <code>/tmp/</code> chỉ tại start → <b>phải <code>--force-recreate</code></b>, reload không pick file mới.</li>
+          <li>• <span class="warn">Timestamp UTC:</span> container thiếu tzdata → mount <code>/usr/share/zoneinfo</code> + set <code>TZ=Asia/Ho_Chi_Minh</code>.</li>
+          <li>• <span class="warn">Facility remap:</span> <code>logger -p kern.*</code> bị Linux đổi thành <code>user</code> → rule expr match theo <code>service:</code> hoặc msg pattern, không filter <code>facility:</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. RUNBOOK -->
   <section id="runbook" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">9</span> &nbsp;Quick runbook — onboard 10 phút</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">10</span> &nbsp;Quick runbook — onboard 10 phút</h2>
     <div class="grid grid-cols-2 gap-4 mt-3">
       <div class="card p-5">
         <div class="h-title">Setup máy ops (1 lần)</div>
@@ -485,7 +562,7 @@ payload: {
 
   <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
     <span>OneLog · system explainer · 2026-06-24</span>
-    <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code></span>
+    <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code> · <code>docs/ops-cheatsheet.md</code></span>
   </footer>
 </div>
 

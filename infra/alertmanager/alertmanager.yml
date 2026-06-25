@@ -1,9 +1,11 @@
-# Alertmanager — Telegram receiver, dedupe + group by alertname+host.
+# Alertmanager — Telegram receiver for OneLog (MCP-only rollout).
 #
-# This file uses placeholders rendered by docker-compose entrypoint (sed) at
-# container start, sourcing $TELEGRAM_BOT_TOKEN + $TELEGRAM_CHAT_ID from
-# infra/.env. DO NOT run alertmanager directly on this file — it must be
-# rendered first (compose entrypoint handles it).
+# Pipeline: vmalert (LogsQL stats) → alertmanager → Telegram Bot API.
+# Triage flow: ops nhận alert → mở VMUI bằng query gợi ý / dùng Claude+MCP.
+#
+# Token + chat_id render từ infra/.env (TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID)
+# qua sed entrypoint trong docker-compose. KHÔNG run alertmanager trực tiếp trên
+# file này — placeholder chưa thay.
 
 global:
   resolve_timeout: 5m
@@ -23,12 +25,17 @@ receivers:
         parse_mode: HTML
         send_resolved: true
         message: |
-          <b>{{ .Status | toUpper }}</b> — {{ .CommonLabels.alertname }}
+          {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — {{ .CommonLabels.alertname }}
           {{ range .Alerts }}
-          • <b>{{ .Labels.alertname }}</b> on <code>{{ .Labels.host }}{{ if .Labels.attacker_ip }} (attacker {{ .Labels.attacker_ip }}){{ end }}</code>
-            severity={{ .Labels.severity }} | category={{ .Labels.category }}
-            {{ .Annotations.summary }}
-            {{ .Annotations.description }}
+          {{ if eq .Labels.severity "critical" }}🔴{{ else if eq .Labels.severity "warning" }}⚠️{{ else }}ℹ️{{ end }} <b>{{ .Labels.alertname }}</b> on <code>{{ .Labels.host }}</code>{{ if .Labels.host_ip }} (<code>{{ .Labels.host_ip }}</code>){{ end }}
+          {{ if .Labels.attacker_ip }}   <b>Attacker:</b> <code>{{ .Labels.attacker_ip }}</code>
+          {{ end }}   severity=<b>{{ .Labels.severity }}</b> · category={{ .Labels.category }}
+             {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+
+             {{ .Annotations.summary }}
+             {{ if .Annotations.description }}<i>{{ .Annotations.description }}</i>{{ end }}
+
+          → Investigate: VMUI query <code>host:{{ .Labels.host }}</code>{{ if .Labels.attacker_ip }} or <code>_msg:"{{ .Labels.attacker_ip }}"</code>{{ end }} · Claude+MCP for triage
           {{ end }}
 
 inhibit_rules: []

@@ -100,15 +100,30 @@ transforms:
       }
       # Strip sensitive keys khỏi labels.* — redact transform chỉ chạy regex trên
       # _msg, structured field cần denylist riêng. del() trên event path chuẩn VRL.
+      # Denylist mở rộng: auth/cookie/session/access_token/refresh_token/client_secret/
+      # private_key/passphrase để chặn mọi naming convention thông dụng.
       if labels != null {
         .labels = labels
         del(.labels.password)
         del(.labels.passwd)
+        del(.labels.pwd)
+        del(.labels.passphrase)
         del(.labels.token)
         del(.labels.api_key)
         del(.labels.apikey)
+        del(.labels.api_secret)
+        del(.labels.access_key)
+        del(.labels.access_token)
+        del(.labels.refresh_token)
+        del(.labels.auth_token)
+        del(.labels.client_secret)
         del(.labels.secret)
+        del(.labels.secret_key)
+        del(.labels.private_key)
         del(.labels.authorization)
+        del(.labels.auth)
+        del(.labels.cookie)
+        del(.labels.session)
       }
       if trace != null { .trace = trace }
 
@@ -140,15 +155,30 @@ transforms:
       # chạy trên config text trước (cả trong comment) → ký tự dollar number sẽ
       # bị Vector cố expand thành env var. Match cả prefix + token, replace literal.
       msg = replace(msg, r'(?i)authorization:\s*bearer\s+[A-Za-z0-9._-]+', "Authorization: Bearer <TOKEN>")
-      # Password fields — bắt buộc có `:` hoặc `=` làm delimiter để tránh FP với
-      # log error kiểu "password is required". `\b` chống match `mypassword`.
-      msg = replace(msg, r'(?i)\b(password|passwd|pwd|passphrase)\s*[:=]\s*\S+', "password=<REDACTED>")
-      # GitHub PAT — 4 prefix: ghp_ (classic), gho_ (OAuth), ghs_ (server), ghu_ (user).
+      # Password / secret fields — bắt buộc có `:` hoặc `=` làm delimiter để tránh
+      # FP với log error kiểu "password is required". `\b` chống match `mypassword`.
+      # Mở rộng: passphrase, secret, api_secret, private_key (dạng inline).
+      msg = replace(msg, r'(?i)\b(password|passwd|pwd|passphrase|pass[_-]?phrase|secret|api[_-]?secret|private[_-]?key)\s*[:=]\s*\S+', "<REDACTED>")
+      # GitHub PAT classic / OAuth / server / user: ghp_/gho_/ghs_/ghu_ + 36+ chars.
       msg = replace(msg, r'\bgh[opsu]_[A-Za-z0-9]{36,255}\b', "<GH_PAT>")
+      # GitHub fine-grained PAT (vendor mới, 82 chars sau prefix).
+      msg = replace(msg, r'\bgithub_pat_[A-Za-z0-9_]{82}\b', "<GH_PAT>")
+      # AWS temporary credentials (STS) — prefix ASIA, ngoài AKIA của long-lived.
+      msg = replace(msg, r'\bASIA[0-9A-Z]{16}\b', "<AWS_TEMP_KEY>")
+      # LLM API keys: OpenAI (sk-, sk-proj-) và Anthropic (sk-ant-api03-).
+      # Stack OneLog dùng cho mcp-semantic embed + indexer.
+      msg = replace(msg, r'\bsk-(?:proj-|ant-api03-)?[A-Za-z0-9_\-]{20,255}\b', "<LLM_API_KEY>")
+      # Telegram bot token (alertmanager → Telegram channel).
+      # Format: <bot_id 9-10 digits>:<35-char base64-like>.
+      msg = replace(msg, r'\b\d{9,10}:[A-Za-z0-9_\-]{35}\b', "<TG_BOT_TOKEN>")
       # DB connection string — replace toàn URL (đơn giản, KISS) thay vì giữ scheme.
       msg = replace(msg, r'(?i)(postgres|postgresql|mysql|mongodb|redis|amqp)://[^:\s]+:[^@\s]+@\S+', "<DB_URL>")
       # PEM private key block (single-line; app log thường strip newline).
       msg = replace(msg, r'-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----[^-]+-----END [^-]+-----', "<PRIVATE_KEY>")
+      # Generic catch-all cho secret-shaped fields kiểu key=value / key: value.
+      # Bắt token/api_key/access_key/secret_key/auth_token/client_secret/refresh_token
+      # cho mọi vendor không có dedicated pattern. Underscore/dash đều OK (api_key|api-key).
+      msg = replace(msg, r'(?i)\b(token|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|client[_-]?secret|refresh[_-]?token)\s*[:=]\s*\S+', "<TOKEN>")
 
       # Đánh dấu event đã bị redact để query observability:
       # `redacted:true | stats count() by (service)` xem service nào leak nhiều.

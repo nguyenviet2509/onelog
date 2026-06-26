@@ -89,7 +89,7 @@
         <b>Không còn web UI</b> — toàn bộ UX nằm trong Claude Desktop.
       </p>
       <div class="flex flex-wrap gap-2 mt-4 text-xs">
-        <span class="chip on">📥 syslog 514/udp · 6514/tcp-tls</span>
+        <span class="chip on">📥 syslog 514/udp · 6514/tcp · 6515/json</span>
         <span class="chip on">🧠 RAG semantic templates</span>
         <span class="chip on">🔐 IP whitelist 192.168.122.0/24</span>
         <span class="chip on">📑 Audit per tool call</span>
@@ -129,7 +129,7 @@ flowchart LR
     R2["rsyslog / vector-agent"]
   end
   subgraph LOG["logserver · 192.168.122.53 (docker compose)"]
-    V["vector<br/>514 udp · 6514 tcp-tls"]
+    V["vector<br/>514 udp · 6514 tcp<br/>6515 tcp-json"]
     VL[("VictoriaLogs<br/>:9428")]
     IDX["indexer<br/>(NATS consumer)"]
     Q[("Qdrant<br/>:6333")]
@@ -141,10 +141,10 @@ flowchart LR
     DECOM["~~web (Next.js) :3000~~<br/>~~rag-agent :8000~~<br/><i>decommissioned</i>"]
   end
   CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
-  R1 -- "syslog UDP 514" --> V
-  R2 -- "syslog UDP 514" --> V
-  V -- "JSON push" --> VL
-  V -- "publish logs.batch.*" --> NA
+  R1 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
+  R2 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
+  V -- "redact PII · ES bulk" --> VL
+  V -- "filter WARN+ → logs.warn" --> NA
   NA --> IDX
   IDX -- "embed + upsert" --> Q
   IDX -- "template meta · audit" --> PG
@@ -174,11 +174,11 @@ flowchart LR
           <tr><th>Service</th><th>Cổng</th><th>Vai trò</th><th>Vì sao chọn</th></tr>
         </thead>
         <tbody>
-          <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp-tls · 8686</td><td>Nhận syslog, parse, route song song sang VictoriaLogs + NATS</td><td>Single agent thay rsyslog/fluentd; pipeline declarative</td></tr>
+          <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp · 6515/tcp-json · 8686</td><td>Nhận syslog (UDP/TCP) + JSON ECS-lite (6515), enrich → redact PII → ghi VL (all) + NATS (WARN+ only)</td><td>Single agent thay rsyslog/fluentd; pipeline VRL declarative; TLS = roadmap</td></tr>
           <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Time-series log storage, LogsQL query, low RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
           <tr><td><span class="pill vio">qdrant</span></td><td>6333 (127.0.0.1)</td><td>Vector DB cho semantic search template log</td><td>Rust, single-binary, payload filter mạnh</td></tr>
           <tr><td><span class="pill gray">postgres</span></td><td>5432</td><td>Audit log (mỗi tool call) + template metadata</td><td>SQL chuẩn cho join/aggregate, grep audit</td></tr>
-          <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>Pub/sub <code>logs.batch.*</code> cho indexer</td><td>At-least-once, decouple vector ↔ indexer</td></tr>
+          <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>JetStream subject <code>logs.warn</code> (WARN+ events) cho indexer pull-consume</td><td>At-least-once, decouple vector ↔ indexer</td></tr>
           <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Async, throttle theo cost embedding API</td></tr>
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Official <code>mcp-victorialogs</code> server — expose LogsQL tools (query / hits / stats_query)</td><td>Precise filter path; không cần code riêng</td></tr>
           <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Fuzzy intent path; Claude tự pick khi câu hỏi mơ hồ</td></tr>
@@ -208,14 +208,15 @@ sequenceDiagram
   participant Q as Qdrant
   participant P as Postgres
   App->>Rs: stdout / /var/log/*
-  Rs->>V: syslog UDP 514 (or TLS 6514)
-  V->>V: parse · enrich (service,host,severity)
+  Rs->>V: syslog UDP 514 / TCP 6514 / JSON 6515
+  V->>V: enrich (service,host,severity) → redact PII/secrets
   par
-    V->>VL: bulk JSON insert (LogsQL-ready)
+    V->>VL: ES bulk JSON insert (all events)
   and
-    V->>N: publish "logs.batch.{service}"
+    V->>V: filter severity ∈ {warn,err,crit,alert,emerg}
+    V->>N: publish "logs.warn" (WARN+ only)
   end
-  N->>I: consume batch
+  N->>I: JetStream pull-consume
   I->>I: extract template (drain3) + embed (small-model)
   I->>Q: upsert vector + payload{template,service,host,first_seen,last_seen,count}
   Note over Q: Qdrant payload là<br/>source of truth template meta
@@ -224,10 +225,11 @@ sequenceDiagram
       <div class="card p-5 text-sm leading-relaxed">
         <div class="h-title">Highlights</div>
         <ul class="mt-3 space-y-2.5">
-          <li>• <b>Fan-out tại vector:</b> 1 line log → đồng thời ghi <span class="pill lime">VictoriaLogs</span> (raw, queryable) và publish <span class="pill gray">NATS</span> (cho semantic).</li>
+          <li>• <b>Fan-out tại vector:</b> 1 line log → ghi <span class="pill lime">VictoriaLogs</span> (full, queryable). Chỉ <b>WARN+</b> mới publish lên <span class="pill gray">NATS</span> <code>logs.warn</code> (giảm embed cost).</li>
+          <li>• <b>PII/secret redaction trước khi lưu:</b> regex VRL replace email, RFC1918 IP, JWT, AWS key, Bearer token, password=... → downstream luôn đọc data sạch.</li>
           <li>• <b>Template extraction (drain3):</b> gom các line giống nhau về 1 "template" (ví dụ <code>Connection refused to &lt;host&gt;:&lt;port&gt;</code>) → giảm 100× lượng embedding.</li>
           <li>• <b>NTP bắt buộc:</b> chronyd 3 VM, lệch &gt;1s sẽ phá trace.</li>
-          <li>• <b>Backpressure:</b> nếu Qdrant chậm, NATS giữ queue; vector vẫn ghi VL bình thường — query precise không bị block.</li>
+          <li>• <b>Backpressure:</b> nếu Qdrant chậm, NATS JetStream giữ queue; vector vẫn ghi VL bình thường — query precise không bị block.</li>
         </ul>
       </div>
     </div>
@@ -416,7 +418,8 @@ payload: {
       <table class="k">
         <thead><tr><th>Lớp</th><th>Cơ chế</th><th>Lý do</th></tr></thead>
         <tbody>
-          <tr><td>Network</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog TLS 6514 optional</td><td>Lab subnet trusted, không expose public</td></tr>
+          <tr><td>Network</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog 6514 plain TCP (TLS = roadmap)</td><td>Lab subnet trusted, không expose public</td></tr>
+          <tr><td>Data redaction</td><td>Vector VRL strip email · RFC1918 IP · JWT · AWS key · Bearer · password=… trước khi ghi VL</td><td>MCP/indexer/agent luôn đọc data đã sạch</td></tr>
           <tr><td>Auth</td><td>Bearer token cá nhân <code>sk-mcp-...</code> cấp riêng từng ops</td><td>Audit theo user, revoke khi nghỉ</td></tr>
           <tr><td>TLS</td><td>Caddy <code>tls internal</code> (self-signed)</td><td>Lab; chuyển Let's Encrypt khi public</td></tr>
           <tr><td>Audit</td><td><code>/var/log/onelog-audit/mcp-semantic.log</code> mỗi tool call: user, tool, query, result_size</td><td>Truy vết hành vi, debug rate limit</td></tr>
@@ -445,8 +448,8 @@ sequenceDiagram
   participant AM as alertmanager
   participant TG as Telegram Bot
   participant Ops as Ops chat
-  App->>V: syslog UDP 514 (kern.crit / user.err...)
-  V->>V: parse → enrich host, host_ip, service
+  App->>V: syslog UDP 514 / TCP 6514 / JSON 6515 (kern.crit / user.err...)
+  V->>V: enrich host, host_ip, service → redact PII
   V->>VL: insert {_time,_msg,host,host_ip,service,severity,facility}
   loop mỗi 30s (instant) / 5m (burst)
     VA->>VL: LogsQL stats_query (rule expr)

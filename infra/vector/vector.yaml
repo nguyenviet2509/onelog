@@ -98,7 +98,18 @@ transforms:
         "service": service,
         "_msg": msg,
       }
-      if labels != null { .labels = labels }
+      # Strip sensitive keys khỏi labels.* — redact transform chỉ chạy regex trên
+      # _msg, structured field cần denylist riêng. del() trên event path chuẩn VRL.
+      if labels != null {
+        .labels = labels
+        del(.labels.password)
+        del(.labels.passwd)
+        del(.labels.token)
+        del(.labels.api_key)
+        del(.labels.apikey)
+        del(.labels.secret)
+        del(.labels.authorization)
+      }
       if trace != null { .trace = trace }
 
   redact:
@@ -106,10 +117,17 @@ transforms:
     # Anything downstream (MCP tools, indexer, agent) reads safe data.
     # Null-safe: nếu _msg thiếu (rare edge case từ syslog parser), fallback ""
     # để VRL không panic + drop event.
+    # Performance: Vector dùng Rust `regex` crate (RE2, no backtracking → linear
+    # time). ReDoS impossible; chỉ cần cap msg length để bound per-event CPU.
     type: remap
     inputs: [enrich, rsyslog_json_normalize]
     source: |
       msg = string(._msg) ?? ""
+      # Cap msg length BEFORE regex — chống binary blob / multi-MB stack trace
+      # đốt CPU. 64KB đủ cho stack trace bình thường.
+      msg = slice!(msg, 0, 65536)
+      original = msg
+
       # Email
       msg = replace(msg, r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', "<EMAIL>")
       # IPv4 (keep public IPs, redact RFC1918 private)
@@ -122,8 +140,19 @@ transforms:
       # chạy trên config text trước (cả trong comment) → ký tự dollar number sẽ
       # bị Vector cố expand thành env var. Match cả prefix + token, replace literal.
       msg = replace(msg, r'(?i)authorization:\s*bearer\s+[A-Za-z0-9._-]+', "Authorization: Bearer <TOKEN>")
-      # Password fields — match cả key + value, replace literal (mất casing gốc, OK cho redaction)
-      msg = replace(msg, r'(?i)(password|passwd|pwd)["\s:=]+[^\s,;"]+', "password=<REDACTED>")
+      # Password fields — bắt buộc có `:` hoặc `=` làm delimiter để tránh FP với
+      # log error kiểu "password is required". `\b` chống match `mypassword`.
+      msg = replace(msg, r'(?i)\b(password|passwd|pwd|passphrase)\s*[:=]\s*\S+', "password=<REDACTED>")
+      # GitHub PAT — 4 prefix: ghp_ (classic), gho_ (OAuth), ghs_ (server), ghu_ (user).
+      msg = replace(msg, r'\bgh[opsu]_[A-Za-z0-9]{36,255}\b', "<GH_PAT>")
+      # DB connection string — replace toàn URL (đơn giản, KISS) thay vì giữ scheme.
+      msg = replace(msg, r'(?i)(postgres|postgresql|mysql|mongodb|redis|amqp)://[^:\s]+:[^@\s]+@\S+', "<DB_URL>")
+      # PEM private key block (single-line; app log thường strip newline).
+      msg = replace(msg, r'-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----[^-]+-----END [^-]+-----', "<PRIVATE_KEY>")
+
+      # Đánh dấu event đã bị redact để query observability:
+      # `redacted:true | stats count() by (service)` xem service nào leak nhiều.
+      if msg != original { .redacted = true }
       ._msg = msg
 
   # Tap: only WARN+ events feed the indexer worker via NATS.

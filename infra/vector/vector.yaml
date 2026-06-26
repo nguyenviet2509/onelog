@@ -161,8 +161,10 @@ transforms:
       msg = replace(msg, r'(?i)\b(password|passwd|pwd|passphrase|pass[_-]?phrase|secret|api[_-]?secret|private[_-]?key)\s*[:=]\s*\S+', "<REDACTED>")
       # GitHub PAT classic / OAuth / server / user: ghp_/gho_/ghs_/ghu_ + 36+ chars.
       msg = replace(msg, r'\bgh[opsu]_[A-Za-z0-9]{36,255}\b', "<GH_PAT>")
-      # GitHub fine-grained PAT (vendor mới, 82 chars sau prefix).
-      msg = replace(msg, r'\bgithub_pat_[A-Za-z0-9_]{82}\b', "<GH_PAT>")
+      # GitHub fine-grained PAT (vendor mới). Format chuẩn = 82 chars sau prefix
+      # (22 id + `_` + 59 random), nhưng nới {40,255} để future-proof nếu GitHub
+      # đổi length + chống test data lệch length.
+      msg = replace(msg, r'\bgithub_pat_[A-Za-z0-9_]{40,255}\b', "<GH_PAT>")
       # AWS temporary credentials (STS) — prefix ASIA, ngoài AKIA của long-lived.
       msg = replace(msg, r'\bASIA[0-9A-Z]{16}\b', "<AWS_TEMP_KEY>")
       # LLM API keys: OpenAI (sk-, sk-proj-) và Anthropic (sk-ant-api03-).

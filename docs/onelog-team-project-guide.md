@@ -1,7 +1,9 @@
-# Onelog — Claude Team Project workflow guide
+# Onelog — team investigation workflow
 
 > Audience: 5 ops engineers đã setup MCP xong (xem [mcp-setup-guide.md](mcp-setup-guide.md)).
 > Mục tiêu: investigation knowledge **shared tự động** giữa 5 ops thay vì mỗi người hỏi lại từ đầu.
+>
+> Từ 2026-07: path chính = **OpenWebUI workspace** (§2A). Claude Project (§2B) legacy — dùng đến D+21 sau cutover.
 
 ## 1. Vì sao dùng Project (không chat personal)
 
@@ -14,14 +16,25 @@
 
 → **Quy tắc:** log investigation = trong Project. Personal chat dành cho việc cá nhân (code Q&A, learning).
 
-## 2. Vào Project
+## 2. Vào workspace
 
-1. Mở Claude Desktop (hoặc claude.ai web)
-2. Sidebar trái → **Projects**
-3. Click **`onelog-investigations`**
-4. **"+ New chat"** trong Project (chứ không phải "+ New chat" ở sidebar gốc — cái đó là personal)
+### A. OpenWebUI (chính, từ 2026-07)
 
-Verify đã ở trong Project: tiêu đề trên cùng cửa sổ chat hiển thị tên Project, không phải "Claude".
+1. Mở `http://webui.local/` → login.
+2. Sidebar → **Workspaces** → click **`onelog-investigations`**.
+3. **"+ New chat"** bên trong workspace (không phải ở sidebar gốc).
+
+Verify: tiêu đề pane chat hiện tên workspace.
+
+Nếu workspace chưa có → admin tạo + add 5 ops member.
+
+### B. Claude Project (legacy)
+
+1. Mở Claude Desktop (hoặc claude.ai web).
+2. Sidebar trái → **Projects** → click **`onelog-investigations`**.
+3. **"+ New chat"** trong Project.
+
+Verify: tiêu đề cửa sổ hiển thị tên Project, không phải "Claude".
 
 ## 3. Naming convention conversation
 
@@ -38,13 +51,13 @@ Verify đã ở trong Project: tiêu đề trên cùng cửa sổ chat hiển th
 - ❌ `chuyện gì xảy ra` — không có service/keyword
 - ❌ `urgent fix` — không có context
 
-Claude Desktop tự đặt tên dựa trên message đầu — bạn **rename ngay** sau message đầu bằng cách click vào tiêu đề conversation.
+Cả OpenWebUI + Claude Desktop tự đặt tên dựa trên message đầu — **rename ngay** sau message đầu bằng cách click vào tiêu đề conversation.
 
 ## 4. Workflow điều tra incident
 
-### A. Trước khi hỏi Claude — search Project
+### A. Trước khi hỏi — search workspace / Project
 
-1. Project sidebar có ô search → gõ keyword (vd `mysql`, `502`, `redis`)
+1. Workspace (OpenWebUI) hoặc Project (Claude) sidebar có ô search → gõ keyword (vd `mysql`, `502`, `redis`)
 2. Scan list conversation gần đây
 3. **Nếu thấy case tương tự < 30 ngày:**
    - Đọc conclusion + fix
@@ -56,12 +69,13 @@ Claude Desktop tự đặt tên dựa trên message đầu — bạn **rename ng
 
 ### B. Tạo conversation mới
 
-1. Click "+ New chat" trong Project
-2. Đặt câu hỏi tự nhiên, vd:
+1. Click "+ New chat" trong workspace / Project
+2. (OpenWebUI) Chọn model — `claude-sonnet` mặc định; `gemini-flash` cho query đơn giản để tiết kiệm cost
+3. Đặt câu hỏi tự nhiên, vd:
    - `mysql có lỗi gì trong 1 giờ qua không?`
    - `Tại sao service api-gateway chậm bất thường lúc 09:00?`
    - `Có template log error nào về connection refused gần đây?`
-3. Claude sẽ gọi tool MCP phù hợp:
+4. Model sẽ gọi tool MCP phù hợp:
    - **Fuzzy intent** ("vì sao", "có vấn đề gì") → `search_log_templates` (semantic)
    - **Precise filter** ("service=X AND time>...") → `query` / `hits` / `stats_query` của mcp-vl
 4. Response có `[service:host:timestamp]` citation + `vmui_url` clickable → click để xem raw log
@@ -82,22 +96,24 @@ Claude Desktop tự đặt tên dựa trên message đầu — bạn **rename ng
    ```
 3. Nếu fix lâu dài → thêm vào `docs/runbooks/<service>.md` trong git repo (weekly review do ops trực phụ trách)
 
-## 5. Khi nào KHÔNG dùng Project
+## 5. Khi nào KHÔNG dùng workspace / Project
 
 | Trường hợp | Channel đúng |
 |---|---|
-| Hỏi Claude về code Python/Go nói chung | Personal chat |
+| Hỏi về code Python/Go nói chung | Personal chat (Claude Desktop / OpenWebUI personal) |
 | Code review, refactor suggestion | Personal chat hoặc Claude Code |
 | Learn 1 concept (Kubernetes, Postgres tuning) | Personal chat |
 | Brainstorm idea mới chưa liên quan log | Personal chat |
-| Sensitive context cá nhân (vd debug code chưa commit) | Personal chat |
-| **Bất cứ thứ gì liên quan production log của onelog** | **Project** |
+| Sensitive context cá nhân (debug code chưa commit) | Personal chat |
+| **Bất cứ thứ gì liên quan production log của onelog** | **Workspace / Project** |
 
 ## 6. Share workflow giữa team
 
 ### Real-time
-- Member 1 đang điều tra → tag member 2 trong Slack: `Đang trace vụ mysql connection pool, xem conversation [link claude.ai/projects/onelog-investigations/...]`
-- Member 2 click link → vào Project → reply trong conversation đó để collab
+- Member 1 đang điều tra → tag member 2 trong Slack:
+  - OpenWebUI: `Đang trace vụ mysql: http://webui.local/s/<share-id>`
+  - Claude: `Đang trace vụ mysql: https://claude.ai/projects/onelog-investigations/...`
+- Member 2 click link → vào cùng workspace / Project → reply hoặc fork để collab
 
 ### Async / sau giờ
 - Mỗi conversation tự visible cho 5 ops khi ai đó mở Project
@@ -109,7 +125,8 @@ Claude Desktop tự đặt tên dựa trên message đầu — bạn **rename ng
 - **Tất cả conversation trong Project = visible cho 5 member.** Đừng paste secret / credential vào chat.
 - Server-side audit: mỗi tool call ghi vào `/var/log/onelog-audit/mcp-semantic.log` với `user`, `tool`, `query`, `result_size`
 - Admin có thể grep audit để biết ai gọi gì khi nào
-- Claude Anthropic không train trên conversation của Team plan (per Anthropic ToS)
+- OpenWebUI: chat history lưu server-side (volume `openwebui_data`), backup daily encrypted age.
+- Claude Anthropic không train trên conversation của Team plan (per Anthropic ToS). Provider khác (Gemini/OpenAI/DeepSeek) — enterprise API tier assume không train nhưng vẫn không paste PII.
 
 ## 8. FAQ
 

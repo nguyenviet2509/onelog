@@ -29,7 +29,7 @@ Xem chi tiết design: [brainstorm report](../reports/brainstorm-260701-1544-llm
 | 2 | LiteLLM proxy container | **completed** (config) | 0.5 ngày | [phase-02-litellm-proxy-container.md](phase-02-litellm-proxy-container.md) |
 | 3 | OpenWebUI deploy + MCP wiring | **completed** (config) | 1 ngày | [phase-03-openwebui-deploy.md](phase-03-openwebui-deploy.md) |
 | 4 | Benchmark VI 20-query 4 providers | pending | 0.5 ngày | [phase-04-vi-benchmark.md](phase-04-vi-benchmark.md) |
-| 5 | Docs sync + team migration | pending | 0.5 ngày | [phase-05-docs-sync.md](phase-05-docs-sync.md) |
+| 5 | Docs sync + team migration | **partial** (docs xong, cutover pending keys) | 0.5 ngày | [phase-05-docs-sync.md](phase-05-docs-sync.md) |
 
 **Tổng effort:** ~3.5 ngày.
 

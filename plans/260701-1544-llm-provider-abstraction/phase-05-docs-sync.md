@@ -349,19 +349,19 @@ Admin guide:
 Chụp 8-10 screenshot OpenWebUI, lưu `docs/images/openwebui/`, embed vào user guide.
 
 ## Todo list
-- [ ] Restructure `mcp-setup-guide.md` với OpenWebUI làm main
-- [ ] Update `deployment-guide.md` với LLM stack section (trỏ sang file mới)
-- [ ] **Viết `deployment-llm-abstraction.md`** — copy-paste-runnable, 12 section theo template Step 2b
-- [ ] Update `onelog-team-project-guide.md` daily workflow
-- [ ] Viết `openwebui-user-guide.md` với screenshots
-- [ ] Viết `llm-provider-ops.md` cho admin
-- [ ] Viết `migration-plan.md` với timeline
-- [ ] Chụp 8-10 screenshot OpenWebUI
-- [ ] Gửi thông báo team migration D-3
-- [ ] Meeting demo D+0
-- [ ] Kiểm tra usage D+7, follow-up ai chưa migrate
-- [ ] Revoke Claude Desktop bearer tokens D+14
-- [ ] Viết post-mortem D+30 (cost saving thực tế)
+- [x] Restructure `mcp-setup-guide.md` với OpenWebUI làm main
+- [x] Update `deployment-guide.md` với LLM stack section (trỏ sang file mới)
+- [x] **Viết `deployment-llm-abstraction.md`** — copy-paste-runnable
+- [x] Update `onelog-team-project-guide.md` daily workflow
+- [x] Viết `openwebui-user-guide.md` (screenshots deferred)
+- [x] Viết `llm-provider-ops.md` cho admin
+- [x] Viết `migration-plan.md` với timeline
+- [ ] Chụp 8-10 screenshot OpenWebUI (defer — cần live UI với real data)
+- [ ] Gửi thông báo team migration D-3 (defer — cần Phase 4 xong + keys)
+- [ ] Meeting demo D+0 (defer)
+- [ ] Kiểm tra usage D+7, follow-up ai chưa migrate (defer)
+- [ ] Revoke Claude Desktop bearer tokens D+14 (defer)
+- [ ] Viết post-mortem D+30 cost saving (defer)
 
 ## Success criteria
 - 5/5 ops migrate xong trong 14 ngày sau cutover.

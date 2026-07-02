@@ -1,87 +1,129 @@
-# MCP setup guide — Claude Desktop ↔ onelog
+# MCP setup guide — onelog
 
-> Audience: 5 ops engineers. Time: ~10 phút/người, làm 1 lần.
+> Audience: 5 ops engineers. Time: ~5 phút/người, làm 1 lần.
+> Từ 2026-07, path chính là **OpenWebUI** (self-hosted). Claude Desktop giữ làm appendix (legacy, tồn tại ít nhất đến D+30 post-migration).
 
-## 1. Bạn cần gì trước
+## 1. Overview
+
+| Path | Khi nào dùng | Setup effort |
+|---|---|---|
+| **A. OpenWebUI** (chính) | Log investigation daily, đa provider (Claude/Gemini/GPT/DeepSeek) | 5 phút — hosts entry + login |
+| B. Claude Desktop (legacy) | Đang trong giai đoạn migration, hoặc muốn native desktop UI | 10 phút — config JSON + token |
+| C. Cursor / Continue.dev (optional) | Dev muốn dùng MCP trong IDE | Xem Appendix B |
+
+**Recommend:** dùng OpenWebUI. Claude Desktop sẽ revoke MCP token đợt cuối vào D+21 sau cutover.
+
+---
+
+## 2. Setup OpenWebUI (main path)
+
+### 2.1 Chuẩn bị — thêm hosts entry (1 lần)
+
+Map `webui.local` → `192.168.122.53`:
+
+- **Windows** (PowerShell as Admin):
+  ```powershell
+  Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "192.168.122.53  webui.local"
+  ```
+- **macOS / Linux**:
+  ```bash
+  echo "192.168.122.53  webui.local" | sudo tee -a /etc/hosts
+  ```
+
+Verify: `ping webui.local` → reply `192.168.122.53`.
+
+**Tip:** thêm luôn `192.168.122.53  app.local` cùng lúc — cần cho `vmui_url` citation click mở raw log.
+
+### 2.2 Đăng nhập
+
+- Admin gửi bạn email + password tạm qua kênh private (KHÔNG Slack public).
+- Mở `http://webui.local/` → login → **đổi password ngay** (Settings → Account).
+
+### 2.3 Chọn model
+
+- Model picker (dropdown top) — 4 alias: `claude-sonnet`, `gemini-flash`, `gpt-4-mini`, `deepseek`.
+- Default: `claude-sonnet` (tool-use fidelity tốt nhất).
+- Đổi sang `gemini-flash` cho query đơn giản để tiết kiệm cost (~10x rẻ).
+
+### 2.4 Verify MCP tools
+
+Icon MCP cạnh input → click để expand → phải thấy:
+
+- **onelog-vl** (~11 tool): `query`, `hits`, `facets`, `field_names`, `field_values`, `stream_field_names`, `stream_field_values`, `stream_ids`, `stats_query`, `stats_query_range`, `flags`
+- **onelog-semantic** (1 tool): `search_log_templates`
+
+Nếu list rỗng → xem §3 Troubleshooting.
+
+### 2.5 Chat mẫu
+
+```
+Use search_log_templates to find templates about "mysql disconnect"
+```
+
+Kỳ vọng: response VI có citation `[service:host:timestamp]` + `vmui_url` clickable. Click URL → mở raw log VMUI.
+
+**Đọc tiếp:** [openwebui-user-guide.md](openwebui-user-guide.md) — chọn model, workspace, share chat, keyboard shortcut.
+
+---
+
+## 3. Troubleshooting
+
+| Triệu chứng | Fix |
+|---|---|
+| `webui.local` không mở | `ping webui.local` — nếu fail, redo §2.1 |
+| Login "Failed to connect to backend" | Báo admin — LiteLLM proxy có thể down |
+| Model list rỗng | Báo admin — virtual key null / hết budget |
+| MCP icon show 0 tool | Báo admin — `MCP_TOKEN_OPENWEBUI` có thể sai / hết hạn |
+| Tool call fail nhưng model có gọi | Đổi model `claude-sonnet` (tool fidelity tốt hơn) |
+| Citation `vmui_url` không mở | Thiếu `app.local` trong hosts — thêm dòng `192.168.122.53 app.local` |
+| Chat load chậm / timeout | Provider rate-limit — refresh, đổi model khác |
+
+Server-side issue → ops admin (`docker compose logs openwebui litellm-proxy`).
+
+---
+
+## Appendix A — Claude Desktop (legacy)
+
+> Setup này còn hỗ trợ đến D+21 sau OpenWebUI cutover. Sau đó MCP token sẽ revoke.
+> Chỉ dùng nếu bạn chưa migrate xong sang OpenWebUI (path chính §2).
+
+### A.1 Yêu cầu
 
 | Item | Verify |
 |---|---|
-| **Claude Desktop** đã cài | Mở app, login email công ty (workspace Claude.ai Team) |
-| **Node.js ≥ 18** | Terminal: `node --version` → vd `v20.x` |
-| **Bearer token cá nhân** | Hỏi ops admin (token format `sk-mcp-...`, gửi qua kênh private — KHÔNG Slack public) |
-| **`app.local` resolve** | `ping app.local` → trả IP `192.168.122.53`. Nếu fail → thêm hosts file (Step 2) |
+| Claude Desktop đã cài | Mở app, login email công ty |
+| Node.js ≥ 18 | Terminal: `node --version` → vd `v20.x` |
+| Bearer token cá nhân | Hỏi ops admin — token `sk-mcp-...`, gửi qua kênh private |
+| `app.local` resolve | `ping app.local` → `192.168.122.53`. Fail → xem §A.2 |
 
-## 2. Map `app.local` (1 lần / máy)
+### A.2 Map `app.local`
 
-### Windows
-- Mở Notepad **as Administrator**
-- File → Open: `C:\Windows\System32\drivers\etc\hosts`
-- Thêm dòng cuối:
-  ```
-  192.168.122.53  app.local
-  ```
-- Save (giữ encoding ANSI/UTF-8, không thêm `.txt`)
-- Verify: `ping app.local` → reply từ `192.168.122.53`
+**Windows** (Notepad as Admin):
+- File `C:\Windows\System32\drivers\etc\hosts` → thêm `192.168.122.53  app.local` → Save (encoding ANSI/UTF-8).
 
-### macOS / Linux
+**macOS / Linux**:
 ```bash
 echo "192.168.122.53  app.local" | sudo tee -a /etc/hosts
-ping -c 1 app.local
 ```
 
-## 3. Config Claude Desktop
+### A.3 Config Claude Desktop
 
-### File path
-| OS | Path |
-|---|---|
-| Windows | `%APPDATA%\Claude\claude_desktop_config.json` (chính xác: `C:\Users\<bạn>\AppData\Roaming\Claude\claude_desktop_config.json`) |
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+**File path:**
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Nếu file chưa tồn tại → tạo mới với nội dung dưới.
-
-### Nội dung (replace `<YOUR_TOKEN>` bằng token admin cấp)
-
-**Windows** (`command` phải là `npx.cmd`, không phải `npx`):
+**Nội dung** (Windows — dùng `npx.cmd`):
 ```json
 {
   "mcpServers": {
     "onelog-vl": {
       "command": "npx.cmd",
-      "args": [
-        "-y",
-        "mcp-remote@latest",
-        "http://app.local/mcp/vl/sse",
-        "--allow-http",
-        "--header",
-        "Authorization: Bearer <YOUR_TOKEN>"
-      ]
-    },
-    "onelog-semantic": {
-      "command": "npx.cmd",
-      "args": [
-        "-y",
-        "mcp-remote@latest",
-        "http://app.local/mcp/semantic/mcp",
-        "--header",
-        "Authorization: Bearer <YOUR_TOKEN>"
-      ]
-    }
-  }
-}
-```
-
-**macOS / Linux** (dùng `npx` thường):
-```json
-{
-  "mcpServers": {
-    "onelog-vl": {
-      "command": "npx",
       "args": ["-y", "mcp-remote@latest", "http://app.local/mcp/vl/sse",
                "--allow-http",
                "--header", "Authorization: Bearer <YOUR_TOKEN>"]
     },
     "onelog-semantic": {
-      "command": "npx",
+      "command": "npx.cmd",
       "args": ["-y", "mcp-remote@latest", "http://app.local/mcp/semantic/mcp",
                "--header", "Authorization: Bearer <YOUR_TOKEN>"]
     }
@@ -89,81 +131,59 @@ Nếu file chưa tồn tại → tạo mới với nội dung dưới.
 }
 ```
 
-**Lưu ý quan trọng:**
-- Cả 2 server **dùng cùng 1 token** — không phải 2 token riêng
-- `onelog-vl` endpoint là `/mcp/vl/sse` (SSE transport — official mcp-victorialogs v1.9.0)
-- `onelog-semantic` endpoint là `/mcp/semantic/mcp` (Streamable HTTP — FastMCP 3.x)
-- Path khác nhau là do upstream version khác nhau, không phải lỗi config
-- **Windows `npx.cmd` thay vì `npx`**: Claude Desktop spawn qua `cmd /C` không xử lý path có space (`C:\Program Files\nodejs\`) — dùng `.cmd` extension bypass wrapper, fix lỗi `'C:\Program' is not recognized`
-- **`--allow-http` bắt buộc**: mcp-remote mặc định reject HTTP non-localhost. Bỏ flag này = `Error: Non-HTTPS URLs are only allowed for localhost`. Khi onelog có HTTPS (Caddy + LE TLS hoặc cert nội bộ) thì bỏ flag được.
+**macOS / Linux:** thay `npx.cmd` → `npx`.
 
-## 4. Restart Claude Desktop
+**Lưu ý:**
+- 2 server dùng **cùng 1 token**.
+- `onelog-vl` endpoint `/mcp/vl/sse` (SSE), `onelog-semantic` endpoint `/mcp/semantic/mcp` (Streamable HTTP).
+- Windows dùng `npx.cmd` (không `npx`) — Claude Desktop spawn qua `cmd /C` không xử lý PATH space.
+- `--allow-http` bắt buộc — mcp-remote block HTTP non-localhost mặc định.
 
-**Quan trọng:** phải **full quit** chứ không phải close window.
+### A.4 Restart Claude Desktop
 
-### Windows
-- Taskbar (góc phải) → right-click icon Claude → **Quit**
-- Hoặc Task Manager → kill `Claude.exe`
-- Mở lại app
+**Full quit** (không phải close window):
+- Windows: taskbar right-click Claude → Quit. Hoặc Task Manager kill `Claude.exe`.
+- macOS: menu bar → Claude → Quit Claude. Hoặc `Cmd+Q`.
 
-### macOS
-- Menu bar (top-right) → Claude → **Quit Claude**
-- Hoặc `Cmd+Q` khi app active
-- Mở lại
+### A.5 Verify
 
-## 5. Verify connection
-
-Trong cửa sổ chat mới của Claude Desktop:
-
-### Test 1 — Liệt kê tools
-Gõ:
+Chat mới:
 ```
 What MCP tools do you have from onelog-vl and onelog-semantic?
 ```
 
-Claude phải liệt kê các tool từ cả 2 server. Expect:
-- **onelog-vl** (~10-12 tools): `query`, `hits`, `facets`, `field_names`, `field_values`, `stream_field_names`, `stream_field_values`, `stream_ids`, `stats_query`, `stats_query_range`, `flags` (tool `documentation` đã disable)
-- **onelog-semantic** (1 tool): `search_log_templates`
+Claude phải liệt kê tool. Nếu "I don't have access" → check config JSON + restart lại.
 
-Nếu Claude trả "I don't have access to those tools" → check Step 6 troubleshooting.
+### A.6 Troubleshooting Claude Desktop
 
-### Test 2 — Smoke 1 query
-```
-Use search_log_templates to find templates about "database disconnect"
-```
+| Triệu chứng | Fix |
+|---|---|
+| "I don't have MCP tools" | Chưa restart đủ sâu — Task Manager kill `Claude.exe` |
+| Config syntax popup | JSON sai — validate jsonlint.com |
+| `Failed to connect` | `ping app.local` — nếu fail redo §A.2 |
+| `401 Unauthorized` | Token sai / bị revoke — hỏi admin |
+| Windows `'C:\Program' is not recognized` | Đổi `"command": "npx"` → `"npx.cmd"` |
+| `Non-HTTPS URLs are only allowed for localhost` | Thêm `--allow-http` trong args |
 
-Claude sẽ gọi tool, trả về list templates với `score`, `template`, `service`, `host`, `vmui_url`. Click `vmui_url` để mở raw log trong browser.
+### A.7 Token rotation
 
-## 6. Troubleshooting
+Khi rời team / nghi leak / rotation quarterly:
+1. Admin: `infra/scripts/gen-mcp-tokens.sh <user>` sinh token mới.
+2. Admin: update `.env` `MCP_BEARER_TOKENS`, restart `mcp-semantic` + `mcp-vl`.
+3. User: cập nhật token trong `claude_desktop_config.json` → full quit + reopen.
 
-| Triệu chứng | Nguyên nhân khả nghi | Cách fix |
-|---|---|---|
-| Claude trả "I don't have MCP tools" | Chưa restart đủ sâu | Task Manager kill `Claude.exe` rồi mở lại |
-| Config syntax error popup | JSON sai cú pháp | Validate online (jsonlint.com), check trailing comma, quote double-quote |
-| `Failed to connect to onelog-*` | `app.local` không resolve | `ping app.local` — nếu fail, Step 2 |
-| `401 Unauthorized` từ tool | Token sai hoặc bị revoke | Hỏi admin token mới |
-| `npx mcp-remote` fail | Node cũ <18 hoặc network firewall block npm | `node --version`; nếu OK, check `npm ping` |
-| Windows: `'C:\Program' is not recognized` trong log | `"command": "npx"` mà PATH có space | Đổi sang `"command": "npx.cmd"` |
-| `Non-HTTPS URLs are only allowed for localhost` | mcp-remote default block HTTP non-localhost | Thêm `--allow-http` vào args trước `--header` |
-| Tool list show nhưng gọi không response | Server-side issue | Báo admin check `docker compose logs mcp-semantic` |
-| `vmui_url` click không mở | `app.local` resolve fail trong browser | Cùng fix Step 2 (browser dùng cùng hosts file) |
+---
 
-## 7. Sau khi setup OK — workflow hằng ngày
+## Appendix B — Cursor / Continue.dev (optional)
 
-Đọc tiếp [onelog-team-project-guide.md](onelog-team-project-guide.md) để biết:
-- Khi nào tạo conversation trong Project `onelog-investigations` (vs personal chat)
-- Naming convention conversation
-- Cách share investigation với teammate
+Chưa officially support — cần TLS trước (Caddy Let's Encrypt hoặc cert nội bộ). Nếu có nhu cầu, báo admin.
 
-## 8. Token rotation
-
-Khi rời team / nghi token leak / quy trình rotation định kỳ:
-1. Admin chạy `infra/scripts/gen-mcp-tokens.sh <user>` sinh token mới
-2. Admin update `.env` MCP_BEARER_TOKENS, restart `mcp-semantic`
-3. User cập nhật token mới trong `claude_desktop_config.json` → full quit + reopen Claude Desktop
+---
 
 ## Support
 
-- Server-side issue → ops admin (xem audit log `/var/log/onelog-audit/mcp-semantic.log` + `docker compose logs`)
-- Claude Desktop crash / npx issue → reinstall Claude Desktop / `npm install -g node@latest`
-- Token / access → admin
+- OpenWebUI issue → admin (docker logs openwebui + litellm-proxy).
+- Claude Desktop crash → reinstall Claude Desktop / `npm install -g node@latest`.
+- Token / access → admin.
+
+**Đọc tiếp:** [onelog-team-project-guide.md](onelog-team-project-guide.md) — daily workflow qua workspace.

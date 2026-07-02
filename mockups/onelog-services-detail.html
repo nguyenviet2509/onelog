@@ -111,6 +111,9 @@
     <a href="#vmalert"><span class="ico">⑩</span><span class="lbl">vmalert</span></a>
     <a href="#alertmanager"><span class="ico">⑪</span><span class="lbl">alertmanager</span></a>
     <a href="#redis"><span class="ico">⑫</span><span class="lbl">redis <span class="badge ml-1">off</span></span></a>
+    <a href="#agent"><span class="ico">⑬</span><span class="lbl">agent <span class="badge ml-1">new</span></span></a>
+    <a href="#litellm-proxy"><span class="ico">⑭</span><span class="lbl">litellm-proxy <span class="badge ml-1">new</span></span></a>
+    <a href="#openwebui"><span class="ico">⑮</span><span class="lbl">openwebui <span class="badge ml-1">new</span></span></a>
     <a href="#decom"><span class="ico">—</span><span class="lbl">decommissioned</span></a>
   </nav>
 
@@ -119,18 +122,20 @@
     <div class="card p-5">
       <div class="h-title">Stack overview</div>
       <p class="mt-2 text-sm leading-relaxed mut">
-        Toàn bộ OneLog là <b class="acc">12 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 4 nhóm:
-        <span class="pill amber">ingestion</span> nhận log từ ngoài,
+        Toàn bộ OneLog là <b class="acc">15 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 5 nhóm:
+        <span class="pill amber">ingestion</span> nhận log,
         <span class="pill lime">storage</span> lưu trữ,
-        <span class="pill cyan">query / mcp</span> phục vụ Claude Desktop,
-        <span class="pill vio">alerting</span> opt-in.
+        <span class="pill cyan">query / mcp</span> phục vụ chat clients,
+        <span class="pill vio">alerting</span> opt-in,
+        <span class="pill pink" style="background:#2f0f22;color:#f9a8d4">llm/chat</span> multi-provider LLM (mới 2026-07).
         Hầu hết bind <code>127.0.0.1</code> — chỉ <span class="pill amber">vector :514/6514/6515</span> và <span class="pill amber">caddy :80/:443</span> mở ra LAN.
       </p>
-      <div class="grid grid-cols-4 gap-2 mt-4 text-[11px]">
+      <div class="grid grid-cols-5 gap-2 mt-4 text-[11px]">
         <div class="card2 p-3"><div class="h-title">always-on</div><div class="mt-1 acc">8 services</div><div class="mut text-[10px] mt-0.5">vl · qdrant · pg · vector · nats · mcp-semantic · mcp-vl · caddy</div></div>
         <div class="card2 p-3"><div class="h-title">profile=indexer</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">indexer (Drain3 + embed)</div></div>
         <div class="card2 p-3"><div class="h-title">profile=alerts</div><div class="mt-1 acc">2</div><div class="mut text-[10px] mt-0.5">vmalert + alertmanager</div></div>
-        <div class="card2 p-3"><div class="h-title">profile=agent</div><div class="mt-1 mut">1 (off)</div><div class="mut text-[10px] mt-0.5">redis · chờ resurrect</div></div>
+        <div class="card2 p-3"><div class="h-title">profile=agent</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">agent :8080 (LiteLLM SDK)</div></div>
+        <div class="card2 p-3"><div class="h-title">profile=llm,chat</div><div class="mt-1 acc">2</div><div class="mut text-[10px] mt-0.5">litellm-proxy · openwebui</div></div>
       </div>
     </div>
   </section>
@@ -1019,6 +1024,162 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
     </div>
   </section>
 
+  <!-- ⑬ AGENT -->
+  <section id="agent" class="anchor mt-4 card p-5" style="border-color:#082f3f">
+    <div class="svc-header">
+      <div>
+        <div class="text-lg font-semibold"><span class="num">13</span>agent <span class="pill cyan ml-1">chat SSE</span> <span class="badge ml-1">profile=agent · restored 2026-07</span></div>
+        <div class="mut text-xs mt-1">FastAPI <code>/chat</code> SSE · tool-use loop · LiteLLM SDK direct · citation validator</div>
+      </div>
+      <span class="chip on">image: <code>build ../agent</code></span>
+    </div>
+    <hr class="sep"/>
+    <div class="grid-2">
+      <div>
+        <div class="h-title">Ports</div>
+        <table class="k mt-1"><tr><td><code>127.0.0.1:8080</code></td><td>SSE <code>/chat</code>, <code>/health</code></td></tr></table>
+        <div class="h-title mt-3">Env chính</div>
+<pre class="card2 p-2 mt-1">LLM_MODEL=anthropic/claude-sonnet-4-5
+LLM_MAX_TOKENS=2048
+LLM_FALLBACK_MODELS=
+LLM_ENABLE_PROMPT_CACHE=true
+LLM_MOCK=false
+ANTHROPIC_API_KEY / OPENAI_API_KEY
+GEMINI_API_KEY / DEEPSEEK_API_KEY
+HTTPS_PROXY=</pre>
+        <div class="h-title mt-3">Depends</div>
+        <div class="text-[12px] mut">qdrant · victorialogs · (implicit) mcp-semantic tools qua registry</div>
+      </div>
+      <div>
+        <div class="h-title">Vai trò</div>
+        <ul class="text-sm mt-1 space-y-1.5">
+          <li>• Public API <code>/chat</code> SSE cho integration ngoài (webhook, CI/CD, script)</li>
+          <li>• Self-written tool-use loop (max 5 turns, timeout 25s LiteLLM + 30s agent)</li>
+          <li>• Citation validator: answer PHẢI có <code>[service:host:ts]</code> tham chiếu tool_result. Không cite → re-prompt 1 lần → refuse</li>
+          <li>• Redact defense-in-depth tại boundary</li>
+        </ul>
+      </div>
+    </div>
+    <div class="role">
+      <h4>Tác dụng chi tiết</h4>
+      <ul>
+        <li><b>Giải quyết:</b> workflow programmatic (không phải chat UI) — CI/CD hỏi log status, webhook alert triage tự động, script batch phân tích.</li>
+        <li><b>Vị trí:</b> Restored 2026-07-02 sau khi có LiteLLM abstraction. Trước đó decommissioned trong mcp-only rollout (Jun 2026) vì hard-code Anthropic direct SDK duplicate cost.</li>
+        <li><b>LiteLLM direct (không qua proxy):</b> Giảm 1 hop network, latency thấp hơn. Trade-off: agent tự đọc provider keys từ <code>.env</code>, không share cost tracking với litellm-proxy.</li>
+        <li><b>Shape adapter Anthropic ↔ OpenAI:</b> <code>llm_client.py</code> giữ interface Anthropic content-blocks cho <code>agent_loop.py</code>, translate 1 lần tại boundary. 13 unit tests + 2 integration tests đảm bảo parity.</li>
+      </ul>
+    </div>
+    <div class="reload">Rebuild + restart: <code>docker compose --profile agent build agent &amp;&amp; docker compose --profile agent up -d agent</code></div>
+  </section>
+
+  <!-- ⑭ LITELLM-PROXY -->
+  <section id="litellm-proxy" class="anchor mt-4 card p-5" style="border-color:#082f3f">
+    <div class="svc-header">
+      <div>
+        <div class="text-lg font-semibold"><span class="num">14</span>litellm-proxy <span class="pill cyan ml-1">multi-provider gateway</span> <span class="badge ml-1">profile=llm,chat · new 2026-07</span></div>
+        <div class="mut text-xs mt-1">OpenAI-compat gateway route 4 provider · fallback chain · cost log stdout JSON</div>
+      </div>
+      <span class="chip on">image: <code>ghcr.io/berriai/litellm:main-stable</code></span>
+    </div>
+    <hr class="sep"/>
+    <div class="grid-2">
+      <div>
+        <div class="h-title">Ports</div>
+        <table class="k mt-1"><tr><td><code>127.0.0.1:4000</code></td><td>OpenAI-compat API (qua Caddy <code>/llm/*</code>)</td></tr></table>
+        <div class="h-title mt-3">Model aliases</div>
+        <table class="k mt-1">
+          <tr><td><code>gemini-flash</code></td><td>gemini/gemini-2.5-flash</td></tr>
+          <tr><td><code>gpt-4-mini</code></td><td>openai/gpt-4.1-mini</td></tr>
+          <tr><td><code>claude-sonnet</code></td><td>anthropic/claude-sonnet-4-5</td></tr>
+          <tr><td><code>deepseek</code></td><td>deepseek/deepseek-chat</td></tr>
+        </table>
+        <div class="h-title mt-3">Env / mounts</div>
+<pre class="card2 p-2 mt-1">LITELLM_MASTER_KEY=sk-litellm-*
+env_file: litellm/.env.llm (chmod 0400 root)
+  ANTHROPIC/OPENAI/GEMINI/DEEPSEEK_API_KEY
+volume: litellm/config.yaml
+volume: litellm/callbacks/custom_callbacks.py
+# DATABASE_URL: disabled (Prisma limitation)</pre>
+      </div>
+      <div>
+        <div class="h-title">Vai trò</div>
+        <ul class="text-sm mt-1 space-y-1.5">
+          <li>• Backend cho OpenWebUI (OpenAI-compat endpoint)</li>
+          <li>• Centralize provider keys — chỉ container này đọc <code>.env.llm</code>, tách blast radius khỏi stack chính (RT-F1)</li>
+          <li>• Fallback chain: <code>gemini-flash → gpt-4-mini → claude-sonnet</code> khi primary fail</li>
+          <li>• Empty-response guard callback: reject 200 OK với body rỗng → trigger fallback (RT-F10)</li>
+          <li>• Cost log JSON stdout → tail vào VictoriaLogs (V4)</li>
+        </ul>
+        <div class="h-title mt-3">Healthcheck</div>
+        <div class="text-[12px] mut">Python urllib GET <code>/health/liveliness</code>, first-run start_period 20s</div>
+      </div>
+    </div>
+    <div class="role">
+      <h4>Tác dụng chi tiết</h4>
+      <ul>
+        <li><b>Giải quyết:</b> team muốn chọn provider theo cost/quality. Gemini Flash cho query đơn giản (rẻ), Claude Sonnet cho query phức tạp (chất lượng cao). Không cần restart container khi đổi provider — chỉ đổi model alias trong request.</li>
+        <li><b>DB backend disabled:</b> Prisma ORM của LiteLLM ignore Postgres search_path → schema isolation là no-op. Chọn KISS: cost track qua stdout JSON, virtual key + budget cap không dùng (OpenWebUI reuse master key).</li>
+        <li><b>Profiles [llm, chat]:</b> nằm trong cả 2 profile để <code>--profile chat</code> alone kéo được depends_on của openwebui. Tránh compose validate error.</li>
+        <li><b>Timeout 25s:</b> phải &lt; AGENT_TIMEOUT_S=30s để tránh race orphan request khi agent timeout trước response về (charge kép).</li>
+      </ul>
+    </div>
+    <div class="reload">Reload config: <code>docker compose --profile llm restart litellm-proxy</code> · List models: <code>curl /v1/models -H "Authorization: Bearer $LITELLM_MASTER_KEY"</code></div>
+  </section>
+
+  <!-- ⑮ OPENWEBUI -->
+  <section id="openwebui" class="anchor mt-4 card p-5" style="border-color:#1f1a3a">
+    <div class="svc-header">
+      <div>
+        <div class="text-lg font-semibold"><span class="num">15</span>openwebui <span class="pill vio ml-1">team chat UI</span> <span class="badge ml-1">profile=chat · new 2026-07</span></div>
+        <div class="mut text-xs mt-1">Self-host chat UI thay Claude Desktop · SQLite user DB · MCP native · webui.local subdomain</div>
+      </div>
+      <span class="chip on">image: <code>ghcr.io/open-webui/open-webui:main</code></span>
+    </div>
+    <hr class="sep"/>
+    <div class="grid-2">
+      <div>
+        <div class="h-title">Ports</div>
+        <table class="k mt-1"><tr><td><code>127.0.0.1:8090</code></td><td>web UI (qua Caddy site webui.local)</td></tr></table>
+        <div class="h-title mt-3">Env chính</div>
+<pre class="card2 p-2 mt-1">OPENAI_API_BASE_URL=http://litellm-proxy:4000/v1
+OPENAI_API_KEY=${OPENWEBUI_LITELLM_VIRTUAL_KEY}
+  # = LITELLM_MASTER_KEY (no DB)
+WEBUI_NAME="OneLog Chat"
+DEFAULT_MODELS=gemini-flash
+ENABLE_SIGNUP=false
+ENABLE_MCP=true
+MCP_CONFIG_PATH=/app/backend/data/mcp-config.json
+MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-*
+WEBUI_ADMIN_EMAIL/PASSWORD=${...:-}
+  # empty = skip; set once khi bootstrap</pre>
+        <div class="h-title mt-3">Volumes</div>
+        <div class="text-[12px] mut">SQLite <code>data/openwebui/</code> · mount <code>openwebui/mcp-config.json</code></div>
+      </div>
+      <div>
+        <div class="h-title">Vai trò</div>
+        <ul class="text-sm mt-1 space-y-1.5">
+          <li>• Chat UI web (browser, không cần cài client) cho 5 ops</li>
+          <li>• Model picker: 4 alias từ LiteLLM</li>
+          <li>• MCP tools: gọi mcp-vl + mcp-semantic trực tiếp (token OpenWebUI riêng, revoke độc lập)</li>
+          <li>• Chat history persistent SQLite, share conversation qua link</li>
+          <li>• Admin user table local (không SSO)</li>
+        </ul>
+        <div class="h-title mt-3">Access</div>
+        <div class="text-[12px] mut">Browser <code>http://webui.local/</code> (thêm hosts entry <code>192.168.122.53  webui.local</code>)</div>
+      </div>
+    </div>
+    <div class="role">
+      <h4>Tác dụng chi tiết</h4>
+      <ul>
+        <li><b>Giải quyết:</b> ops muốn chat UI web (không phải Claude Desktop client). Đặc biệt hữu ích khi cài Claude Desktop khó (macOS restrict, Windows corp policy) hoặc muốn share conversation qua link.</li>
+        <li><b>Subdomain webui.local (không /webui subpath):</b> OpenWebUI HTML dùng root-relative asset paths (<code>/static/*</code>, <code>/api/*</code>) — subpath sẽ collide với Caddy handlers khác. Subdomain giải phóng root cho OpenWebUI.</li>
+        <li><b>Bootstrap admin pattern:</b> compose ENV <code>WEBUI_ADMIN_*: ${...:-}</code> always defined; giá trị empty = skip creation. Bootstrap = set 2 dòng trong .env → restart → verify → unset → restart. Compose file invariant, không git conflict.</li>
+        <li><b>MCP token dedicated:</b> <code>MCP_TOKEN_OPENWEBUI</code> tách khỏi token agent/Claude Desktop. Nếu OpenWebUI compromise → revoke chỉ token này, không ảnh hưởng client khác.</li>
+      </ul>
+    </div>
+    <div class="reload">Restart: <code>docker compose --profile chat restart openwebui</code> · Backup: <code>bash infra/scripts/backup-openwebui.sh</code> (age-encrypted)</div>
+  </section>
+
   <!-- DECOMMISSIONED -->
   <section id="decom" class="anchor mt-4 card p-5" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
     <div class="svc-header">
@@ -1039,14 +1200,14 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
           <td>Workflow chuyển sang Claude Desktop — không còn người dùng web UI</td>
         </tr>
         <tr>
-          <td><span class="pill red">agent</span></td>
+          <td><span class="pill lime">agent</span> <span class="text-[10px] mut">(restored 2026-07)</span></td>
           <td>build <code>../agent</code> (FastAPI)</td>
           <td><code>127.0.0.1:8080</code></td>
-          <td>Tự gọi Anthropic API → duplicate cost với Claude Team subscription mà 5 ops đã trả</td>
+          <td><s>Duplicate cost với Claude Team</s> → restored với LiteLLM adapter, xem section ⑬</td>
         </tr>
       </tbody>
     </table>
-    <div class="mt-3 mut text-[12px]">Resurrect: uncomment 2 block trong <code>infra/docker-compose.yml</code>, set <code>ANTHROPIC_API_KEY</code> trong <code>.env</code>, chạy <code>docker compose --profile web --profile agent up -d</code>, smoke <code>curl http://app.local/chat → 200</code>.</div>
+    <div class="mt-3 mut text-[12px]">Resurrect web: uncomment block <code>web:</code> trong <code>infra/docker-compose.yml</code>, chạy <code>docker compose --profile web up -d</code>. Agent đã restored (2026-07-02) — không cần drill.</div>
   </section>
 
   <!-- DEPENDENCY SUMMARY -->
@@ -1067,6 +1228,9 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
         <tr><td><span class="pill amber">caddy</span></td><td>mcp-vl · mcp-semantic</td><td>5 ops laptop</td></tr>
         <tr><td><span class="pill vio">vmalert</span></td><td>victorialogs · alertmanager</td><td>—</td></tr>
         <tr><td><span class="pill vio">alertmanager</span></td><td>—</td><td>vmalert (notify) → Telegram Bot API (2 receivers: trend/event)</td></tr>
+        <tr><td><span class="pill cyan">agent</span></td><td>qdrant · victorialogs · LiteLLM SDK (direct API)</td><td>External integrations (webhook, CI, script) via <code>/api/chat</code> SSE</td></tr>
+        <tr><td><span class="pill cyan">litellm-proxy</span></td><td>Provider APIs (Anthropic/OpenAI/Gemini/DeepSeek)</td><td>openwebui (backend)</td></tr>
+        <tr><td><span class="pill vio">openwebui</span></td><td>litellm-proxy (backend) · mcp-vl + mcp-semantic (tools)</td><td>5 ops (browser · webui.local)</td></tr>
       </tbody>
     </table>
   </section>
@@ -1082,6 +1246,13 @@ docker compose --profile indexer up -d
 
 <span class="mut"># bật alerting</span>
 docker compose --profile alerts up -d
+
+<span class="mut"># bật agent (LiteLLM SDK direct, /api/chat SSE)</span>
+docker compose --profile agent up -d
+
+<span class="mut"># bật LLM stack (litellm-proxy + openwebui)</span>
+<span class="mut"># NOTE: litellm-proxy in cả 2 profile [llm,chat] để --profile chat alone kéo được</span>
+docker compose --profile llm --profile chat up -d
 
 <span class="mut"># tear down + giữ data</span>
 docker compose down
@@ -1107,6 +1278,7 @@ docker compose down -v && rm -rf infra/data/*</pre>
         <tr><td><code>restore-snapshot.sh</code></td><td>Khôi phục từ snapshot tar — stop stack, replace data, start lại</td><td>Khi crash data dir</td></tr>
         <tr><td><code>resurrect-drill.sh</code></td><td>Bật lại web+agent stack từ legacy: uncomment compose block, set env, up, smoke <code>/chat</code></td><td>Quarterly drill để đảm bảo legacy còn boot được</td></tr>
         <tr><td><code>soak-check.sh</code></td><td>Sanity 5p liên tục: VL ingest rate, NATS pending, Qdrant count, MCP latency</td><td>Sau phase rollout lớn</td></tr>
+        <tr><td><code>backup-openwebui.sh</code> <span class="pill lime text-[9px]">new</span></td><td>Streaming <code>tar</code> chat history → age encryption → <code>~/onelog/backup/openwebui-*.tgz.age</code></td><td>Cron 03:00 daily (chat có thể chứa PII từ log paste)</td></tr>
       </tbody>
     </table>
   </section>

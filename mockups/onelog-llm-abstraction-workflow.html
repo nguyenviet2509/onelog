@@ -65,17 +65,17 @@
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
       <div class="flex items-center gap-2 mb-1">
-        <span class="pill cyan">MOCKUP</span>
-        <span class="pill gray">Post-Cook Preview</span>
+        <span class="pill lime">DEPLOYED</span>
+        <span class="pill gray">Phase 1-3 verified</span>
         <span class="pill vio">Plan 260701-1544</span>
       </div>
-      <h1 class="text-2xl font-semibold tracking-tight">LLM Provider Abstraction — Workflow sau khi cook xong</h1>
-      <p class="mut text-sm mt-1">Xem trước hệ thống end-state: agent service đa provider · LiteLLM proxy · OpenWebUI thay Claude Desktop</p>
+      <h1 class="text-2xl font-semibold tracking-tight">LLM Provider Abstraction — Trạng thái thực tế</h1>
+      <p class="mut text-sm mt-1">Deployed trên logserver-01 · 2026-07-02: agent LiteLLM adapter + LiteLLM proxy + OpenWebUI · MCP servers không đổi</p>
     </div>
     <div class="text-right text-xs mut">
       <div>Owner · anhtct@inet.vn</div>
-      <div>Date · 2026-07-01</div>
-      <div>Total effort · ~3.5 ngày</div>
+      <div>Deployed · 2026-07-02</div>
+      <div>Commits · 14 (31f9644 → 65a5fa8)</div>
     </div>
   </div>
 </header>
@@ -102,10 +102,11 @@
     </div>
     <div class="text-sm space-y-1.5">
       <div><span class="dot" style="background:#34d399"></span> <span class="mut">Agent service</span> → <b>LiteLLM adapter</b>, 1 env var đổi provider</div>
-      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Team ops</span> → <b>1 URL OpenWebUI</b>, login sso-local</div>
-      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost/query</span> → <b>~35%</b> baseline (Gemini Flash default)</div>
-      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Fallback</span> → Gemini → GPT-mini → Claude auto-retry</div>
-      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost visibility</span> → LiteLLM dashboard + Postgres cost log per user</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Team ops</span> → <b>webui.local</b> (subdomain, không phải subpath), local admin invite</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost/query</span> → tùy provider; Gemini Flash raw ~12% Claude (chưa tính Claude prompt cache)</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Fallback</span> → auto-retry theo <code>LLM_FALLBACK_MODELS</code> + LiteLLM router</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost visibility</span> → stdout JSON → VictoriaLogs (Postgres DB disabled)</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Blast radius</span> → provider keys tách <code>.env.llm</code> chmod 0400 root</div>
     </div>
   </div>
 </section>
@@ -127,10 +128,10 @@ flowchart LR
   classDef prov fill:#1f1a3a,stroke:#a78bfa,color:#e9d5ff
 
   U["👥 5 ops"]:::exist
-  A["👤 agent svc /chat SSE<br/><span style='font-size:10px'>Phase 1</span>"]:::new
-  UI["🖥️ OpenWebUI<br/><span style='font-size:10px'>Phase 3 · /webui/*</span>"]:::new
-  C["Caddy<br/>reverse proxy"]:::exist
-  L["🧭 LiteLLM Proxy<br/><span style='font-size:10px'>Phase 2 · /llm/v1/*</span>"]:::new
+  A["👤 agent svc /chat SSE<br/><span style='font-size:10px'>Phase 1 · /api/*</span>"]:::new
+  UI["🖥️ OpenWebUI<br/><span style='font-size:10px'>Phase 3 · webui.local subdomain</span>"]:::new
+  C["Caddy<br/>reverse proxy<br/><span style='font-size:10px'>app.local + webui.local</span>"]:::exist
+  L["🧭 LiteLLM Proxy<br/><span style='font-size:10px'>Phase 2 · /llm/v1/* · profiles [llm,chat]</span>"]:::new
   MV["mcp-vl"]:::exist
   MS["mcp-semantic"]:::exist
 
@@ -140,24 +141,25 @@ flowchart LR
   P4["DeepSeek<br/>Chat"]:::prov
 
   U -->|HTTPS| C
-  C --> UI
-  C --> A
+  C -->|Host: webui.local| UI
+  C -->|/api/chat| A
   UI -->|OpenAI-compat| L
-  A -->|litellm.acompletion| L
+  A -->|litellm SDK direct| P1
+  A -.->|SDK fallback list| P2
   L --> P1
   L --> P2
   L --> P3
   L --> P4
-  UI -.->|MCP| MV
-  UI -.->|MCP| MS
+  UI -.->|MCP token OpenWebUI| MV
+  UI -.->|MCP token OpenWebUI| MS
   A -.->|internal tools| MV
   A -.->|internal tools| MS
     </pre>
   </div>
   <div class="mt-3 text-xs mut">
-    <b class="acc">Đường mới:</b> ops → Caddy → OpenWebUI → LiteLLM → 1 trong 4 provider ·
-    <b class="acc">Fallback chain:</b> Gemini fail → GPT-mini → Claude ·
-    <b class="acc">MCP layer:</b> không đổi (đã LLM-agnostic sẵn)
+    <b class="acc">Path 1 (chat UI):</b> ops → Caddy webui.local → OpenWebUI → LiteLLM proxy → provider ·
+    <b class="acc">Path 2 (agent API):</b> ops → Caddy /api → agent → LiteLLM SDK <b>direct</b> → provider ·
+    <b class="acc">MCP layer:</b> không đổi. Token riêng cho OpenWebUI (RT-F3) revoke độc lập.
   </div>
 </section>
 
@@ -165,48 +167,48 @@ flowchart LR
 <section class="card p-5 mb-6">
   <div class="flex items-center justify-between mb-3">
     <span class="h-title">Cook progress · 5 phases</span>
-    <span class="pill gray">simulated post-cook</span>
+    <span class="pill lime">status thực tế 2026-07-02</span>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
     <div class="phase-cell done">
       <div class="flex items-center justify-between mb-2">
         <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">1 ngày</span>
+        <span class="text-[10px] mut">code + deploy</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 1</div>
-      <div class="text-[11px] mut">Agent LiteLLM adapter · 4 helper convert Anthropic ↔ OpenAI · tests parity</div>
+      <div class="text-[11px] mut">Agent LiteLLM adapter · shape adapter Anthropic↔OpenAI · 15/15 tests pass · deployed <code>31f9644</code></div>
     </div>
     <div class="phase-cell done">
       <div class="flex items-center justify-between mb-2">
         <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">0.5 ngày</span>
+        <span class="text-[10px] mut">deployed</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 2</div>
-      <div class="text-[11px] mut">LiteLLM proxy container · 4 model alias · fallback + virtual keys</div>
+      <div class="text-[11px] mut">LiteLLM proxy · 4 model alias load · DB backend disabled (Prisma limitation) · <code>fc8e738+31643ec</code></div>
     </div>
     <div class="phase-cell done">
       <div class="flex items-center justify-between mb-2">
         <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">1 ngày</span>
+        <span class="text-[10px] mut">deployed</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 3</div>
-      <div class="text-[11px] mut">OpenWebUI deploy · MCP wire · 5 tài khoản ops · backup cron</div>
+      <div class="text-[11px] mut">OpenWebUI · webui.local subdomain · admin bootstrap + lock · <code>07a4629+6434949</code></div>
     </div>
-    <div class="phase-cell done">
+    <div class="phase-cell" style="border-color:#2a1f06;background:#1a1407">
       <div class="flex items-center justify-between mb-2">
-        <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">0.5 ngày</span>
+        <span class="pill amber">⏸ PENDING</span>
+        <span class="text-[10px] mut">chờ keys</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 4</div>
-      <div class="text-[11px] mut">20 query VI × 4 provider · matrix cost/quality · recommendation</div>
+      <div class="text-[11px] mut">20 query VI × 4 provider benchmark. Chờ có ≥ 3 provider key thật để chạy.</div>
     </div>
-    <div class="phase-cell done">
+    <div class="phase-cell" style="border-color:#2a1f06;background:#1a1407">
       <div class="flex items-center justify-between mb-2">
-        <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">0.5 ngày</span>
+        <span class="pill amber">⏸ PARTIAL</span>
+        <span class="text-[10px] mut">deploy doc done</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 5</div>
-      <div class="text-[11px] mut">Docs sync · migration 14 ngày · post-mortem cost thực tế</div>
+      <div class="text-[11px] mut">Docs deploy runbook đã viết. Còn lại: mcp-setup restructure, user guide, migration cutover.</div>
     </div>
   </div>
 </section>
@@ -388,46 +390,43 @@ sequenceDiagram
 
 <!-- FILE CHANGE SURFACE -->
 <section class="card p-5 mb-6">
-  <div class="h-title mb-3">File change surface · sau khi cook</div>
+  <div class="h-title mb-3">File change surface · thực tế commit vào master</div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
       <div class="text-[11px] mut mb-2 tracking-wider">MODIFIED</div>
       <ul class="text-[12px] space-y-1.5">
         <li><code class="acc">agent/pyproject.toml</code> <span class="mut">+ litellm&gt;=1.50</span></li>
-        <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, llm_max_tokens, fallback</span></li>
-        <li><code class="acc">agent/src/agent/llm_client.py</code> <span class="mut">rewrite → litellm.acompletion</span></li>
-        <li><code class="acc">agent/src/agent/agent_loop.py</code> <span class="mut">adapt normalized response</span></li>
-        <li><code class="acc">agent/tests/*</code> <span class="mut">param 2 providers</span></li>
-        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy, openwebui</span></li>
-        <li><code class="acc">infra/Caddyfile</code> <span class="mut">+ /llm/*, /webui/*</span></li>
-        <li><code class="acc">infra/.env.example</code> <span class="mut">+ 8 biến mới</span></li>
-        <li><code class="acc">docs/mcp-setup-guide.md</code> <span class="mut">restructure — OpenWebUI main</span></li>
-        <li><code class="acc">docs/deployment-guide.md</code> <span class="mut">+ LLM stack section</span></li>
-        <li><code class="acc">docs/onelog-team-project-guide.md</code> <span class="mut">workflow OpenWebUI</span></li>
+        <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, fallback, prompt_cache toggle</span></li>
+        <li><code class="acc">agent/src/agent/llm_client.py</code> <span class="mut">rewrite → litellm.acompletion + shape adapter</span></li>
+        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy [llm,chat], openwebui [chat], restore agent [agent]</span></li>
+        <li><code class="acc">infra/caddy/Caddyfile</code> <span class="mut">+ /llm/*, + site webui.local (subdomain thay subpath)</span></li>
+        <li><code class="acc">infra/.env.example</code> <span class="mut">+ LLM_*, LITELLM_MASTER_KEY, OPENWEBUI_*, MCP_TOKEN_OPENWEBUI</span></li>
+        <li><code class="acc">docs/deployment-guide.md</code> <span class="mut">rewrite: concise playbook style</span></li>
       </ul>
     </div>
     <div>
       <div class="text-[11px] mut mb-2 tracking-wider">CREATED</div>
       <ul class="text-[12px] space-y-1.5">
-        <li><code class="ok">infra/litellm/config.yaml</code></li>
-        <li><code class="ok">infra/openwebui/mcp-config.json</code></li>
-        <li><code class="ok">infra/scripts/backup-openwebui.sh</code></li>
-        <li><code class="ok">agent/tests/benchmark/queries-vi.json</code></li>
-        <li><code class="ok">agent/tests/benchmark/run-benchmark.py</code></li>
-        <li><code class="ok">docs/openwebui-user-guide.md</code></li>
-        <li><code class="ok">docs/llm-provider-ops.md</code></li>
-        <li><code class="ok">plans/260701-1544-*/benchmark-results.md</code></li>
-        <li><code class="ok">plans/260701-1544-*/migration-plan.md</code></li>
+        <li><code class="ok">infra/litellm/config.yaml</code> <span class="mut">4 model alias · fallback chain · DB disabled</span></li>
+        <li><code class="ok">infra/litellm/.env.llm.example</code> <span class="mut">provider keys tách chmod 0400</span></li>
+        <li><code class="ok">infra/litellm/callbacks/custom_callbacks.py</code> <span class="mut">RT-F10 empty-response guard</span></li>
+        <li><code class="ok">infra/openwebui/mcp-config.json</code> <span class="mut">MCP token riêng RT-F3</span></li>
+        <li><code class="ok">infra/scripts/backup-openwebui.sh</code> <span class="mut">age encryption RT-F4</span></li>
+        <li><code class="ok">agent/tests/test_llm_client.py</code> <span class="mut">13 test shape adapter</span></li>
+        <li><code class="ok">docs/deployment-llm-abstraction.md</code> <span class="mut">playbook 264 dòng</span></li>
+        <li><code class="ok">.claude/skills/deploy-doc/SKILL.md</code> <span class="mut">skill reuse pattern</span></li>
       </ul>
-      <div class="text-[11px] mut mb-2 mt-4 tracking-wider">DELETED</div>
-      <div class="text-[12px] mut">Không có · giữ Claude Desktop appendix để migration graceful. Revoke MCP bearer token Claude-only ở D+14.</div>
+      <div class="text-[11px] mut mb-2 mt-4 tracking-wider">DELETED / ABANDONED</div>
+      <ul class="text-[12px] space-y-1.5">
+        <li><code class="err">infra/litellm/init-schema.sql</code> <span class="mut">Prisma ignore search_path → DB isolation no-op</span></li>
+      </ul>
     </div>
   </div>
 </section>
 
 <!-- MIGRATION TIMELINE -->
 <section class="card p-5 mb-6">
-  <div class="h-title mb-3">Migration timeline · 30 ngày sau cook</div>
+  <div class="h-title mb-3">Migration timeline (kế hoạch — chưa start, chờ có provider keys)</div>
   <ol class="relative border-l border-[var(--line)] ml-3 space-y-3">
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
@@ -460,16 +459,51 @@ sequenceDiagram
   </ol>
 </section>
 
-<!-- OPEN QUESTIONS -->
+<!-- ISSUES RESOLVED -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">Vấn đề đã gặp thực tế + fix vĩnh viễn</div>
+  <table class="k">
+    <thead>
+      <tr><th>#</th><th>Vấn đề</th><th>Fix</th><th>Commit</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>LiteLLM stuck 20 phút Prisma migration + schema isolation no-op</td><td>Disable DB backend, dùng stdout JSON log</td><td><code>31643ec</code></td></tr>
+      <tr><td>2</td><td>Virtual key generate báo <code>DB not connected</code></td><td>OpenWebUI reuse LITELLM_MASTER_KEY</td><td><code>e2293f8</code></td></tr>
+      <tr><td>3</td><td>Caddy <code>/webui/*</code> subpath break OpenWebUI static assets</td><td>Dedicated subdomain webui.local + /etc/hosts</td><td><code>6434949</code></td></tr>
+      <tr><td>4</td><td>Compose "service openwebui depends on undefined litellm-proxy"</td><td>litellm-proxy vào cả 2 profiles [llm, chat]</td><td><code>e2293f8</code></td></tr>
+      <tr><td>5</td><td>Bootstrap admin dance gây git conflict mỗi deploy</td><td>Compose ENV always defined, empty=skip. Chỉ động .env</td><td><code>81b3ba5</code></td></tr>
+      <tr><td>6</td><td><code>docker compose exec</code> từ <code>~/onelog</code> báo no configuration file</td><td>Golden rule §0: luôn <code>cd ~/onelog/infra</code></td><td><code>6897b41</code></td></tr>
+      <tr><td>7</td><td>Agent service <code>no such service</code> — bị comment từ mcp-only rollout</td><td>Restore agent service với LiteLLM env vars</td><td><code>373053d</code></td></tr>
+      <tr><td>8</td><td>Git pull báo <code>local changes would be overwritten</code></td><td>Pattern <code>git stash push</code> trước pull</td><td>doc</td></tr>
+    </tbody>
+  </table>
+  <div class="mt-3 text-[11px] mut">Tất cả đã consolidate vào <code>docs/deployment-llm-abstraction.md</code> troubleshooting table + <code>.claude/skills/deploy-doc</code> anti-patterns.</div>
+</section>
+
+<!-- CURRENT STATE -->
 <section class="card p-5 mb-8">
-  <div class="h-title mb-3">Câu hỏi cần chốt trước Phase 3</div>
-  <ol class="text-sm space-y-1.5 list-decimal ml-5">
-    <li>OpenWebUI auth · SSO/OIDC có sẵn hay dùng local user table?</li>
-    <li>Chat history retention policy · giữ vĩnh viễn hay auto-purge 90 ngày?</li>
-    <li>LiteLLM metrics · export Prometheus/OTLP vào VictoriaLogs stack?</li>
-    <li>Provider API keys · ops admin only hay Vault (HashiCorp/Bitwarden)?</li>
-    <li>Budget alert threshold · VND/tháng để LiteLLM cost guard trigger?</li>
-  </ol>
+  <div class="h-title mb-3">Trạng thái verify — logserver-01</div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-[13px]">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">✅ VERIFIED</div>
+      <ul class="space-y-1.5">
+        <li>LiteLLM proxy <code>Up (healthy)</code>, list 4 model alias</li>
+        <li>OpenWebUI reachable qua <code>http://webui.local/</code>, admin login OK</li>
+        <li>Agent SSE <code>/chat</code> trả events đầy đủ, shape adapter đúng</li>
+        <li>Bootstrap admin lock signup xong</li>
+        <li>Compose YAML + Caddyfile syntax OK</li>
+      </ul>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">⏳ CHỜ CÓ KEY THẬT</div>
+      <ul class="space-y-1.5">
+        <li>End-to-end chat thực (hiện <code>AuthenticationError</code> — adapter OK, chỉ thiếu key)</li>
+        <li>Cost stdout log có data để tail vào VictoriaLogs</li>
+        <li>Fallback chain trigger được (cần key primary work + key fallback work)</li>
+        <li>Phase 4 benchmark 20 query × 4 provider</li>
+      </ul>
+    </div>
+  </div>
 </section>
 
 <footer class="text-[11px] mut text-center py-4 border-t border-[var(--line)]">

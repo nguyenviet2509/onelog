@@ -55,23 +55,31 @@
       <div class="size-9 rounded-xl bg-white text-black grid place-items-center font-black">O</div>
       <div>
         <div class="font-semibold leading-tight">OneLog <span class="mut font-normal">/ system explainer</span></div>
-        <div class="text-[11px] mut">RAG Log Server · Claude Desktop ↔ MCP · Lab 3-VM</div>
+        <div class="text-[11px] mut">RAG Log Server · Claude Desktop OR OpenWebUI ↔ MCP · Multi-provider LLM · Lab 3-VM</div>
       </div>
     </div>
     <div class="flex items-center gap-2 text-xs">
-      <span class="chip"><span class="dot" style="background:var(--ok)"></span> v2026.06 · MCP-only</span>
-      <span class="chip on">5 ops · Claude Team plan</span>
+      <span class="chip"><span class="dot" style="background:var(--ok)"></span> v2026.07 · Multi-provider LLM</span>
+      <span class="chip on">5 ops · agent SSE + OpenWebUI + Claude Desktop</span>
     </div>
   </header>
 
-  <!-- Decommission banner -->
-  <div class="mt-4 card p-3.5 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
-    <span class="pill amber mt-0.5">DECOMMISSIONED 2026-06-24</span>
+  <!-- Update banner: LLM abstraction added -->
+  <div class="mt-4 card p-3.5 flex items-start gap-3" style="border-color:#082f3f;background:linear-gradient(180deg,#07171f,#0e0e12)">
+    <span class="pill cyan mt-0.5">UPDATED 2026-07-02</span>
     <div class="text-[13px] leading-relaxed">
-      Web UI (Next.js :3000) + FastAPI rag-agent (server-side Anthropic API) đã <b>commented out</b> trong <code>infra/docker-compose.yml</code>.
-      Workflow hiện tại: <b>Claude Desktop ↔ MCP servers</b> (<span class="pill cyan">mcp-vl</span> + <span class="pill vio">mcp-semantic</span>) — 5 ops dùng Claude Team subscription, không còn duplicate LLM cost.
-      Code <code>web/</code> &amp; <code>agent/</code> giữ trên master để resurrect (branch <code>legacy-web</code> snapshot).
-      Drill: <code>infra/scripts/resurrect-drill.sh</code>.
+      Thêm <b>LLM Provider Abstraction</b> (plan 260701-1544): <span class="pill cyan">litellm-proxy</span> + <span class="pill vio">openwebui</span> mở đường thay 4 provider (Claude/GPT/Gemini/DeepSeek) qua 1 env var.
+      Agent service (<code>ragstack-agent</code>) <b>restored</b> với LiteLLM adapter — thay Anthropic direct SDK.
+      Team ops có 2 UX song song: (a) OpenWebUI <code>http://webui.local/</code>, (b) Claude Desktop qua MCP (như cũ).
+      Chi tiết: <code>docs/deployment-llm-abstraction.md</code>.
+    </div>
+  </div>
+
+  <!-- Legacy web decommission (still valid) -->
+  <div class="mt-3 card p-3 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
+    <span class="pill amber mt-0.5">STILL DECOMMISSIONED</span>
+    <div class="text-[12px] leading-relaxed mut">
+      Web UI (Next.js :3000) vẫn commented trong <code>docker-compose.yml</code>. Chức năng chat đã thay bằng OpenWebUI (subdomain webui.local). Code <code>web/</code> giữ trên master để resurrect nếu cần. Redis (cache cho web cũ) cũng chưa reactivate.
     </div>
   </div>
 
@@ -137,10 +145,15 @@ flowchart LR
     NA[["NATS<br/>:4222"]]
     MVL["mcp-vl<br/>(official mcp-victorialogs)"]
     MSE["mcp-semantic<br/>(FastMCP · search_log_templates)"]
-    CAD["Caddy 80/443<br/>IP allowlist + Bearer"]
-    DECOM["~~web (Next.js) :3000~~<br/>~~rag-agent :8000~~<br/><i>decommissioned</i>"]
+    AG["agent :8080<br/>(LiteLLM SDK)<br/>NEW 2026-07"]
+    LLM["litellm-proxy :4000<br/>(4 model alias)<br/>NEW 2026-07"]
+    OWU["openwebui :8090<br/>(webui.local)<br/>NEW 2026-07"]
+    CAD["Caddy 80/443<br/>app.local + webui.local<br/>IP allowlist + Bearer"]
+    DECOM["~~web (Next.js) :3000~~<br/><i>still decommissioned</i>"]
   end
   CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
+  OW["Browser<br/>(webui.local)"]
+  P1[("Anthropic · OpenAI<br/>Gemini · DeepSeek")]
   R1 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
   R2 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
   V -- "redact PII · ES bulk" --> VL
@@ -150,8 +163,18 @@ flowchart LR
   IDX -- "template meta · audit" --> PG
   CL -- "HTTPS Bearer<br/>/mcp/vl/sse" --> CAD
   CL -- "HTTPS Bearer<br/>/mcp/semantic/sse" --> CAD
+  OW -- "HTTPS Host: webui.local" --> CAD
   CAD --> MVL
   CAD --> MSE
+  CAD --> OWU
+  CAD -- "/api/chat" --> AG
+  CAD -- "/llm/v1/*" --> LLM
+  OWU -- "OpenAI-compat" --> LLM
+  OWU -.- "MCP token OpenWebUI" .-> MSE
+  OWU -.- "MCP token OpenWebUI" .-> MVL
+  AG -- "LiteLLM SDK direct" --> P1
+  AG -.- "internal tools" .-> MSE
+  LLM --> P1
   MVL -- "LogsQL" --> VL
   MSE -- "vector search" --> Q
   MSE -- "audit insert" --> PG
@@ -182,7 +205,11 @@ flowchart LR
           <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Async, throttle theo cost embedding API</td></tr>
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Official <code>mcp-victorialogs</code> server — expose LogsQL tools (query / hits / stats_query)</td><td>Precise filter path; không cần code riêng</td></tr>
           <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Fuzzy intent path; Claude tự pick khi câu hỏi mơ hồ</td></tr>
-          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy: <code>/mcp/vl/sse</code> + <code>/mcp/semantic/sse</code> · IP allowlist · Bearer pass-through</td><td>Single ingress, audit dễ</td></tr>
+          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 2 site: <code>app.local</code> (MCP + agent /api + /llm) và <code>webui.local</code> (OpenWebUI dedicated) · IP allowlist · Bearer pass-through</td><td>Subdomain cho OpenWebUI vì static assets root-relative không work qua subpath</td></tr>
+          <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Multi-provider LLM stack (plan 260701-1544 · deployed 2026-07-02) ━━</b></td></tr>
+          <tr><td><span class="pill cyan">agent</span></td><td>8080 (127.0.0.1)</td><td>FastAPI <code>/chat</code> SSE · self-written tool-use loop · LiteLLM SDK direct (không qua proxy) · citation validator</td><td>Restored từ mcp-only decommission; LiteLLM adapter thay Anthropic direct SDK</td></tr>
+          <tr><td><span class="pill cyan">litellm-proxy</span></td><td>4000 (127.0.0.1)</td><td>OpenAI-compat gateway route 4 model alias (gemini-flash/gpt-4-mini/claude-sonnet/deepseek) · fallback chain · empty-response guard callback</td><td>OpenWebUI backend + centralize provider keys + cost log JSON stdout</td></tr>
+          <tr><td><span class="pill vio">openwebui</span></td><td>8090 (127.0.0.1)</td><td>Team chat UI thay Claude Desktop cho ai không muốn cài desktop client · SQLite user DB · MCP native support</td><td>Web UI cho 5 ops · reuse LITELLM_MASTER_KEY (DB backend disabled)</td></tr>
           <tr><td><span class="pill cyan">vmalert</span></td><td>8880 (127.0.0.1)</td><td>Đánh giá LogsQL stats rule (instant 30s / burst 5m) → push alert sang Alertmanager</td><td>Native <code>type: vlogs</code> support, không cần exporter trung gian</td></tr>
           <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · group · route fired alerts → Telegram Bot (template HTML)</td><td>Standard, hỗ trợ silence/inhibit khi cần</td></tr>
           <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
@@ -509,13 +536,21 @@ sequenceDiagram
     <h2 class="text-lg font-semibold"><span class="step-num">10</span> &nbsp;Quick runbook — onboard 10 phút</h2>
     <div class="grid grid-cols-2 gap-4 mt-3">
       <div class="card p-5">
-        <div class="h-title">Setup máy ops (1 lần)</div>
-        <ol class="mt-3 text-sm space-y-2 list-decimal pl-5">
-          <li>Map <code>192.168.122.53 app.local</code> trong hosts file</li>
+        <div class="h-title">Setup máy ops (1 lần) — chọn 1 trong 2 UX</div>
+        <div class="mt-3 text-[12px] mut mb-2">Cả 2 UX chạy song song, dùng chung MCP servers.</div>
+        <div class="text-sm mb-2"><b class="cyan">A · Claude Desktop</b> (bản gốc)</div>
+        <ol class="text-[12px] space-y-1.5 list-decimal pl-5 mb-3">
+          <li>Map <code>192.168.122.53 app.local</code> trong hosts</li>
           <li>Cài Claude Desktop · login workspace</li>
-          <li>Sửa <code>%APPDATA%\Claude\claude_desktop_config.json</code> → 2 server <code>onelog-vl</code> &amp; <code>onelog-semantic</code></li>
+          <li>Config <code>claude_desktop_config.json</code> → 2 server MCP</li>
           <li>Restart Claude · verify icon tool-use sáng</li>
-          <li>Test: <i>"show last 10 error logs"</i></li>
+        </ol>
+        <div class="text-sm mb-2"><b class="vio">B · OpenWebUI</b> (mới 2026-07)</div>
+        <ol class="text-[12px] space-y-1.5 list-decimal pl-5">
+          <li>Map <code>192.168.122.53 webui.local</code> trong hosts (Windows PowerShell as Admin: <code>Add-Content</code>)</li>
+          <li>Mở browser <code>http://webui.local/</code></li>
+          <li>Login credential admin cấp (không cần cài client)</li>
+          <li>Chọn model từ dropdown (default gemini-flash)</li>
         </ol>
       </div>
       <div class="card p-5">
@@ -537,8 +572,12 @@ sequenceDiagram
     <h2 class="text-lg font-semibold">FAQ nhanh</h2>
     <div class="card mt-3 divide-y divide-[#1f1f25]">
       <details class="p-4" open>
-        <summary class="flex justify-between items-center"><span>Vì sao bỏ web UI + rag-agent? Chỉ dùng MCP qua Claude Desktop?</span><span class="mut">↕</span></summary>
-        <p class="mut text-sm mt-2">Trước đây có Next.js UI :3000 + FastAPI agent :8000 tự gọi Anthropic API → duplicate cost với Claude Team subscription mà 5 ops đã trả. Phase 02 (2026-06-24): decommission, chỉ giữ 2 MCP server thin (mcp-vl + mcp-semantic). Claude Desktop làm UI + LLM. Đổi lại: mất chart/admin view, nhưng UX chat trong Desktop tốt + chi phí giảm 1 đầu LLM.</p>
+        <summary class="flex justify-between items-center"><span>[UPDATED 2026-07] Vì sao restore agent + thêm OpenWebUI?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Plan 260701-1544 (LLM Provider Abstraction): mở đường thay 4 provider (Claude/GPT/Gemini/DeepSeek) qua 1 env var để giảm cost (Gemini Flash raw ~12% Claude). Agent restored với LiteLLM adapter thay Anthropic direct SDK — API <code>/chat</code> SSE dùng lại cho integration ngoài. OpenWebUI cho team ops muốn UI web thay Claude Desktop (không phải bắt buộc migrate). Cả 2 UX song song, chọn 1 trong 2 hoặc cả 2.</p>
+      </details>
+      <details class="p-4">
+        <summary class="flex justify-between items-center"><span>Vì sao trước đây bỏ web UI + rag-agent? Chỉ dùng MCP qua Claude Desktop?</span><span class="mut">↕</span></summary>
+        <p class="mut text-sm mt-2">Phase 02 (2026-06-24): decommission Next.js web + FastAPI agent (Anthropic direct SDK) vì duplicate cost với Claude Team subscription. Chỉ giữ 2 MCP server thin. Đến 2026-07, agent restored vì có LiteLLM abstraction — không còn hard-code 1 provider, có thể dùng key rẻ hơn. Web UI cũ vẫn commented, thay bằng OpenWebUI (off-the-shelf).</p>
       </details>
       <details class="p-4">
         <summary class="flex justify-between items-center"><span>Tách 2 MCP server (vl + semantic) thay vì gộp 1?</span><span class="mut">↕</span></summary>
@@ -564,8 +603,8 @@ sequenceDiagram
   </section>
 
   <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
-    <span>OneLog · system explainer · 2026-06-24</span>
-    <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code> · <code>docs/ops-cheatsheet.md</code></span>
+    <span>OneLog · system explainer · 2026-07-02</span>
+    <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/deployment-llm-abstraction.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code></span>
   </footer>
 </div>
 

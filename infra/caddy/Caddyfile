@@ -80,6 +80,15 @@
                 flush_interval -1
             }
         }
+        # OpenWebUI — Phase 3, plan 260701-1544-llm-provider-abstraction.
+        # Team chat UI replacing Claude Desktop. Uses /webui/* prefix to keep
+        # /chat free for the agent API (existing SSE endpoint stays functional).
+        # OpenWebUI has its own session auth — no forward_auth needed here.
+        handle_path /webui/* {
+            reverse_proxy openwebui:8080 {
+                flush_interval -1   # streaming chat completions
+            }
+        }
         # LiteLLM proxy — Phase 2, plan 260701-1544-llm-provider-abstraction.
         # Strip /llm prefix so upstream sees clean /v1/*, /health/liveliness,
         # /key/*, /spend/logs, /model/* paths. LiteLLM has its own Bearer auth

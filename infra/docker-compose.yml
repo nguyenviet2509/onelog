@@ -357,6 +357,60 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # OpenWebUI — Phase 3, plan 260701-1544-llm-provider-abstraction.
+  # Team chat UI replacing Claude Desktop. Uses LiteLLM proxy as OpenAI-compat
+  # backend, mounts MCP config for tool access to mcp-vl + mcp-semantic.
+  # Local user auth (V1) — signup disabled after bootstrap (RT-F2).
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ragstack-openwebui
+    restart: unless-stopped
+    profiles: [chat]   # opt-in: docker compose --profile chat up -d
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - ./data/openwebui:/app/backend/data
+      - ./openwebui/mcp-config.json:/app/backend/data/mcp-config.json:ro
+    environment:
+      # Backend LLM = LiteLLM proxy (Phase 2). One virtual key, 4 models exposed.
+      OPENAI_API_BASE_URL: http://litellm-proxy:4000/v1
+      OPENAI_API_KEY: ${OPENWEBUI_LITELLM_VIRTUAL_KEY}
+      ENABLE_OLLAMA_API: "false"
+
+      # UI
+      WEBUI_NAME: "OneLog Chat"
+      DEFAULT_MODELS: "gemini-flash"
+      DEFAULT_USER_ROLE: "user"
+
+      # [RT-F2] Signup locked from boot. Race condition where "first visitor
+      # gets admin" is impossible on LAN. Admin created via WEBUI_AUTH ENV
+      # once, then rely on invite flow. Unset the ADMIN_* vars after bootstrap
+      # is verified (they only apply when DB is empty).
+      ENABLE_SIGNUP: "false"
+      WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
+      # Uncomment for first-run bootstrap, then re-comment and restart:
+      # WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
+      # WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
+
+      # MCP native support (v0.5+). Falls back to OpenWebUI Functions if this
+      # proves flaky in prod (RT-F6 — path documented in phase-03 Step 2b).
+      ENABLE_MCP: "true"
+      MCP_CONFIG_PATH: /app/backend/data/mcp-config.json
+      MCP_TOKEN_OPENWEBUI: ${MCP_TOKEN_OPENWEBUI}
+    # [RT-F13] service_started, NOT service_healthy — if 1 provider API is down
+    # at reboot, LiteLLM liveness may flake and would deadlock OpenWebUI boot.
+    # OpenWebUI retries at first request instead.
+    depends_on:
+      litellm-proxy:
+        condition: service_started
+    networks:
+      - default
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   caddy:
     image: caddy:2-alpine
     container_name: ragstack-caddy

@@ -1,0 +1,19 @@
+{
+  "_comment": "OpenWebUI MCP client config — mounted at /app/backend/data/mcp-config.json. Env vars expanded at container start. Token separate from agent + Claude Desktop (RT-F3) so it can be revoked independently. Both MCP servers reachable inside docker network — no Caddy hop.",
+  "mcpServers": {
+    "onelog-vl": {
+      "url": "http://mcp-vl:8000/sse",
+      "transport": "sse",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TOKEN_OPENWEBUI}"
+      }
+    },
+    "onelog-semantic": {
+      "url": "http://mcp-semantic:9000/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TOKEN_OPENWEBUI}"
+      }
+    }
+  }
+}

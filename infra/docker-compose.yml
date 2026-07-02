@@ -405,9 +405,14 @@ services:
       # is verified (they only apply when DB is empty).
       ENABLE_SIGNUP: "false"
       WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
-      # Uncomment for first-run bootstrap, then re-comment and restart:
-      # WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
-      # WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Bootstrap admin — safe to leave uncommented. When the .env vars are
+      # empty (default), OpenWebUI skips admin creation. To bootstrap on a
+      # fresh install: set OPENWEBUI_BOOTSTRAP_ADMIN_{EMAIL,PASSWORD} in .env
+      # then `docker compose restart openwebui`. To lock: unset the .env vars
+      # and restart. Compose file stays invariant — no git conflicts across
+      # bootstrap/lock cycles.
+      WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
+      WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
 
       # MCP native support (v0.5+). Falls back to OpenWebUI Functions if this
       # proves flaky in prod (RT-F6 — path documented in phase-03 Step 2b).

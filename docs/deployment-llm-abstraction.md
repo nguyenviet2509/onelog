@@ -165,16 +165,12 @@ curl -fsS http://localhost:4000/v1/models \
 ## 7. Deploy OpenWebUI
 
 ### 7.1 Bootstrap admin (chỉ lần đầu, DB rỗng)
+Chỉ động `.env` — compose file KHÔNG đổi (đã set `WEBUI_ADMIN_*: ${..:-}` — empty = skip).
+
 Thêm vào `.env`:
 ```env
 OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local
 OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=<mật-khẩu-tạm-mạnh>
-```
-
-Uncomment 2 dòng trong `docker-compose.yml` section `openwebui.environment`:
-```bash
-sed -i 's|^      # WEBUI_ADMIN_EMAIL:|      WEBUI_ADMIN_EMAIL:|' docker-compose.yml
-sed -i 's|^      # WEBUI_ADMIN_PASSWORD:|      WEBUI_ADMIN_PASSWORD:|' docker-compose.yml
 ```
 
 ### 7.2 Deploy
@@ -216,16 +212,12 @@ Mở browser: **http://webui.local/**
 - **Settings → Admin Settings → Models** → thấy 4 model từ LiteLLM
 - **Settings → Account → Change password** — ĐỔI NGAY (password bootstrap ở .env)
 
-Sau khi verify OK, lock:
+Sau khi verify OK, lock (chỉ comment `.env`, KHÔNG động compose):
 ```bash
 cd ~/onelog/infra
-# Comment .env
 sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env
-# Comment docker-compose.yml
-sed -i 's|^      WEBUI_ADMIN_EMAIL:|      # WEBUI_ADMIN_EMAIL:|' docker-compose.yml
-sed -i 's|^      WEBUI_ADMIN_PASSWORD:|      # WEBUI_ADMIN_PASSWORD:|' docker-compose.yml
-# Restart OpenWebUI
 docker compose --profile chat restart openwebui
+# Compose ENV → empty → OpenWebUI skip admin creation (admin đã trong DB)
 ```
 
 ### Troubleshooting OpenWebUI

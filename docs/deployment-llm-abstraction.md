@@ -33,7 +33,7 @@ Không thay đổi service hiện có (mcp-vl, mcp-semantic, victorialogs, postg
 
 ### 3.1 Pull mới nhất
 ```bash
-cd /opt/onelog
+cd ~/onelog
 git status                              # đảm bảo không có local change
 git fetch origin
 git log --oneline origin/master -8      # verify có 3 commit LLM abstraction:
@@ -45,7 +45,7 @@ git pull origin master
 
 ### 3.2 Sinh secrets + merge .env
 ```bash
-cd /opt/onelog/infra
+cd ~/onelog/infra
 diff .env.example .env | less           # xem biến mới cần thêm
 
 # Sinh secrets
@@ -91,7 +91,7 @@ MCP_BEARER_TOKENS=alice:sk-mcp-alice-xxx,bob:sk-mcp-bob-yyy,openwebui:sk-mcp-ope
 ## 4. Bootstrap Postgres schema
 
 ```bash
-docker cp /opt/onelog/infra/litellm/init-schema.sql ragstack-postgres:/tmp/
+docker cp ~/onelog/infra/litellm/init-schema.sql ragstack-postgres:/tmp/
 docker compose exec postgres psql -U rag -d rag -f /tmp/init-schema.sql
 # → CREATE SCHEMA / GRANT / ALTER DEFAULT PRIVILEGES
 ```
@@ -107,7 +107,7 @@ docker compose exec postgres psql -U rag -d rag -c "\dn"
 ## 5. Deploy LiteLLM proxy
 
 ```bash
-cd /opt/onelog/infra
+cd ~/onelog/infra
 docker compose --profile llm up -d litellm-proxy
 docker compose ps litellm-proxy         # chờ healthy ~30s
 
@@ -279,14 +279,14 @@ sudo grep "public key" /root/vault/backup-age.key | awk '{print $NF}' \
 
 ### 9.2 Test backup script
 ```bash
-sudo bash /opt/onelog/infra/scripts/backup-openwebui.sh
-ls -lh /opt/onelog/backup/openwebui-*.tgz.age
+sudo bash ~/onelog/infra/scripts/backup-openwebui.sh
+ls -lh ~/onelog/backup/openwebui-*.tgz.age
 ```
 
 ### 9.3 Cron daily 3AM
 ```bash
 (sudo crontab -l 2>/dev/null; \
- echo "0 3 * * * /opt/onelog/infra/scripts/backup-openwebui.sh >> /var/log/openwebui-backup.log 2>&1") \
+ echo "0 3 * * * ~/onelog/infra/scripts/backup-openwebui.sh >> /var/log/openwebui-backup.log 2>&1") \
  | sudo crontab -
 ```
 
@@ -326,7 +326,7 @@ ls -lh /opt/onelog/backup/openwebui-*.tgz.age
 | Cost tracking trống | `LITELLM_DATABASE_URL` không set / schema chưa init | Chạy lại Step 4 bootstrap schema |
 | Provider trả `429 rate limit` liên tục | Vượt quota provider | LiteLLM tự retry + fallback; tăng budget provider hoặc đổi default model |
 | Backup script fail `age public key not found` | Chưa chạy Step 9.1 | Generate keypair + publish `.pub` |
-| `age: cannot open output file` | Backup dir không tồn tại / permission | `sudo mkdir -p /opt/onelog/backup && sudo chown ragops:ragops /opt/onelog/backup` |
+| `age: cannot open output file` | Backup dir không tồn tại / permission | `sudo mkdir -p ~/onelog/backup && sudo chown $USER:$USER ~/onelog/backup` |
 
 ---
 
@@ -334,7 +334,7 @@ ls -lh /opt/onelog/backup/openwebui-*.tgz.age
 
 ### Full rollback (về Anthropic direct)
 ```bash
-cd /opt/onelog
+cd ~/onelog
 git log --oneline -10                   # tìm commit trước 31f9644
 git checkout <sha-before-llm-plan>
 docker compose --profile chat --profile llm down

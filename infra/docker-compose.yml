@@ -447,9 +447,11 @@ services:
       WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
       WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
 
-      # MCP wired via mcpo bridge (separate service) — registered manually in
-      # OpenWebUI Admin → Tools with OpenAPI URL http://mcpo:8080/onelog-vl and
-      # http://mcpo:8080/onelog-semantic. Bearer = MCPO_API_KEY.
+      # MCP wired via mcpo bridge (separate service). Two paths to register:
+      # 1. Auto — set TOOL_SERVER_CONNECTIONS env below (JSON array).
+      # 2. Manual — user Settings → Tools → + Add Connection with URL
+      #    http://mcpo:8080/onelog-vl (+ onelog-semantic), Bearer = MCPO_API_KEY.
+      TOOL_SERVER_CONNECTIONS: ${TOOL_SERVER_CONNECTIONS:-}
     # [RT-F13] service_started, NOT service_healthy — if 1 provider API is down
     # at reboot, LiteLLM liveness may flake and would deadlock OpenWebUI boot.
     # OpenWebUI retries at first request instead.

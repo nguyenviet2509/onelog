@@ -90,16 +90,17 @@ MCP_BEARER_TOKENS=alice:sk-mcp-alice-xxx,bob:sk-mcp-bob-yyy,openwebui:sk-mcp-ope
 
 ## 4. Bootstrap Postgres schema
 
+**Lưu ý:** mọi `docker compose ...` phải chạy từ `~/onelog/infra` (nơi có `docker-compose.yml`). Nếu đứng ở dir khác, `compose` báo `no configuration file provided`.
+
 ```bash
-docker cp ~/onelog/infra/litellm/init-schema.sql ragstack-postgres:/tmp/
+cd ~/onelog/infra
+
+docker cp litellm/init-schema.sql ragstack-postgres:/tmp/
 docker compose exec postgres psql -U rag -d rag -f /tmp/init-schema.sql
 # → CREATE SCHEMA / GRANT / ALTER DEFAULT PRIVILEGES
-```
 
-Verify:
-```bash
+# Verify schema xuất hiện
 docker compose exec postgres psql -U rag -d rag -c "\dn"
-# schema `litellm` phải xuất hiện
 ```
 
 ---

@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · LLM Provider Abstraction — Workflow Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--acc2:#a5f3fc;
+    --warn:#fbbf24;--ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+    --pink:#f9a8d4;--org:#fdba74;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui;font-feature-settings:"ss01","cv11"}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)} .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--mut);background:#0d0d11}
+  .chip.on{color:var(--fg);background:#15151a}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .h-title{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  kbd{background:#1f1f25;border:1px solid #2a2a30;border-radius:4px;padding:1px 5px;font-size:10px;font-family:ui-monospace}
+  pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .step-num{width:22px;height:22px;border-radius:6px;background:#15151a;border:1px solid var(--line);display:inline-grid;place-items:center;font-size:11px;color:var(--acc);font-weight:600}
+  .grid-bg{background-image:linear-gradient(#15151a 1px,transparent 1px),linear-gradient(90deg,#15151a 1px,transparent 1px);background-size:24px 24px;background-position:-1px -1px}
+  .mermaid{background:transparent}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:18px 0}
+  .pill{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.pink{background:#2f0f22;color:#f9a8d4}
+  .pill.org{background:#2b1808;color:#fdba74}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .arrow{color:#3a3a44}
+  table.k{width:100%;font-size:13px;border-collapse:collapse}
+  table.k th,table.k td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+  .bar{height:8px;border-radius:99px;background:#15151a;overflow:hidden}
+  .bar > span{display:block;height:100%;background:linear-gradient(90deg,#7dd3fc,#a5f3fc)}
+  .provider-card{background:#0d0d11;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .glow-cyan{box-shadow:0 0 0 1px #164e63,0 0 40px -12px #22d3ee44}
+  .glow-lime{box-shadow:0 0 0 1px #14532d,0 0 40px -12px #86efac44}
+  .glow-amber{box-shadow:0 0 0 1px #78350f,0 0 40px -12px #fbbf2444}
+  .glow-vio{box-shadow:0 0 0 1px #4c1d95,0 0 40px -12px #c4b5fd44}
+  .phase-cell{background:#0d0d11;border:1px solid var(--line);border-radius:10px;padding:12px}
+  .phase-cell.done{border-color:#14532d;background:#0a1a10}
+  .fake-chat{background:#0a0a0d;border:1px solid var(--line);border-radius:14px;padding:14px;font-size:13px}
+  .msg-user{background:#0f1a24;border:1px solid #164e63;border-radius:10px;padding:10px 12px;color:#cffafe}
+  .msg-bot{background:#0f0f14;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .tool-call{background:#100e18;border:1px dashed #4c1d95;border-radius:8px;padding:8px 10px;font-family:ui-monospace;font-size:11px;color:#c4b5fd}
+  .citation{background:#0a1a14;border:1px solid #14532d;border-radius:6px;padding:2px 6px;color:#86efac;font-family:ui-monospace;font-size:10px}
+  .diag-node{fill:#111114 !important;stroke:#3a3a44 !important}
+</style>
+</head>
+<body>
+<div class="max-w-[1280px] mx-auto p-6">
+
+<!-- HEADER -->
+<header class="mb-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="pill cyan">MOCKUP</span>
+        <span class="pill gray">Post-Cook Preview</span>
+        <span class="pill vio">Plan 260701-1544</span>
+      </div>
+      <h1 class="text-2xl font-semibold tracking-tight">LLM Provider Abstraction — Workflow sau khi cook xong</h1>
+      <p class="mut text-sm mt-1">Xem trước hệ thống end-state: agent service đa provider · LiteLLM proxy · OpenWebUI thay Claude Desktop</p>
+    </div>
+    <div class="text-right text-xs mut">
+      <div>Owner · anhtct@inet.vn</div>
+      <div>Date · 2026-07-01</div>
+      <div>Total effort · ~3.5 ngày</div>
+    </div>
+  </div>
+</header>
+
+<!-- BEFORE / AFTER -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+  <div class="card p-5">
+    <div class="flex items-center justify-between mb-3">
+      <span class="h-title">Trước — hiện tại</span>
+      <span class="pill amber">1 provider</span>
+    </div>
+    <div class="text-sm space-y-1.5">
+      <div><span class="dot" style="background:#f87171"></span> <span class="mut">Agent service</span> → <b>hard-code Anthropic SDK</b></div>
+      <div><span class="dot" style="background:#f87171"></span> <span class="mut">Team ops</span> → <b>5 người × Claude Desktop</b> (5 config file, 5 token)</div>
+      <div><span class="dot" style="background:#f87171"></span> <span class="mut">Cost/query</span> → 100% baseline Claude Sonnet</div>
+      <div><span class="dot" style="background:#f87171"></span> <span class="mut">Fallback</span> → không có, provider down = service down</div>
+      <div><span class="dot" style="background:#f87171"></span> <span class="mut">Cost visibility</span> → chỉ đọc từ Anthropic dashboard</div>
+    </div>
+  </div>
+  <div class="card p-5 glow-cyan">
+    <div class="flex items-center justify-between mb-3">
+      <span class="h-title acc">Sau — end-state</span>
+      <span class="pill lime">4 provider</span>
+    </div>
+    <div class="text-sm space-y-1.5">
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Agent service</span> → <b>LiteLLM adapter</b>, 1 env var đổi provider</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Team ops</span> → <b>1 URL OpenWebUI</b>, login sso-local</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost/query</span> → <b>~35%</b> baseline (Gemini Flash default)</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Fallback</span> → Gemini → GPT-mini → Claude auto-retry</div>
+      <div><span class="dot" style="background:#34d399"></span> <span class="mut">Cost visibility</span> → LiteLLM dashboard + Postgres cost log per user</div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE DIAGRAM -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">Architecture · End-state</span>
+    <div class="flex gap-2">
+      <span class="chip on"><span class="dot" style="background:#7dd3fc"></span> new</span>
+      <span class="chip"><span class="dot" style="background:#8a8a96"></span> unchanged</span>
+    </div>
+  </div>
+  <div class="grid-bg p-4 rounded-xl">
+    <pre class="mermaid text-[13px]">
+flowchart LR
+  classDef new fill:#082f3f,stroke:#22d3ee,color:#cffafe,stroke-width:1.5px
+  classDef exist fill:#111114,stroke:#3a3a44,color:#cdd2d8
+  classDef prov fill:#1f1a3a,stroke:#a78bfa,color:#e9d5ff
+
+  U["👥 5 ops"]:::exist
+  A["👤 agent svc /chat SSE<br/><span style='font-size:10px'>Phase 1</span>"]:::new
+  UI["🖥️ OpenWebUI<br/><span style='font-size:10px'>Phase 3 · /webui/*</span>"]:::new
+  C["Caddy<br/>reverse proxy"]:::exist
+  L["🧭 LiteLLM Proxy<br/><span style='font-size:10px'>Phase 2 · /llm/v1/*</span>"]:::new
+  MV["mcp-vl"]:::exist
+  MS["mcp-semantic"]:::exist
+
+  P1["Anthropic<br/>Claude Sonnet"]:::prov
+  P2["OpenAI<br/>GPT-4.1-mini"]:::prov
+  P3["Google<br/>Gemini 2.5 Flash"]:::prov
+  P4["DeepSeek<br/>Chat"]:::prov
+
+  U -->|HTTPS| C
+  C --> UI
+  C --> A
+  UI -->|OpenAI-compat| L
+  A -->|litellm.acompletion| L
+  L --> P1
+  L --> P2
+  L --> P3
+  L --> P4
+  UI -.->|MCP| MV
+  UI -.->|MCP| MS
+  A -.->|internal tools| MV
+  A -.->|internal tools| MS
+    </pre>
+  </div>
+  <div class="mt-3 text-xs mut">
+    <b class="acc">Đường mới:</b> ops → Caddy → OpenWebUI → LiteLLM → 1 trong 4 provider ·
+    <b class="acc">Fallback chain:</b> Gemini fail → GPT-mini → Claude ·
+    <b class="acc">MCP layer:</b> không đổi (đã LLM-agnostic sẵn)
+  </div>
+</section>
+
+<!-- PHASE PROGRESS BOARD -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">Cook progress · 5 phases</span>
+    <span class="pill gray">simulated post-cook</span>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+    <div class="phase-cell done">
+      <div class="flex items-center justify-between mb-2">
+        <span class="pill lime">✓ DONE</span>
+        <span class="text-[10px] mut">1 ngày</span>
+      </div>
+      <div class="font-medium text-sm mb-1">Phase 1</div>
+      <div class="text-[11px] mut">Agent LiteLLM adapter · 4 helper convert Anthropic ↔ OpenAI · tests parity</div>
+    </div>
+    <div class="phase-cell done">
+      <div class="flex items-center justify-between mb-2">
+        <span class="pill lime">✓ DONE</span>
+        <span class="text-[10px] mut">0.5 ngày</span>
+      </div>
+      <div class="font-medium text-sm mb-1">Phase 2</div>
+      <div class="text-[11px] mut">LiteLLM proxy container · 4 model alias · fallback + virtual keys</div>
+    </div>
+    <div class="phase-cell done">
+      <div class="flex items-center justify-between mb-2">
+        <span class="pill lime">✓ DONE</span>
+        <span class="text-[10px] mut">1 ngày</span>
+      </div>
+      <div class="font-medium text-sm mb-1">Phase 3</div>
+      <div class="text-[11px] mut">OpenWebUI deploy · MCP wire · 5 tài khoản ops · backup cron</div>
+    </div>
+    <div class="phase-cell done">
+      <div class="flex items-center justify-between mb-2">
+        <span class="pill lime">✓ DONE</span>
+        <span class="text-[10px] mut">0.5 ngày</span>
+      </div>
+      <div class="font-medium text-sm mb-1">Phase 4</div>
+      <div class="text-[11px] mut">20 query VI × 4 provider · matrix cost/quality · recommendation</div>
+    </div>
+    <div class="phase-cell done">
+      <div class="flex items-center justify-between mb-2">
+        <span class="pill lime">✓ DONE</span>
+        <span class="text-[10px] mut">0.5 ngày</span>
+      </div>
+      <div class="font-medium text-sm mb-1">Phase 5</div>
+      <div class="text-[11px] mut">Docs sync · migration 14 ngày · post-mortem cost thực tế</div>
+    </div>
+  </div>
+</section>
+
+<!-- OPENWEBUI MOCKUP -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">OpenWebUI · Chat mẫu (thay Claude Desktop)</span>
+    <div class="flex gap-2">
+      <span class="chip on"><span class="dot" style="background:#34d399"></span> Model · Gemini Flash</span>
+      <span class="chip"><span class="dot" style="background:#c4b5fd"></span> MCP · 2 servers</span>
+    </div>
+  </div>
+  <div class="grid grid-cols-12 gap-4">
+
+    <!-- sidebar -->
+    <aside class="col-span-3 card2 p-3 text-sm">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-6 h-6 rounded-md bg-cyan-900/40 border border-cyan-500/40 grid place-items-center text-[11px]">🪵</div>
+        <div class="font-medium">OneLog Chat</div>
+      </div>
+      <div class="text-[11px] mut mb-2">MODEL</div>
+      <select class="w-full bg-transparent border border-[var(--line)] rounded-md px-2 py-1.5 text-sm mb-3">
+        <option>gemini-flash · $0.075/1M</option>
+        <option>gpt-4-mini · $0.15/1M</option>
+        <option>claude-sonnet · $3.00/1M</option>
+        <option>deepseek · $0.14/1M</option>
+      </select>
+      <div class="text-[11px] mut mb-2">WORKSPACES</div>
+      <ul class="space-y-1 text-[12px]">
+        <li class="flex items-center gap-2"><span class="dot" style="background:#7dd3fc"></span>2026-07-01 mysql investigate</li>
+        <li class="flex items-center gap-2 mut"><span class="dot" style="background:#3a3a44"></span>2026-06-30 nginx 5xx spike</li>
+        <li class="flex items-center gap-2 mut"><span class="dot" style="background:#3a3a44"></span>2026-06-28 disk full srv-04</li>
+      </ul>
+      <hr class="sep"/>
+      <div class="text-[11px] mut mb-2">MCP TOOLS · 13</div>
+      <div class="flex flex-wrap gap-1">
+        <span class="pill vio">search_log_templates</span>
+        <span class="pill vio">query</span>
+        <span class="pill vio">hits</span>
+        <span class="pill vio">facets</span>
+        <span class="pill vio">stats_query</span>
+        <span class="pill gray">+8</span>
+      </div>
+    </aside>
+
+    <!-- chat -->
+    <main class="col-span-9">
+      <div class="fake-chat space-y-3">
+        <div class="msg-user max-w-[75%]">
+          <div class="text-[10px] mut mb-1">anhtct · 14:22</div>
+          mysql có lỗi gì gần đây trên srv-01 không?
+        </div>
+        <div class="msg-bot">
+          <div class="text-[10px] mut mb-1 flex items-center gap-2">
+            <span class="pill lime">gemini-flash</span> · assistant · 14:22
+          </div>
+          <div class="mb-2">Tôi sẽ tìm log template liên quan trước.</div>
+          <div class="tool-call mb-2">
+            → <b class="vio">search_log_templates</b>({"query":"mysql error srv-01","limit":5}) <span class="mut">· mcp-semantic</span>
+          </div>
+          <div class="tool-call mb-2 text-[#86efac]" style="border-color:#14532d">
+            ← 3 hits · <span class="mut">service=mysql host=srv-01</span> · latency 180ms
+          </div>
+          <div>Trong 1 giờ qua, <b>srv-01</b> xuất hiện cluster lỗi lặp: <i>"Can't connect to local MySQL server"</i> (23 lần) và <i>"MySQL server has gone away"</i> (11 lần). Nhiều khả năng do connection pool timeout.</div>
+          <div class="mt-2 flex flex-wrap gap-1">
+            <span class="citation">[mysql:srv-01:2026-07-01T13:45Z]</span>
+            <span class="citation">[mysql:srv-01:2026-07-01T14:02Z]</span>
+          </div>
+          <div class="mt-2 text-[11px] mut flex items-center gap-3">
+            <span>💰 $0.00021 (~5.2 VND)</span>
+            <span>⚡ 2.4s</span>
+            <span>🔧 1 tool call</span>
+            <span class="ok">✓ citation valid</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</section>
+
+<!-- COST + LATENCY MATRIX -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+  <div class="card p-5 lg:col-span-2">
+    <div class="flex items-center justify-between mb-3">
+      <span class="h-title">Benchmark Matrix · 20 VI queries × 4 providers</span>
+      <span class="pill gray">Phase 4 output · projected</span>
+    </div>
+    <table class="k">
+      <thead>
+        <tr><th>Provider</th><th>Cost / 20q (VND)</th><th>Avg latency</th><th>Tool success</th><th>VI quality</th><th>Verdict</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>gemini-2.5-flash</b> <span class="pill lime">DEFAULT</span></td>
+          <td>~380 <div class="bar mt-1"><span style="width:12%"></span></div></td>
+          <td>2.1s</td>
+          <td>96%</td>
+          <td>4.3</td>
+          <td class="ok">✓ chọn prod default</td>
+        </tr>
+        <tr>
+          <td><b>gpt-4.1-mini</b> <span class="pill cyan">FALLBACK</span></td>
+          <td>~720 <div class="bar mt-1"><span style="width:23%"></span></div></td>
+          <td>1.8s</td>
+          <td>98%</td>
+          <td>4.4</td>
+          <td class="ok">✓ fallback #1</td>
+        </tr>
+        <tr>
+          <td><b>claude-sonnet-4-5</b> <span class="pill vio">PREMIUM</span></td>
+          <td>~3,150 <div class="bar mt-1"><span style="width:100%"></span></div></td>
+          <td>2.6s</td>
+          <td>99%</td>
+          <td>4.7</td>
+          <td class="warn">opt-in query khó</td>
+        </tr>
+        <tr>
+          <td><b>deepseek-chat</b></td>
+          <td>~410 <div class="bar mt-1"><span style="width:13%"></span></div></td>
+          <td>3.4s</td>
+          <td>89%</td>
+          <td>3.6</td>
+          <td class="err">✗ VI yếu, defer</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="text-[11px] mut mt-2">* Số liệu illustrative — thực tế đo trong Phase 4. Cost = Google/OpenAI/Anthropic pricing 2025 Q4.</div>
+  </div>
+
+  <div class="card p-5">
+    <div class="h-title mb-2">Cost saving projection</div>
+    <div class="text-4xl font-semibold acc">-88%</div>
+    <div class="text-xs warn mb-1">⚠ raw pricing — chưa tính Claude prompt caching</div>
+    <div class="text-xs mut mb-4">Với cache Claude thực tế ~-65% (RT-F7 Phase 4 verify)</div>
+    <div class="space-y-3">
+      <div>
+        <div class="flex justify-between text-[11px] mb-1"><span>Baseline (Claude)</span><span class="mut">3,150 VND</span></div>
+        <div class="bar"><span style="width:100%"></span></div>
+      </div>
+      <div>
+        <div class="flex justify-between text-[11px] mb-1"><span>End-state (Gemini)</span><span class="ok">380 VND</span></div>
+        <div class="bar"><span style="width:12%;background:linear-gradient(90deg,#34d399,#86efac)"></span></div>
+      </div>
+    </div>
+    <hr class="sep"/>
+    <div class="text-[11px] mut">Ước tính team 5 ops × 500 query/tháng = <b class="fg">1,590,000 VND/tháng saving</b>.</div>
+  </div>
+</section>
+
+<!-- PROVIDER ROUTING FLOW -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">LiteLLM Routing Flow · Fallback & Retry</div>
+  <div class="grid-bg p-4 rounded-xl">
+    <pre class="mermaid text-[13px]">
+sequenceDiagram
+  autonumber
+  participant U as User (OpenWebUI / agent)
+  participant L as LiteLLM Proxy
+  participant G as Gemini
+  participant O as OpenAI
+  participant A as Anthropic
+  U->>L: POST /v1/chat/completions<br/>model=gemini-flash
+  L->>G: forward request
+  G-->>L: 429 rate limit
+  Note over L: retry #1 wait 2s
+  L->>G: retry
+  G-->>L: 5xx error
+  Note over L: fallback → gpt-4-mini
+  L->>O: forward request
+  O-->>L: 200 OK + tool_calls
+  L->>L: log cost, latency, tokens
+  L-->>U: OpenAI-shape response
+  Note over U: agent_loop parse → dispatch<br/>MCP tool → citation validator
+    </pre>
+  </div>
+</section>
+
+<!-- FILE CHANGE SURFACE -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">File change surface · sau khi cook</div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">MODIFIED</div>
+      <ul class="text-[12px] space-y-1.5">
+        <li><code class="acc">agent/pyproject.toml</code> <span class="mut">+ litellm&gt;=1.50</span></li>
+        <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, llm_max_tokens, fallback</span></li>
+        <li><code class="acc">agent/src/agent/llm_client.py</code> <span class="mut">rewrite → litellm.acompletion</span></li>
+        <li><code class="acc">agent/src/agent/agent_loop.py</code> <span class="mut">adapt normalized response</span></li>
+        <li><code class="acc">agent/tests/*</code> <span class="mut">param 2 providers</span></li>
+        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy, openwebui</span></li>
+        <li><code class="acc">infra/Caddyfile</code> <span class="mut">+ /llm/*, /webui/*</span></li>
+        <li><code class="acc">infra/.env.example</code> <span class="mut">+ 8 biến mới</span></li>
+        <li><code class="acc">docs/mcp-setup-guide.md</code> <span class="mut">restructure — OpenWebUI main</span></li>
+        <li><code class="acc">docs/deployment-guide.md</code> <span class="mut">+ LLM stack section</span></li>
+        <li><code class="acc">docs/onelog-team-project-guide.md</code> <span class="mut">workflow OpenWebUI</span></li>
+      </ul>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">CREATED</div>
+      <ul class="text-[12px] space-y-1.5">
+        <li><code class="ok">infra/litellm/config.yaml</code></li>
+        <li><code class="ok">infra/openwebui/mcp-config.json</code></li>
+        <li><code class="ok">infra/scripts/backup-openwebui.sh</code></li>
+        <li><code class="ok">agent/tests/benchmark/queries-vi.json</code></li>
+        <li><code class="ok">agent/tests/benchmark/run-benchmark.py</code></li>
+        <li><code class="ok">docs/openwebui-user-guide.md</code></li>
+        <li><code class="ok">docs/llm-provider-ops.md</code></li>
+        <li><code class="ok">plans/260701-1544-*/benchmark-results.md</code></li>
+        <li><code class="ok">plans/260701-1544-*/migration-plan.md</code></li>
+      </ul>
+      <div class="text-[11px] mut mb-2 mt-4 tracking-wider">DELETED</div>
+      <div class="text-[12px] mut">Không có · giữ Claude Desktop appendix để migration graceful. Revoke MCP bearer token Claude-only ở D+14.</div>
+    </div>
+  </div>
+</section>
+
+<!-- MIGRATION TIMELINE -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">Migration timeline · 30 ngày sau cook</div>
+  <ol class="relative border-l border-[var(--line)] ml-3 space-y-3">
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
+      <div class="text-sm"><b>D-7</b> · Deploy Phase 1-3 prod, admin dry-run</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
+      <div class="text-sm"><b>D-3</b> · Onboard 1 ops early adopter, thu feedback UX</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
+      <div class="text-sm"><b>D-1</b> · Gửi link + credential 5 ops</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-amber-900 border border-amber-400"></span>
+      <div class="text-sm"><b>D+0</b> · Team meeting 30ph — demo & Q&amp;A</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-violet-900 border border-violet-400"></span>
+      <div class="text-sm"><b>D+7</b> · Check usage · target ≥ 4/5 người dùng OpenWebUI · follow-up ai chưa</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-red-900 border border-red-400"></span>
+      <div class="text-sm"><b>D+14</b> · Revoke MCP bearer tokens Claude-only · lock migration</div>
+    </li>
+    <li class="ml-4">
+      <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-emerald-900 border border-emerald-400"></span>
+      <div class="text-sm"><b>D+30</b> · Post-mortem · cost saving thực tế vs prediction · quyết định xóa Claude Desktop path hay giữ</div>
+    </li>
+  </ol>
+</section>
+
+<!-- OPEN QUESTIONS -->
+<section class="card p-5 mb-8">
+  <div class="h-title mb-3">Câu hỏi cần chốt trước Phase 3</div>
+  <ol class="text-sm space-y-1.5 list-decimal ml-5">
+    <li>OpenWebUI auth · SSO/OIDC có sẵn hay dùng local user table?</li>
+    <li>Chat history retention policy · giữ vĩnh viễn hay auto-purge 90 ngày?</li>
+    <li>LiteLLM metrics · export Prometheus/OTLP vào VictoriaLogs stack?</li>
+    <li>Provider API keys · ops admin only hay Vault (HashiCorp/Bitwarden)?</li>
+    <li>Budget alert threshold · VND/tháng để LiteLLM cost guard trigger?</li>
+  </ol>
+</section>
+
+<footer class="text-[11px] mut text-center py-4 border-t border-[var(--line)]">
+  OneLog · LLM Provider Abstraction preview · Plan
+  <a href="../plans/260701-1544-llm-provider-abstraction/plan.md" class="acc">260701-1544-llm-provider-abstraction</a>
+  · Generated for review trước khi /ck:cook
+</footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#0a0a0b',
+      primaryColor: '#111114',
+      primaryTextColor: '#ededf0',
+      primaryBorderColor: '#3a3a44',
+      lineColor: '#3a3a44',
+      secondaryColor: '#082f3f',
+      tertiaryColor: '#1f1a3a',
+      fontFamily: 'Geist, Inter, ui-sans-serif',
+    },
+    flowchart: { curve: 'basis', htmlLabels: true },
+    sequence: { actorMargin: 60, boxMargin: 10 }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+[console_scripts]
+onelog-agent = agent.main:run

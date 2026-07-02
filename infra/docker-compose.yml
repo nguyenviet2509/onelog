@@ -317,6 +317,46 @@ services:
     depends_on:
       - victorialogs
 
+  # LiteLLM proxy — Phase 2, plan 260701-1544-llm-provider-abstraction.
+  # OpenAI-compatible gateway routing to 4 providers with fallback + cost log.
+  # Only reads infra/litellm/.env.llm (provider keys) — infra/.env exposes just
+  # the master key + DB URL. Blast radius separation per RT-F1.
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: ragstack-litellm
+    restart: unless-stopped
+    profiles: [llm]   # opt-in: docker compose --profile llm up -d
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/callbacks/custom_callbacks.py:/app/custom_callbacks.py:ro
+    env_file:
+      # Provider keys live here, chmod 0400 root:root. Missing file = fail-fast.
+      - path: ./litellm/.env.llm
+        required: true
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # search_path=litellm keeps LiteLLM's auto-created tables out of public
+      # schema so rollback = DROP SCHEMA litellm CASCADE (RT-F11).
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      STORE_MODEL_IN_DB: "True"
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
   caddy:
     image: caddy:2-alpine
     container_name: ragstack-caddy

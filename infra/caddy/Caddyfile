@@ -80,6 +80,15 @@
                 flush_interval -1
             }
         }
+        # LiteLLM proxy — Phase 2, plan 260701-1544-llm-provider-abstraction.
+        # Strip /llm prefix so upstream sees clean /v1/*, /health/liveliness,
+        # /key/*, /spend/logs, /model/* paths. LiteLLM has its own Bearer auth
+        # (LITELLM_MASTER_KEY + virtual keys) — no forward_auth needed here.
+        handle_path /llm/* {
+            reverse_proxy litellm-proxy:4000 {
+                flush_interval -1   # stream chat completions without buffering
+            }
+        }
         # DECOMMISSIONED 2026-06-24 — web/agent moved to Claude Desktop + MCP.
         # Resurrect: uncomment + restart caddy after un-decommissioning web in
         # docker-compose.yml. See plans/260623-2041-mcp-only-rollout/phase-03.

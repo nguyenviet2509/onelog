@@ -1,0 +1,73 @@
+# LiteLLM Proxy — routes onelog agent + OpenWebUI to 4 providers.
+# Docs: https://docs.litellm.ai/docs/proxy/config
+#
+# Design notes:
+# - Aliases (model_name) hide provider prefixes from clients. OpenWebUI shows
+#   "gemini-flash" not "gemini/gemini-2.5-flash" — keeps UI clean.
+# - Fallback chain per model: primary fail → try next. Keeps chat responsive
+#   during provider outages without user-visible errors.
+# - Prompt caching header injected in agent client (not here) because it's
+#   per-call opt-in based on system-prompt size heuristic.
+
+model_list:
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: gpt-4-mini
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: deepseek
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+router_settings:
+  # Fallback chains. Cheapest primaries → richer fallbacks so we don't silently
+  # burn premium cost unless the cheap path is broken.
+  fallbacks:
+    - gemini-flash: ["gpt-4-mini", "claude-sonnet"]
+    - deepseek: ["gpt-4-mini"]
+    - gpt-4-mini: ["claude-sonnet"]
+  num_retries: 2
+  # [RT-F12] Client-side agent timeout is 30s → keep proxy < that so agent
+  # timeout doesn't orphan an in-flight upstream request (double-charge).
+  timeout: 25
+  # Do not include the failed model in the next fallback attempt.
+  allowed_fails: 1
+  cooldown_time: 30
+
+litellm_settings:
+  set_verbose: false
+  # [V4] JSON stdout logs → tailed by Vector into VictoriaLogs, so we can query
+  # cost/latency per (model, key_alias) via LogsQL instead of standing up
+  # Prometheus just for LiteLLM.
+  json_logs: true
+  # Silently drop provider-specific params the target model doesn't support
+  # (e.g. anthropic-beta header when routing to gemini). Prevents 4xx from
+  # per-provider quirks bubbling to the client.
+  drop_params: true
+  # [RT-F10] Reject empty / malformed completions instead of returning them
+  # as success — otherwise fallback chain never triggers on subtly-broken
+  # provider responses. Callback module ships in /app/callbacks.
+  callbacks: custom_callbacks.proxy_handler_instance
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # [RT-F11] Postgres schema isolation — DATABASE_URL includes
+  # `options=-csearch_path%3Dlitellm` so LiteLLM's auto-migrations create
+  # tables inside schema `litellm`, not `public` (shared with rag-agent).
+  # Rollback = `DROP SCHEMA litellm CASCADE`, no orphan cleanup needed.
+  database_url: os.environ/LITELLM_DATABASE_URL
+  # Budget alerts: LiteLLM emits `budget_alert` events into json_logs when a
+  # virtual key crosses `soft_budget`. Vector tails those into VictoriaLogs
+  # where vmalert (existing `alerts` profile) can fire on them — no need to
+  # wire Slack directly here.

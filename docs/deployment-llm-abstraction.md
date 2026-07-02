@@ -1,268 +1,285 @@
 # Deployment Guide — LLM Provider Abstraction (Plan 260701-1544)
 
-> Deploy `litellm-proxy` + `openwebui` + agent LiteLLM adapter lên `logserver` (192.168.122.53).
-> **Prerequisite:** stack hiện tại đã chạy OK theo [deployment-guide.md](deployment-guide.md).
+> Deploy `litellm-proxy` + `openwebui` + agent LiteLLM adapter lên `logserver`.
+> **Prerequisite:** stack hiện tại chạy OK theo [deployment-guide.md](deployment-guide.md).
+> **Đã verify end-to-end** trên `logserver-01` — 2026-07-02.
 > **Bối cảnh:** thay Anthropic direct SDK bằng LiteLLM để hỗ trợ 4 provider (Claude/GPT/Gemini/DeepSeek), giảm cost bằng Gemini Flash default.
 
-## 1. Topology (delta so với deployment-guide.md)
+## 0. Golden rules (đọc trước khi động)
+
+1. **Mọi `docker compose ...` phải chạy từ `~/onelog/infra`.** Đứng ở root repo (`~/onelog`) sẽ báo `no configuration file provided: not found`.
+2. **`docker compose up/logs/exec` cần đúng `--profile`.** Services trong profile khác không hiện. Ví dụ `agent` service trong `[agent]` profile, `openwebui` trong `[chat]`, `litellm-proxy` trong `[llm, chat]`.
+3. **`docker cp` không cần compose file** — gọi thẳng container name. Dùng khi copy config vào container.
+4. **DB backend cho LiteLLM đã DISABLED** — Prisma ignore Postgres `search_path` → schema isolation là no-op. Cost tracking qua stdout JSON → VictoriaLogs. Virtual keys in-memory. Cho MVP dùng master key trực tiếp cho OpenWebUI.
+
+## 1. Topology (delta so với stack cũ)
 
 ```
-logserver (192.168.122.53) — thêm 2 container vào stack:
+logserver — thêm 2 container vào stack:
    ┌────────────────────────────────────┐
-   │  litellm-proxy  : 4000 (127.0.0.1) │  profile: llm
-   │  openwebui      : 8090 (127.0.0.1) │  profile: chat
+   │  litellm-proxy  : 4000 (127.0.0.1) │  profiles: [llm, chat]
+   │  openwebui      : 8090 (127.0.0.1) │  profiles: [chat]
    └────────────────────────────────────┘
              │
-             ├─ Caddy /llm/*    → litellm-proxy:4000
-             └─ Caddy /webui/*  → openwebui:8080
+             ├─ Caddy site  webui.local  → openwebui:8080  (dedicated hostname)
+             │  (KHÔNG dùng /webui/* prefix — OpenWebUI static assets root-relative)
+             └─ Caddy site  app.local
+                 └─ /llm/* → litellm-proxy:4000  (streaming completions)
 ```
 
-Không thay đổi service hiện có (mcp-vl, mcp-semantic, victorialogs, postgres, ...).
-
----
+Container `agent` cũ (từ pre-MCP-only rollout) đã bị comment out — restore trong commit `373053d` với LiteLLM envs.
 
 ## 2. Pre-requisites
 
-- Đã có deploy hiện tại chạy OK (`docker compose ps` all healthy)
-- Ít nhất 1 provider API key (Anthropic, OpenAI, Gemini, DeepSeek)
-- Tools: `age` (`sudo apt install age`), `openssl`, `psql` client trong postgres container
+- Stack hiện tại `docker compose ps` toàn healthy
+- Ít nhất 1 provider API key (Anthropic / OpenAI / Gemini / DeepSeek). Nếu chưa có, vẫn deploy được nhưng chat sẽ trả `AuthenticationError`.
+- Tools trên logserver: `age` (`sudo apt install age`), `openssl`
+- Tools trên workstation: quyền admin/sudo để edit `hosts` file
 
----
+## 3. Pull code + gen secrets
 
-## 3. Pull code + update .env
-
-### 3.1 Pull mới nhất
+### 3.1 Pull
 ```bash
 cd ~/onelog
 git status                              # đảm bảo không có local change
 git fetch origin
-git log --oneline origin/master -8      # verify có 3 commit LLM abstraction:
-                                        #   07a4629 feat(infra): OpenWebUI
-                                        #   fc8e738 feat(infra): LiteLLM proxy
-                                        #   31f9644 feat(agent): LiteLLM adapter
 git pull origin master
 ```
 
-### 3.2 Sinh secrets + merge .env
+Verify commits present (7 commit Phase 1-3 + fixes):
 ```bash
-cd ~/onelog/infra
-diff .env.example .env | less           # xem biến mới cần thêm
-
-# Sinh secrets
-export LITELLM_MASTER_KEY="sk-litellm-$(openssl rand -hex 32)"
-export OPENWEBUI_SECRET_KEY="$(openssl rand -hex 32)"
-export MCP_TOKEN_OPENWEBUI="sk-mcp-openwebui-$(openssl rand -hex 24)"
-echo "LITELLM_MASTER_KEY=$LITELLM_MASTER_KEY"
-echo "OPENWEBUI_SECRET_KEY=$OPENWEBUI_SECRET_KEY"
-echo "MCP_TOKEN_OPENWEBUI=$MCP_TOKEN_OPENWEBUI"
+git log --oneline -12
+# Cần có (mới nhất trước):
+#   373053d feat(infra): re-enable agent service with LiteLLM env vars
+#   6434949 fix(caddy): serve OpenWebUI at dedicated webui.local
+#   31643ec fix(litellm): disable Postgres backend
+#   ...
+#   31f9644 feat(agent): abstract LLM provider via LiteLLM adapter
 ```
 
-Paste 3 giá trị vào `.env`:
+### 3.2 Nếu server có local changes gây conflict
+Thường do session trước uncomment `WEBUI_ADMIN_*` cho bootstrap. Nếu đã bootstrap admin xong, discard là an toàn:
+```bash
+git stash push -m "openwebui bootstrap local edits"
+git pull origin master
+git stash list    # phòng khi cần khôi phục sau
+```
+
+### 3.3 Sinh 3 secret
+```bash
+echo "LITELLM_MASTER_KEY=sk-litellm-$(openssl rand -hex 32)"
+echo "OPENWEBUI_SECRET_KEY=$(openssl rand -hex 32)"
+echo "MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-$(openssl rand -hex 24)"
+```
+
+Copy 3 giá trị vào `~/onelog/infra/.env`.
+
+## 4. Merge .env
+
+### 4.1 Backup + dedupe (fix bug từ manual edits)
+```bash
+cd ~/onelog/infra
+cp .env .env.bak-$(date +%Y%m%d-%H%M)
+awk '!seen[$0]++' .env > .env.tmp && mv .env.tmp .env
+# Verify no duplicate EMBED_MOCK
+grep -c "^EMBED_MOCK=" .env    # phải trả về 1
+```
+
+### 4.2 Append block LLM abstraction vào cuối .env
 ```env
-LLM_MODEL=gemini/gemini-2.5-flash
+# ─── LLM Provider Abstraction (plan 260701-1544) ─────────────────────
+LLM_MODEL=anthropic/claude-sonnet-4-5
 LLM_MAX_TOKENS=2048
-LLM_FALLBACK_MODELS=openai/gpt-4.1-mini,anthropic/claude-sonnet-4-5
+LLM_FALLBACK_MODELS=
 LLM_ENABLE_PROMPT_CACHE=true
 
+# Provider keys (cho agent service — LiteLLM SDK direct, không qua proxy)
+GEMINI_API_KEY=
+DEEPSEEK_API_KEY=
+# ANTHROPIC_API_KEY và OPENAI_API_KEY đã có sẵn ở block LLM cũ, không lặp
+
+# LiteLLM proxy (profiles: llm, chat)
 LITELLM_MASTER_KEY=sk-litellm-<paste>
-LITELLM_DATABASE_URL=postgresql://rag:${POSTGRES_PASSWORD}@postgres:5432/rag?options=-csearch_path%3Dlitellm
-
 OPENWEBUI_SECRET_KEY=<paste>
-OPENWEBUI_LITELLM_VIRTUAL_KEY=          # để trống, generate sau Step 5
 
+# OpenWebUI dùng master key trực tiếp (MVP, không có DB backend).
+# Đổi sang virtual key riêng nếu enable DB sau này.
+OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}
+
+# MCP token riêng cho OpenWebUI (RT-F3)
 MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-<paste>
 ```
 
-### 3.3 Tách provider keys (RT-F1 blast radius)
+### 4.3 Update MCP_BEARER_TOKENS
+Dòng cũ format `user:token,user:token`. Append entry `openwebui` — KHÔNG xóa entry cũ:
+```
+MCP_BEARER_TOKENS=trihd:sk-mcp-...,openwebui:sk-mcp-openwebui-<paste>
+```
+
+### 4.4 Chuyển LLM_MOCK khi có key
+```bash
+# Chỉ chạy khi có ≥ 1 provider key thật
+sed -i 's/^LLM_MOCK=true/LLM_MOCK=false/' .env
+```
+
+## 5. Tách `.env.llm` cho LiteLLM proxy (RT-F1)
+
 ```bash
 sudo install -m 0400 -o root -g root \
-  infra/litellm/.env.llm.example infra/litellm/.env.llm
-sudo $EDITOR infra/litellm/.env.llm    # paste real provider keys
+  ~/onelog/infra/litellm/.env.llm.example \
+  ~/onelog/infra/litellm/.env.llm
+sudo vi ~/onelog/infra/litellm/.env.llm
+# Điền provider keys THẬT vào đây (nếu có)
 ```
 
-### 3.4 Thêm token OpenWebUI vào MCP bearer table
-Trong `.env`, tìm `MCP_BEARER_TOKENS` (nếu chưa có, khởi tạo):
-```env
-MCP_BEARER_TOKENS=alice:sk-mcp-alice-xxx,bob:sk-mcp-bob-yyy,openwebui:sk-mcp-openwebui-<paste>
-```
+**Design intent:** provider keys tại đây tách khỏi `.env` global. Nếu `.env` leak, key vẫn an toàn (blast radius separation).
 
----
-
-## 4. Postgres schema (SKIPPED — DB backend disabled)
-
-Ban đầu plan có dùng Postgres schema `litellm` cho cost tracking (RT-F11 isolation). **Đã bỏ vì Prisma của LiteLLM không respect `search_path` — schema isolation là no-op, tables sẽ landing vào `public` mix với rag-agent.**
-
-Cost tracking hiện chuyển sang **stdout JSON logs → VictoriaLogs** (V4). Virtual keys/budgets in-memory (mất khi restart, chấp nhận cho MVP).
-
-Nếu cần multi-day cost history theo user, revisit bằng cách tạo Postgres DB `litellm` riêng (`CREATE DATABASE litellm;`) thay vì schema.
-
-**Lưu ý general:** mọi `docker compose ...` phải chạy từ `~/onelog/infra` (nơi có `docker-compose.yml`).
-
----
-
-## 5. Deploy LiteLLM proxy
+## 6. Deploy LiteLLM proxy
 
 ```bash
 cd ~/onelog/infra
 docker compose --profile llm up -d litellm-proxy
-docker compose ps litellm-proxy         # chờ healthy ~30s
+sleep 30    # first-run cần ~20s để load config + start uvicorn
+docker compose ps litellm-proxy       # → Up, healthy
 
 # Verify liveness
-curl -fsS http://localhost:4000/health/liveliness && echo "OK"
+curl -fsS http://localhost:4000/health/liveliness && echo " OK"
 
-# Verify 4 model alias
+# Load master key vào shell + list 4 model alias
+export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2)
 curl -fsS http://localhost:4000/v1/models \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq '.data[].id'
-# → gemini-flash, gpt-4-mini, claude-sonnet, deepseek
-
-# Log JSON tail
-docker compose logs -f litellm-proxy | head -30
+# → "gemini-flash", "gpt-4-mini", "claude-sonnet", "deepseek"
 ```
 
-### 5.1 Tạo virtual key cho OpenWebUI
-```bash
-curl -X POST http://localhost:4000/key/generate \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "models": ["gemini-flash", "gpt-4-mini", "claude-sonnet", "deepseek"],
-    "max_budget": 20,
-    "budget_duration": "30d",
-    "soft_budget": 16,
-    "key_alias": "openwebui-team"
-  }' | jq -r '.key'
-```
+### Troubleshooting LiteLLM
 
-Copy key trả về (dạng `sk-...`) → paste vào `.env`:
-```env
-OPENWEBUI_LITELLM_VIRTUAL_KEY=sk-<paste>
-```
+**Symptom:** `curl: (56) Recv failure: Connection reset by peer` sau khi container "Up" 30s
+- **Cause:** LiteLLM chưa listen 4000 (crash bootstrap) hoặc Prisma migration đang chạy 20+ phút
+- **Fix nếu do migration:** đảm bảo `database_url` trong `config.yaml` đã comment (đã fix trong commit `31643ec`). Nếu vẫn migrating → `docker compose --profile llm down litellm-proxy && git pull && docker compose --profile llm up -d`
 
-Verify:
-```bash
-curl -fsS http://localhost:4000/v1/models \
-  -H "Authorization: Bearer $OPENWEBUI_LITELLM_VIRTUAL_KEY" | jq '.data | length'
-# → 4
-```
+**Symptom:** `docker compose logs litellm-proxy` báo `ModuleNotFoundError: custom_callbacks`
+- **Cause:** Bind mount `custom_callbacks.py` không đúng path
+- **Fix:** `docker exec ragstack-litellm ls /app/custom_callbacks.py` → phải hiện. Nếu missing → verify volume mount trong compose
 
----
+## 7. Deploy OpenWebUI
 
-## 6. Deploy OpenWebUI
-
-### 6.1 Bootstrap admin lần đầu
-Mở `.env` tạm thời uncomment 2 dòng bootstrap:
+### 7.1 Bootstrap admin (chỉ lần đầu, DB rỗng)
+Thêm vào `.env`:
 ```env
 OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local
-OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=<strong-password>
+OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=<mật-khẩu-tạm-mạnh>
 ```
 
-Đồng thời trong `docker-compose.yml` (section `openwebui.environment`) uncomment 2 dòng:
-```yaml
-WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
-WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
+Uncomment 2 dòng trong `docker-compose.yml` section `openwebui.environment`:
+```bash
+sed -i 's|^      # WEBUI_ADMIN_EMAIL:|      WEBUI_ADMIN_EMAIL:|' docker-compose.yml
+sed -i 's|^      # WEBUI_ADMIN_PASSWORD:|      WEBUI_ADMIN_PASSWORD:|' docker-compose.yml
 ```
 
-Deploy:
+### 7.2 Deploy
 ```bash
 docker compose --profile chat up -d openwebui
-docker compose ps openwebui             # chờ healthy ~1 phút (first-run DB migrate)
-docker compose logs -f openwebui | grep -i "admin\|user\|init"
+# LƯU Ý: --profile chat tự động bring litellm-proxy nếu chưa chạy
+# (litellm-proxy đã trong cả 2 profile llm và chat)
+
+sleep 60    # first-run migrate SQLite + download embedding model ~60s
+docker compose --profile chat ps openwebui    # → healthy
+docker compose --profile chat logs openwebui --tail=30 | grep -iE "admin|user|running"
+# Kỳ vọng: "Admin account created successfully: admin@onelog.local"
 ```
 
-### 6.2 Verify + lock signup
-- Mở browser: `http://192.168.122.53/webui/`
-- Login với admin credentials ở trên
-- Vào **Admin Settings → Models** → verify 4 model từ LiteLLM hiện diện
-- Vào **Admin Settings → Connections** hoặc **MCP** → verify 2 server `onelog-vl` + `onelog-semantic` connect (list tools load được)
+### 7.3 Setup Caddy site cho webui.local
 
-Sau khi verify OK, **comment lại** 2 dòng bootstrap trong `.env` VÀ `docker-compose.yml`, restart:
+Caddyfile đã có sẵn site block `http://webui.local` từ commit `6434949`. Reload:
 ```bash
-docker compose restart openwebui
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+# Nếu reload fail → docker compose restart caddy
 ```
 
-### 6.3 Tạo tài khoản 5 ops
-Trong OpenWebUI: **Admin Panel → Users → + Add User** → nhập email + password mỗi ops.
-Gửi credentials qua kênh private (không Slack public).
-
----
-
-## 7. Update agent service (LiteLLM adapter)
-
-Agent tự dùng LiteLLM trực tiếp (không qua proxy). Chỉ cần rebuild:
-
-```bash
-docker compose build agent
-docker compose up -d agent
-docker compose logs -f --tail=50 agent
-# → verify log line: llm.ready model=... fallbacks=[...]
+### 7.4 Setup /etc/hosts trên workstation
+**Windows** (PowerShell as Administrator):
+```powershell
+Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "192.168.122.53  webui.local"
+ping webui.local    # phải reply từ 192.168.122.53
 ```
 
-**Lưu ý:** agent service tự đọc `LLM_MODEL`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, ... từ `.env` global. Không dùng proxy virtual key ở slice đầu (giữ đơn giản).
-
----
-
-## 8. Smoke test (theo thứ tự)
-
-### 8.1 LiteLLM proxy direct
+**macOS/Linux:**
 ```bash
-curl -X POST http://localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-flash","messages":[{"role":"user","content":"hello VN"}]}' \
-  | jq '.choices[0].message.content'
-```
-Kỳ vọng: text response, HTTP 200.
-
-### 8.2 LiteLLM qua Caddy
-```bash
-curl -X POST http://192.168.122.53/llm/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-flash","messages":[{"role":"user","content":"ping"}]}' \
-  | jq .
+echo "192.168.122.53  webui.local" | sudo tee -a /etc/hosts
 ```
 
-### 8.3 Fallback chain (RT-F10 validation)
-Tạm rename `GEMINI_API_KEY` trong `.env.llm` → `_GEMINI_API_KEY`, restart:
-```bash
-docker compose restart litellm-proxy
-sleep 20
-curl -X POST http://localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gemini-flash","messages":[{"role":"user","content":"ping"}]}'
-# → response 200 (từ gpt-4-mini fallback)
-docker compose logs litellm-proxy | grep -i "fallback\|retry" | head -5
-```
-Khôi phục `GEMINI_API_KEY` name sau khi verify OK.
+### 7.5 Verify + lock signup
 
-### 8.4 Agent /chat với LiteLLM
+Mở browser: **http://webui.local/**
+- Login: `admin@onelog.local` + password bootstrap
+- **Settings → Admin Settings → Models** → thấy 4 model từ LiteLLM
+- **Settings → Account → Change password** — ĐỔI NGAY (password bootstrap ở .env)
+
+Sau khi verify OK, lock:
 ```bash
-curl -N -X POST http://192.168.122.53/api/chat \
+cd ~/onelog/infra
+# Comment .env
+sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env
+# Comment docker-compose.yml
+sed -i 's|^      WEBUI_ADMIN_EMAIL:|      # WEBUI_ADMIN_EMAIL:|' docker-compose.yml
+sed -i 's|^      WEBUI_ADMIN_PASSWORD:|      # WEBUI_ADMIN_PASSWORD:|' docker-compose.yml
+# Restart OpenWebUI
+docker compose --profile chat restart openwebui
+```
+
+### Troubleshooting OpenWebUI
+
+**Symptom:** browser tại `webui.local` show "onelog: web UI deprecated"
+- **Cause:** Caddy Caddyfile chưa reload sau khi có commit `6434949`, hoặc site block `http://webui.local` chưa tồn tại
+- **Fix:** `docker compose restart caddy`, sau đó test `curl -H "Host: webui.local" http://localhost/`
+
+**Symptom:** compose báo `service "openwebui" depends on undefined service "litellm-proxy"`
+- **Cause:** Chỉ dùng `--profile chat` với version cũ khi litellm-proxy chỉ trong profile `[llm]`
+- **Fix:** Đã fix trong commit này — litellm-proxy giờ ở `[llm, chat]`. `git pull` để có fix. Alternatively: `docker compose --profile llm --profile chat up -d openwebui`
+
+## 8. Deploy agent service với LiteLLM adapter
+
+### 8.1 Stop container cũ (Anthropic direct)
+Container `ragstack-agent` cũ Up 8+ days từ image trước LiteLLM:
+```bash
+docker stop ragstack-agent 2>/dev/null || true
+docker rm ragstack-agent 2>/dev/null || true
+```
+
+### 8.2 Build + start qua compose
+```bash
+cd ~/onelog/infra
+docker compose --profile agent build agent
+docker compose --profile agent up -d agent
+sleep 10
+docker compose --profile agent ps agent    # → Up
+docker compose --profile agent logs agent --tail=30
+```
+
+Kỳ vọng log:
+- `Started server process [1]`
+- `Uvicorn running on http://0.0.0.0:8080`
+- Log line `llm.ready model=...` (real key) hoặc `llm.mock_mode` (không có key / LLM_MOCK=true)
+
+### 8.3 Smoke test `/chat` SSE
+```bash
+curl -N -X POST http://localhost:8080/chat \
   -H 'Content-Type: application/json' \
-  -d '{"query":"mysql có lỗi gì gần đây?"}' \
-  | grep -E '^event:|^data:' | head -30
+  -d '{"query":"mysql có lỗi gì gần đây?"}' 2>&1 | head -40
 ```
-Kỳ vọng: SSE events `thinking`, `tool_call`, `tool_result`, `answer` — parity với Anthropic baseline. Citation `[svc:host:...]` hợp lệ.
 
-### 8.5 OpenWebUI qua Caddy
-- Mở `http://192.168.122.53/webui/` → login user
-- Chọn model `gemini-flash` (default)
-- Chat: `Dùng search_log_templates tìm log mysql`
-- Verify: tool được gọi, response có citation với `vmui_url` click được
+**Kỳ vọng theo key state:**
 
-### 8.6 Cost tracking
-```bash
-curl -fsS http://localhost:4000/spend/logs \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq '.[] | {model, spend, user, ts: .startTime}'
-```
-Kỳ vọng: 1+ record cho mỗi request smoke test.
+| State | Output |
+|---|---|
+| `LLM_MOCK=true` | SSE stream đầy đủ: `thinking` → `tool_call` → `tool_result` → `answer` (canned) |
+| Key sai / placeholder `sk-ant-...` | `event: error` với `AuthenticationError: invalid x-api-key` — đây là **kết quả tốt**, chứng minh adapter shape đúng, chỉ thiếu key |
+| Key thật | SSE stream với answer thực từ provider |
 
----
+## 9. Setup backup OpenWebUI (RT-F4)
 
-## 9. Backup + monitoring
-
-### 9.1 Age keypair cho OpenWebUI backup
+### 9.1 Age keypair
 ```bash
 sudo mkdir -p /root/vault /etc/onelog
 sudo age-keygen -o /root/vault/backup-age.key
@@ -271,102 +288,84 @@ sudo grep "public key" /root/vault/backup-age.key | awk '{print $NF}' \
   | sudo tee /etc/onelog/backup-age.pub
 ```
 
-**QUAN TRỌNG:** copy `/root/vault/backup-age.key` sang ops vault (offsite). Nếu mất key này → không restore được backup.
+**QUAN TRỌNG:** copy `/root/vault/backup-age.key` sang ops vault (offsite). Mất key này = mất khả năng restore.
 
-### 9.2 Test backup script
+### 9.2 Test + cron
 ```bash
 sudo bash ~/onelog/infra/scripts/backup-openwebui.sh
 ls -lh ~/onelog/backup/openwebui-*.tgz.age
-```
 
-### 9.3 Cron daily 3AM
-```bash
+# Cron 3am daily
 (sudo crontab -l 2>/dev/null; \
  echo "0 3 * * * ~/onelog/infra/scripts/backup-openwebui.sh >> /var/log/openwebui-backup.log 2>&1") \
  | sudo crontab -
 ```
 
----
-
 ## 10. Verification checklist
 
-- [ ] `git pull` thành công, có 3 commit LLM abstraction
-- [ ] `.env` có đủ biến mới, `.env.llm` chmod 0400 root:root
-- [ ] `docker compose exec postgres psql -c "\dn"` show schema `litellm`
-- [ ] `docker compose ps litellm-proxy openwebui` → cả 2 healthy
-- [ ] `curl /v1/models` list 4 model alias
-- [ ] Fallback chain verify OK (rename key + retry)
-- [ ] Agent `/api/chat` SSE stream trả answer với citation hợp lệ
-- [ ] OpenWebUI login OK, thấy 4 model + MCP tools
-- [ ] Chat mẫu qua OpenWebUI: tool call + citation OK
-- [ ] `curl /spend/logs` có record cost
-- [ ] Backup script dry-run OK, file `.tgz.age` xuất hiện
-- [ ] Cron backup daily active
-- [ ] `systemctl status ragstack` vẫn healthy (compose profile thêm không phá base)
+- [ ] `git log --oneline -8` có đủ commit LLM abstraction
+- [ ] `.env` không còn duplicate `EMBED_MOCK`, có block LLM mới
+- [ ] `.env.llm` chmod 0400 root:root, có provider keys thật (hoặc empty nếu chưa có)
+- [ ] `docker compose --profile llm --profile chat --profile agent ps` — litellm-proxy + openwebui + agent đều healthy
+- [ ] `curl /v1/models` list 4 model
+- [ ] `curl -H "Host: webui.local" http://localhost/` → không 410
+- [ ] Browser `http://webui.local/` login OK, thấy 4 model
+- [ ] Admin password đã đổi khỏi bootstrap
+- [ ] `.env` + `docker-compose.yml` đã lock signup (WEBUI_ADMIN_* comment)
+- [ ] `curl POST /chat` SSE stream trả events (mock hoặc real)
+- [ ] Backup script chạy được, `.tgz.age` xuất hiện
+- [ ] Cron backup active
 
----
+## 11. Troubleshooting bảng tổng
 
-## 11. Troubleshooting
-
-| Triệu chứng | Check | Fix |
+| Triệu chứng | Root cause | Fix |
 |---|---|---|
-| `litellm-proxy` restart loop, log `pydantic ValidationError config.yaml` | Config YAML sai schema | Verify `provider/model` format đúng; check LiteLLM version bump breaking change |
-| `curl /v1/models` → 401 | Master key sai / chưa export | `export LITELLM_MASTER_KEY=$(grep LITELLM_MASTER_KEY infra/.env \| cut -d= -f2)` |
-| `curl /v1/models` → 500 provider unreachable | Egress proxy chặn provider | Set `HTTPS_PROXY` trong `.env.llm` |
-| Callback module import error `No module named 'custom_callbacks'` | Volume mount sai path | Verify `docker exec ragstack-litellm ls /app/custom_callbacks.py` — file phải hiện |
-| OpenWebUI login fail "Failed to connect to backend" | `OPENAI_API_BASE_URL` sai / LiteLLM chưa up | Verify service `litellm-proxy` resolve trong docker network |
-| OpenWebUI model list empty | Virtual key không có model permission | Regen key với `"models":[...]` đầy đủ |
-| OpenWebUI MCP tools không hiện | `mcp-config.json` mount fail / bearer token sai | `docker exec ragstack-openwebui cat /app/backend/data/mcp-config.json`; check `openwebui:$MCP_TOKEN_OPENWEBUI` có trong `MCP_BEARER_TOKENS` |
-| Agent SSE trả `LLM error: BadRequestError` | Message shape adapter miss edge case | Xem log agent chi tiết; report bug Phase 1 với reproducer |
-| Caddy 502 khi vào `/webui/` | OpenWebUI chưa healthy / route missing | `docker compose logs openwebui`; verify Caddyfile có `handle_path /webui*` |
-| Cost tracking trống | `LITELLM_DATABASE_URL` không set / schema chưa init | Chạy lại Step 4 bootstrap schema |
-| Provider trả `429 rate limit` liên tục | Vượt quota provider | LiteLLM tự retry + fallback; tăng budget provider hoặc đổi default model |
-| Backup script fail `age public key not found` | Chưa chạy Step 9.1 | Generate keypair + publish `.pub` |
-| `age: cannot open output file` | Backup dir không tồn tại / permission | `sudo mkdir -p ~/onelog/backup && sudo chown $USER:$USER ~/onelog/backup` |
-
----
+| `no configuration file provided: not found` | Đang ở `~/onelog`, không phải `~/onelog/infra` | `cd ~/onelog/infra` |
+| `no such service: X` | Thiếu `--profile` phù hợp | `docker compose --profile agent ps agent` (hoặc `llm`/`chat`) |
+| LiteLLM `Recv failure: Connection reset by peer` sau > 30s | Config `database_url` chưa comment → Prisma stuck migration | `git pull` (commit `31643ec` đã fix); `docker compose --profile llm down litellm-proxy && up -d` |
+| `service "openwebui" depends on undefined service "litellm-proxy"` | litellm-proxy chỉ ở profile `[llm]`, `--profile chat` không thấy | `git pull` (commit đã fix — litellm-proxy giờ trong `[llm, chat]`) |
+| `key/generate` trả `DB not connected` | LiteLLM không có DB backend | Dùng master key trực tiếp cho `OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}` |
+| Browser `/webui/` show "web UI deprecated" 410 | Caddy path prefix routing không hoạt động với OpenWebUI root-relative assets | Dùng subdomain `webui.local` (commit `6434949`) + hosts entry |
+| `AuthenticationError: invalid x-api-key` từ `/chat` | Provider key trong `.env` là placeholder `sk-ant-...` | Điền key thật vào `.env` (agent) và/hoặc `.env.llm` (proxy) |
+| `Missing Gemini API key` từ OpenWebUI chat | `GEMINI_API_KEY` trong `.env.llm` empty | `sudo vi .env.llm` điền key + `docker compose --profile llm restart litellm-proxy` |
+| Git pull báo `local changes would be overwritten` | Session cũ uncomment bootstrap còn trong file | `git stash push` + `git pull` |
+| Windows: `EPERM` khi save hosts từ VS Code | Windows Defender / permission | PowerShell as admin: `Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "..."` |
 
 ## 12. Rollback
 
-### Full rollback (về Anthropic direct)
 ```bash
 cd ~/onelog
-git log --oneline -10                   # tìm commit trước 31f9644
-git checkout <sha-before-llm-plan>
-docker compose --profile chat --profile llm down
-docker compose build agent
-docker compose up -d agent
-# Stack quay về Anthropic direct SDK, Claude Desktop path không đổi
+# Full rollback về pre-LLM-abstraction
+git log --oneline --grep="feat(agent): abstract"    # tìm SHA
+git checkout <sha-before-31f9644>
+cd infra
+docker compose --profile chat --profile llm --profile agent down
+docker compose --profile agent build agent
+docker compose --profile agent up -d agent
 ```
 
-### Partial rollback (giữ proxy + openwebui, agent về Claude direct)
+Partial rollback (agent về mock hoặc Anthropic direct nhưng giữ litellm-proxy + openwebui):
 ```bash
 # .env
-LLM_MODEL=anthropic/claude-sonnet-4-5
-docker compose restart agent
+LLM_MODEL=anthropic/claude-sonnet-4-5    # hoặc LLM_MOCK=true
+docker compose --profile agent restart agent
 ```
-
-### Postgres schema rollback
-```bash
-docker compose --profile llm down litellm-proxy
-docker compose exec postgres psql -U rag -d rag -c "DROP SCHEMA litellm CASCADE;"
-# Không ảnh hưởng rag-agent tables trong `public`
-```
-
----
 
 ## 13. Post-deploy tasks
 
-- [ ] Update `/etc/onelog-ragstack.env` (systemd unit) profile: `COMPOSE_PROFILES=agent,mcp,chat,llm`
-- [ ] Reboot logserver test → verify `openwebui` + `litellm-proxy` tự up sau boot
+- [ ] Update `/etc/onelog-ragstack.env` (systemd unit) profile: `COMPOSE_PROFILES=agent,mcp,alerts,llm,chat`
+- [ ] Reboot logserver test → verify auto-start
 - [ ] Add openwebui volume vào `snapshot-daily.sh` nếu retention offsite cần thiết
-- [ ] Vector config: thêm route tail `docker logs ragstack-litellm` → VictoriaLogs (cost analytics)
-- [ ] Gửi 5 ops link `/webui/` + credential qua kênh private
+- [ ] Điền provider keys thật khi có
+- [ ] Đổi password admin OpenWebUI qua UI (khỏi password bootstrap)
+- [ ] DROP schema `litellm` orphan nếu đã tạo:
+  ```bash
+  docker compose exec postgres psql -U rag -d rag -c "DROP SCHEMA IF EXISTS litellm CASCADE;"
+  ```
 
----
+## 14. Unresolved / defer
 
-## 14. Unresolved questions
-
-1. Cost tracking Postgres vs stdout JSON — chọn 1 hay dual-write cho redundancy?
-2. Systemd `ragstack.service` có nên tự bao gồm profile `llm,chat` chưa hay để manual up?
-3. Snapshot offsite (S3/MinIO) cho backup-openwebui `.tgz.age` — có tồn tại storage không?
+1. **Virtual key với budget cap** — cần DB. Nếu team cần track cost per-user, tạo dedicated DB `litellm` (không phải schema): `CREATE DATABASE litellm;` + uncomment `DATABASE_URL` trong `docker-compose.yml` (URL trỏ `postgres:5432/litellm` không có options).
+2. **HTTPS** — hiện Caddy `auto_https off`. Khi có domain thật + LE cert, thay `http://webui.local` bằng domain.
+3. **OIDC/SSO** — hiện local user table. Tích hợp sau nếu có Keycloak/Authentik.
+4. **VMalert alert rule** cho `budget_alert` event từ LiteLLM stdout logs.

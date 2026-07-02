@@ -340,7 +340,10 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: ragstack-litellm
     restart: unless-stopped
-    profiles: [llm]   # opt-in: docker compose --profile llm up -d
+    # Listed in both profiles so `--profile chat` alone brings up its dep
+    # (openwebui → litellm-proxy). Otherwise compose fails validation with
+    # "openwebui depends on undefined service litellm-proxy".
+    profiles: [llm, chat]
     ports:
       - "127.0.0.1:4000:4000"
     volumes:

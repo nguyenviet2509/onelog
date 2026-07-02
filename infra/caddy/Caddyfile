@@ -80,15 +80,6 @@
                 flush_interval -1
             }
         }
-        # OpenWebUI — Phase 3, plan 260701-1544-llm-provider-abstraction.
-        # Team chat UI replacing Claude Desktop. Uses /webui/* prefix to keep
-        # /chat free for the agent API (existing SSE endpoint stays functional).
-        # OpenWebUI has its own session auth — no forward_auth needed here.
-        handle_path /webui/* {
-            reverse_proxy openwebui:8080 {
-                flush_interval -1   # streaming chat completions
-            }
-        }
         # LiteLLM proxy — Phase 2, plan 260701-1544-llm-provider-abstraction.
         # Strip /llm prefix so upstream sees clean /v1/*, /health/liveliness,
         # /key/*, /spend/logs, /model/* paths. LiteLLM has its own Bearer auth
@@ -109,6 +100,21 @@
         # Fallback for any unmatched path — landing note pointing at MCP guides.
         handle {
             respond "onelog: web UI deprecated — use Claude Desktop + MCP. See docs/mcp-setup-guide.md" 410
+        }
+    }
+    handle {
+        respond "Forbidden — IP not in allow list" 403
+    }
+}
+
+# OpenWebUI — dedicated hostname, served at root so static assets work.
+# Team ops thêm `192.168.122.53  webui.local` vào /etc/hosts (Windows:
+# C:\Windows\System32\drivers\etc\hosts). Cùng IP whitelist như app.local.
+http://webui.local {
+    @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
+    handle @allowed {
+        reverse_proxy openwebui:8080 {
+            flush_interval -1   # streaming chat completions
         }
     }
     handle {

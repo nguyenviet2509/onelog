@@ -88,20 +88,15 @@ MCP_BEARER_TOKENS=alice:sk-mcp-alice-xxx,bob:sk-mcp-bob-yyy,openwebui:sk-mcp-ope
 
 ---
 
-## 4. Bootstrap Postgres schema
+## 4. Postgres schema (SKIPPED — DB backend disabled)
 
-**Lưu ý:** mọi `docker compose ...` phải chạy từ `~/onelog/infra` (nơi có `docker-compose.yml`). Nếu đứng ở dir khác, `compose` báo `no configuration file provided`.
+Ban đầu plan có dùng Postgres schema `litellm` cho cost tracking (RT-F11 isolation). **Đã bỏ vì Prisma của LiteLLM không respect `search_path` — schema isolation là no-op, tables sẽ landing vào `public` mix với rag-agent.**
 
-```bash
-cd ~/onelog/infra
+Cost tracking hiện chuyển sang **stdout JSON logs → VictoriaLogs** (V4). Virtual keys/budgets in-memory (mất khi restart, chấp nhận cho MVP).
 
-docker cp litellm/init-schema.sql ragstack-postgres:/tmp/
-docker compose exec postgres psql -U rag -d rag -f /tmp/init-schema.sql
-# → CREATE SCHEMA / GRANT / ALTER DEFAULT PRIVILEGES
+Nếu cần multi-day cost history theo user, revisit bằng cách tạo Postgres DB `litellm` riêng (`CREATE DATABASE litellm;`) thay vì schema.
 
-# Verify schema xuất hiện
-docker compose exec postgres psql -U rag -d rag -c "\dn"
-```
+**Lưu ý general:** mọi `docker compose ...` phải chạy từ `~/onelog/infra` (nơi có `docker-compose.yml`).
 
 ---
 

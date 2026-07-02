@@ -62,11 +62,14 @@ litellm_settings:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
-  # [RT-F11] Postgres schema isolation — DATABASE_URL includes
-  # `options=-csearch_path%3Dlitellm` so LiteLLM's auto-migrations create
-  # tables inside schema `litellm`, not `public` (shared with rag-agent).
-  # Rollback = `DROP SCHEMA litellm CASCADE`, no orphan cleanup needed.
-  database_url: os.environ/LITELLM_DATABASE_URL
+  # DB backend disabled — Prisma (LiteLLM's ORM) doesn't honor Postgres
+  # `search_path` in DATABASE_URL, so RT-F11 schema isolation is a no-op:
+  # tables would land in `public` alongside rag-agent. YAGNI: skip DB for
+  # cost tracking, use V4 stdout JSON → VictoriaLogs instead. Virtual keys
+  # and budgets live in-memory (lost on restart — acceptable for MVP, we
+  # regenerate keys on demand). Revisit when we need multi-day cost history
+  # by user.
+  # database_url: os.environ/LITELLM_DATABASE_URL
   # Budget alerts: LiteLLM emits `budget_alert` events into json_logs when a
   # virtual key crosses `soft_budget`. Vector tails those into VictoriaLogs
   # where vmalert (existing `alerts` profile) can fire on them — no need to

@@ -337,10 +337,11 @@ services:
         required: true
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      # search_path=litellm keeps LiteLLM's auto-created tables out of public
-      # schema so rollback = DROP SCHEMA litellm CASCADE (RT-F11).
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-}
-      STORE_MODEL_IN_DB: "True"
+      # DB backend disabled — Prisma doesn't honor Postgres search_path so
+      # RT-F11 schema isolation would fail. Cost tracking via stdout JSON
+      # → VictoriaLogs (V4). Virtual keys/budgets are in-memory only.
+      # DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      # STORE_MODEL_IN_DB: "True"
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
@@ -348,9 +349,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # No depends_on postgres — DB disabled (see general_settings comment).
     logging:
       driver: json-file
       options:

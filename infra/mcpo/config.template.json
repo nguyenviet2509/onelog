@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "onelog-vl": {
+      "type": "sse",
+      "url": "http://caddy/mcp/vl/sse",
+      "headers": {
+        "Authorization": "Bearer __MCP_TOKEN__"
+      }
+    },
+    "onelog-semantic": {
+      "type": "streamable_http",
+      "url": "http://caddy/mcp/semantic/mcp",
+      "headers": {
+        "Authorization": "Bearer __MCP_TOKEN__"
+      }
+    }
+  }
+}

@@ -22,10 +22,11 @@ Trên logserver, khi đã có ít nhất 1 provider key:
 # 1. Pull latest
 cd ~/onelog && git pull origin master
 
-# 2. Gen 3 secret, in ra để copy
+# 2. Gen 4 secret, in ra để copy
 echo "LITELLM_MASTER_KEY=sk-litellm-$(openssl rand -hex 32)"
 echo "OPENWEBUI_SECRET_KEY=$(openssl rand -hex 32)"
 echo "MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-$(openssl rand -hex 24)"
+echo "MCPO_API_KEY=sk-mcpo-$(openssl rand -hex 24)"
 
 # 3. Backup .env + dedupe + edit
 cd ~/onelog/infra
@@ -41,9 +42,10 @@ Sau khi `.env` xong:
 sudo install -m 0400 -o root -g root litellm/.env.llm.example litellm/.env.llm
 sudo vi litellm/.env.llm    # điền provider keys thật
 
-# 5. Deploy 3 container
-docker compose --profile llm --profile chat --profile agent build agent
-docker compose --profile llm --profile chat --profile agent up -d litellm-proxy openwebui agent
+# 5. Deploy 4 container (litellm-proxy, mcpo, openwebui, agent)
+sudo docker compose --profile llm --profile chat --profile agent build agent
+sudo docker compose --profile llm --profile chat --profile agent up -d \
+  litellm-proxy mcpo openwebui agent
 
 sleep 60
 docker compose --profile llm --profile chat --profile agent ps
@@ -56,7 +58,18 @@ export LITELLM_MASTER_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | cut -d= -f2)
 curl -fsS http://localhost:4000/health/liveliness && echo " OK"
 curl -fsS http://localhost:4000/v1/models -H "Authorization: Bearer $LITELLM_MASTER_KEY" | jq '.data[].id'
 curl -fsS http://localhost:8080/health && echo " agent OK"
+
+# mcpo bridge — verify tool endpoints reachable
+export MCPO_API_KEY=$(grep '^MCPO_API_KEY=' .env | cut -d= -f2)
+curl -fsS -H "Authorization: Bearer $MCPO_API_KEY" http://localhost:8091/onelog-vl/openapi.json | jq '.info.title'
+curl -fsS -H "Authorization: Bearer $MCPO_API_KEY" http://localhost:8091/onelog-semantic/openapi.json | jq '.info.title'
 ```
+
+Sau đó vào OpenWebUI **Admin → Settings → Tools** (hoặc **Workspace → Tools**) → **+ Add Tool** cho từng server:
+- **onelog-vl**: URL `http://mcpo:8080/onelog-vl`, Auth type `Bearer`, Token `<MCPO_API_KEY>`
+- **onelog-semantic**: URL `http://mcpo:8080/onelog-semantic`, Auth type `Bearer`, Token `<MCPO_API_KEY>`
+
+Chat mới → toggle 2 tool ON dưới message input → thử `Có template log lỗi mysql trong 24h qua không?` → verify model gọi `search_log_templates` từ onelog-semantic (không phải `grep_knowledge_files`).
 
 Trên workstation, thêm `hosts` entry (chạy 1 lần):
 
@@ -84,6 +97,7 @@ LITELLM_MASTER_KEY=sk-litellm-<paste>
 OPENWEBUI_SECRET_KEY=<paste>
 OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}
 MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-<paste>
+MCPO_API_KEY=sk-mcpo-<paste>
 ```
 
 Update dòng `MCP_BEARER_TOKENS` (append entry `openwebui:...`, không xóa entry cũ):
@@ -191,7 +205,12 @@ ls -lh ~/onelog/backup/openwebui-*.tgz.age
 | Browser `webui.local` → "web UI deprecated" 410 | `docker compose restart caddy` sau khi pull commit `6434949` |
 | OpenWebUI login "Failed to connect to backend" | Verify `OPENAI_API_BASE_URL=http://litellm-proxy:4000/v1` + `OPENWEBUI_LITELLM_VIRTUAL_KEY` khớp master key |
 | `AuthenticationError: invalid x-api-key` từ `/chat` | Adapter OK, chỉ điền `ANTHROPIC_API_KEY` thật vào `.env` + restart agent |
-| `Missing Gemini API key` từ OpenWebUI | Điền `GEMINI_API_KEY` vào `.env.llm` + `docker compose --profile llm restart litellm-proxy` |
+| `Missing Gemini API key` / env rỗng trong container dù `.env.llm` có key | `docker compose restart` **KHÔNG** re-read `env_file`. Phải `sudo docker compose --profile llm up -d --force-recreate litellm-proxy` |
+| `open .../.env.llm: permission denied` khi `up`/`recreate` | File chmod 0400 root:root — dùng `sudo docker compose ...` cho lệnh đọc env_file (up, recreate, config) |
+| Model trả `grep_knowledge_files` thay vì MCP tool | MCP wire chưa xong — OpenWebUI KHÔNG native MCP, phải qua mcpo bridge. Verify mcpo up: `docker compose ps mcpo`. Register tool trong OpenWebUI Admin → Tools với URL `http://mcpo:8080/onelog-vl` + `http://mcpo:8080/onelog-semantic` |
+| mcpo `401 Unauthorized` khi curl endpoint | Sai token — dùng `MCPO_API_KEY` (bảo vệ mcpo), không phải `MCP_TOKEN_OPENWEBUI` (mcpo → mcp-vl internal) |
+| mcpo container crash startup | Check `MCP_TOKEN_OPENWEBUI` có trong `MCP_BEARER_TOKENS` không — mcp-vl/mcp-semantic reject sẽ khiến mcpo fail health |
+| Gemini `401 API key not valid` | Key sai format — Gemini API key phải bắt đầu `AIzaSy` (39 ký tự) từ aistudio.google.com/apikey. Không phải OAuth token / Cloud API key |
 | `key/generate` báo `DB not connected` | Không tạo virtual key — dùng `OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}` |
 | `git pull` báo `local changes would be overwritten` | `git stash push -m "before-pull" && git pull` |
 | Windows: EPERM khi save hosts | PowerShell as admin: `Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "192.168.122.53 webui.local"` |
@@ -209,7 +228,10 @@ docker compose --profile agent restart agent
 
 # .env.llm — cho litellm-proxy (OpenWebUI)
 sudo vi ~/onelog/infra/litellm/.env.llm
-docker compose --profile llm restart litellm-proxy
+# QUAN TRỌNG:
+# - `restart` KHÔNG re-read env_file → phải `up -d --force-recreate`
+# - `.env.llm` chmod 0400 root:root → cần `sudo` cho compose CLI
+sudo docker compose --profile llm up -d --force-recreate litellm-proxy
 ```
 
 Verify:

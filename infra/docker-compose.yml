@@ -374,6 +374,37 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # mcpo — MCP-to-OpenAPI bridge (Phase 3 addendum). OpenWebUI doesn't speak
+  # MCP natively (SSE/Streamable HTTP) — mcpo proxies both mcp-vl + mcp-semantic
+  # as OpenAPI REST endpoints that OpenWebUI can register under Workspace →
+  # Tools. Config baked with token at container start via sed (mcpo doesn't
+  # expand env vars in config.json).
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: ragstack-mcpo
+    restart: unless-stopped
+    profiles: [chat]
+    volumes:
+      - ./mcpo/config.template.json:/app/config.template.json:ro
+    environment:
+      MCP_TOKEN_OPENWEBUI: ${MCP_TOKEN_OPENWEBUI}
+      MCPO_API_KEY: ${MCPO_API_KEY}
+    # Substitute token at start (mcpo does not do env expansion in config.json)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sed "s|__MCP_TOKEN__|$$MCP_TOKEN_OPENWEBUI|g" /app/config.template.json > /tmp/config.json && \
+        exec mcpo --config /tmp/config.json --host 0.0.0.0 --port 8080 --api-key "$$MCPO_API_KEY"
+    ports:
+      - "127.0.0.1:8091:8080"
+    depends_on:
+      - mcp-vl
+      - mcp-semantic
+      - caddy
+    networks:
+      - default
+
   # OpenWebUI — Phase 3, plan 260701-1544-llm-provider-abstraction.
   # Team chat UI replacing Claude Desktop. Uses LiteLLM proxy as OpenAI-compat
   # backend, mounts MCP config for tool access to mcp-vl + mcp-semantic.
@@ -387,7 +418,9 @@ services:
       - "127.0.0.1:8090:8080"
     volumes:
       - ./data/openwebui:/app/backend/data
-      - ./openwebui/mcp-config.json:/app/backend/data/mcp-config.json:ro
+      # MCP tools wired via mcpo bridge (see mcpo service above) — registered
+      # manually in OpenWebUI Admin → Tools with OpenAPI URL. OpenWebUI doesn't
+      # read mcp-config.json natively.
     environment:
       # Backend LLM = LiteLLM proxy (Phase 2). One virtual key, 4 models exposed.
       OPENAI_API_BASE_URL: http://litellm-proxy:4000/v1
@@ -414,11 +447,9 @@ services:
       WEBUI_ADMIN_EMAIL: ${OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL:-}
       WEBUI_ADMIN_PASSWORD: ${OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD:-}
 
-      # MCP native support (v0.5+). Falls back to OpenWebUI Functions if this
-      # proves flaky in prod (RT-F6 — path documented in phase-03 Step 2b).
-      ENABLE_MCP: "true"
-      MCP_CONFIG_PATH: /app/backend/data/mcp-config.json
-      MCP_TOKEN_OPENWEBUI: ${MCP_TOKEN_OPENWEBUI}
+      # MCP wired via mcpo bridge (separate service) — registered manually in
+      # OpenWebUI Admin → Tools with OpenAPI URL http://mcpo:8080/onelog-vl and
+      # http://mcpo:8080/onelog-semantic. Bearer = MCPO_API_KEY.
     # [RT-F13] service_started, NOT service_healthy — if 1 provider API is down
     # at reboot, LiteLLM liveness may flake and would deadlock OpenWebUI boot.
     # OpenWebUI retries at first request instead.

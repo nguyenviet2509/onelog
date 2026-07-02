@@ -113,6 +113,14 @@
 http://webui.local {
     @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
     handle @allowed {
+        # mcpo bridge — OpenAPI proxy exposing MCP tools to OpenWebUI.
+        # Same origin (webui.local) so browser skips CORS. mcpo enforces its own
+        # Bearer via MCPO_API_KEY — Caddy just routes.
+        handle_path /mcpo/* {
+            reverse_proxy mcpo:8080 {
+                flush_interval -1
+            }
+        }
         reverse_proxy openwebui:8080 {
             flush_interval -1   # streaming chat completions
         }

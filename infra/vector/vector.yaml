@@ -34,9 +34,11 @@ sources:
     # field sent by client. Normalize transform reads `._peer_ip` → `host_ip`.
     host_key: "_peer_ip"
 
-  # OpenWebUI SQLite size probe — every 5m emit JSON với size_bytes để vmalert
-  # fire warning ở 2GB (query lag threshold) và critical ở 5GB (migrate signal).
-  # Rationale: SQLite 1 writer, > 2GB latency chat-list bắt đầu > 1s.
+  # OpenWebUI SQLite size probe — mỗi 5m chạy script emit JSON size_bytes để
+  # vmalert fire warning ở 2GB (query lag threshold) và critical ở 5GB (migrate).
+  # Script tách riêng ra probe-openwebui-db.sh để tránh YAML multiline escape
+  # (Vector 0.40 config validator strict với shell block scalar).
+  # Output text raw, parse JSON bằng transform `openwebui_db_parse` bên dưới.
   openwebui_db_size:
     type: exec
     mode: scheduled
@@ -44,20 +46,7 @@ sources:
       exec_interval_secs: 300
     command:
       - /bin/sh
-      - -c
-      - |
-        f=/monitor/openwebui/webui.db
-        if [ -f "$f" ]; then
-          size=$(stat -c%s "$f")
-          mtime=$(stat -c%Y "$f")
-        else
-          size=0; mtime=0
-        fi
-        gb=$(awk -v s=$size 'BEGIN{printf "%.3f", s/1073741824}')
-        ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"_time":"%s","_msg":"webui_db_size","service":"openwebui-db-monitor","host":"logserver","size_bytes":%s,"size_gb":%s,"mtime_epoch":%s}\n' "$ts" "$size" "$gb" "$mtime"
-    decoding:
-      codec: json
+      - /etc/vector/probe-openwebui-db.sh
 
 transforms:
   enrich:
@@ -152,6 +141,25 @@ transforms:
       }
       if trace != null { .trace = trace }
 
+  # Exec source `openwebui_db_size` chỉ ra 1 dòng JSON/lần chạy trong `.message`.
+  # Parse ra top-level fields để sink `_stream_fields: "service,host"` bind đúng.
+  # KHÔNG đi qua `redact` (không có PII, event là metric monitor thuần).
+  openwebui_db_parse:
+    type: remap
+    inputs: [openwebui_db_size]
+    source: |
+      raw = string(.message) ?? ""
+      parsed, err = parse_json(raw)
+      if err == null && is_object(parsed) {
+        . = object!(parsed)
+      } else {
+        # Giữ raw msg + tag lỗi để debug — không drop event.
+        ._msg = raw
+        .service = "openwebui-db-monitor"
+        .host = "logserver"
+        .parse_error = string(err) ?? "unknown"
+      }
+
   redact:
     # PII/secret redaction BEFORE log lands in VictoriaLogs
     # Anything downstream (MCP tools, indexer, agent) reads safe data.
@@ -160,7 +168,7 @@ transforms:
     # Performance: Vector dùng Rust `regex` crate (RE2, no backtracking → linear
     # time). ReDoS impossible; chỉ cần cap msg length để bound per-event CPU.
     type: remap
-    inputs: [enrich, rsyslog_json_normalize, openwebui_db_size]
+    inputs: [enrich, rsyslog_json_normalize]
     source: |
       msg = string(._msg) ?? ""
       # Cap msg length BEFORE regex — chống binary blob / multi-MB stack trace

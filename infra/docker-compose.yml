@@ -75,6 +75,10 @@ services:
       - "127.0.0.1:8686:8686"   # Vector API
     volumes:
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+      # Probe script cho exec source `openwebui_db_size`. Tách khỏi vector.yaml
+      # vì Vector interpolate `$var` trong config strings (kể cả heredoc |) sẽ
+      # đụng biến shell → Missing environment variable panic.
+      - ./vector/probe-openwebui-db.sh:/etc/vector/probe-openwebui-db.sh:ro
       - ./data/vector:/var/lib/vector
       # Read-only mount cho exec source poll size (openwebui SQLite).
       # KHÔNG copy dữ liệu, chỉ `stat` file để emit metric event.

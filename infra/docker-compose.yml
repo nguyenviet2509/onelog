@@ -20,7 +20,9 @@ services:
     volumes:
       - ./data/victorialogs:/victoria-logs-data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9428/health"]
+      # Distroless-ish VL image không resolve "localhost" → dùng 127.0.0.1 literal.
+      # Explain: FailingStreak 37k+ trước fix chỉ do resolver miss, VL vẫn serve OK.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9428/health"]
       interval: 30s
       timeout: 5s
       retries: 3

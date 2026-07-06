@@ -130,6 +130,21 @@ http://webui.local {
     }
 }
 
+# sqlite-web — dev UI cho OpenWebUI SQLite (profile [dbtools]).
+# Hostname riêng để cùng pattern `webui.local`. Team thêm hosts entry:
+#   192.168.122.53  sqliteui.local
+# sqlite-web đã tự yêu cầu HTTP Basic Auth qua SQLITE_WEB_PASSWORD → Caddy chỉ
+# route, không thêm auth. IP whitelist LAN vẫn giữ như các site khác.
+http://sqliteui.local {
+    @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
+    handle @allowed {
+        reverse_proxy sqlite-web:8080
+    }
+    handle {
+        respond "Forbidden — IP not in allow list" 403
+    }
+}
+
 # HTTPS (uncomment + set real domain when ready)
 # {$APP_DOMAIN} {
 #     @allowed remote_ip {$ADMIN_ALLOW_CIDR}

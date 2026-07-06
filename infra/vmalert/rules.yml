@@ -173,3 +173,61 @@ groups:
         annotations:
           summary: "Repeated DB connection refused on {{ $labels.host }}"
           description: "{{ $value }} DB conn-refused events in 5m on {{ $labels.host }} — check DB liveness + network"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # OPENWEBUI SQLITE — capacity trending, event source = vector exec probe
+  # (openwebui_db_size, every 5m). SQLite = 1 writer → latency growth theo file.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: openwebui-db-capacity
+    type: vlogs
+    interval: 5m
+    rules:
+      # 500MB → hint sớm, dev nên chạy VACUUM. Chưa tác động user.
+      - alert: OpenWebUIDbSizeHint
+        expr: 'service:openwebui-db-monitor _msg:webui_db_size | stats by (host) max(size_bytes) as value | filter value:>524288000 AND value:<2147483648'
+        for: 15m
+        labels:
+          severity: info
+          category: capacity
+          component: openwebui-db
+        annotations:
+          summary: "OpenWebUI webui.db > 500MB trên {{ $labels.host }}"
+          description: "webui.db = {{ $value }} bytes. Lên lịch VACUUM + PRAGMA optimize trong backup script."
+
+      # 2GB = ngưỡng bắt đầu ảnh hưởng query chat list (>1s p95 quan sát).
+      # Action: prune chat > 6 tháng hoặc migrate Postgres.
+      - alert: OpenWebUIDbSizeWarning
+        expr: 'service:openwebui-db-monitor _msg:webui_db_size | stats by (host) max(size_bytes) as value | filter value:>2147483648 AND value:<5368709120'
+        for: 15m
+        labels:
+          severity: warning
+          category: capacity
+          component: openwebui-db
+        annotations:
+          summary: "OpenWebUI webui.db > 2GB trên {{ $labels.host }} — query bắt đầu chậm"
+          description: "webui.db = {{ $value }} bytes. SQLite 1 writer, > 2GB chat list p95 > 1s. Prune chat > 6 tháng hoặc chuẩn bị migrate Postgres (xem plan 260701-1544 phase-05)."
+
+      # 5GB = phải migrate. Concurrent write lock rõ, backup tarball > 1GB.
+      - alert: OpenWebUIDbSizeCritical
+        expr: 'service:openwebui-db-monitor _msg:webui_db_size | stats by (host) max(size_bytes) as value | filter value:>5368709120'
+        for: 15m
+        labels:
+          severity: critical
+          category: capacity
+          component: openwebui-db
+        annotations:
+          summary: "OpenWebUI webui.db > 5GB trên {{ $labels.host }} — MIGRATE POSTGRES NGAY"
+          description: "webui.db = {{ $value }} bytes. Lock contention chắc chắn xuất hiện. Chạy migrate SQLite → Postgres theo docs/deployment-llm-abstraction.md."
+
+      # Probe stale = vector exec source không chạy hoặc mount ro bị hỏng.
+      # Nếu 15m không có event nào từ openwebui-db-monitor = báo động silent-fail.
+      - alert: OpenWebUIDbProbeStale
+        expr: 'service:openwebui-db-monitor _msg:webui_db_size | stats count() as value | filter value:<1'
+        for: 15m
+        labels:
+          severity: warning
+          category: monitoring
+          component: openwebui-db
+        annotations:
+          summary: "OpenWebUI DB size probe im lặng ≥15m"
+          description: "Không có event webui_db_size trong 15m — check vector container + mount /monitor/openwebui:ro."

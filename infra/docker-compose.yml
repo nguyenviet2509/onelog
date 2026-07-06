@@ -76,6 +76,9 @@ services:
     volumes:
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
       - ./data/vector:/var/lib/vector
+      # Read-only mount cho exec source poll size (openwebui SQLite).
+      # KHÔNG copy dữ liệu, chỉ `stat` file để emit metric event.
+      - ./data/openwebui:/monitor/openwebui:ro
     depends_on:
       - victorialogs
       - nats
@@ -478,6 +481,30 @@ services:
       - ./caddy/data:/data
       - ./caddy/config:/config
       - ./mockups:/srv/mockups:ro
+
+  # sqlite-web — browser UI cho webui.db. Read-only mount + basic auth.
+  # Opt-in via profile [dbtools] để không expose surface khi không cần.
+  # Truy cập: `docker compose --profile dbtools up -d sqlite-web` → http://127.0.0.1:8085
+  # SSH tunnel từ workstation nếu muốn view từ xa (không bind 0.0.0.0).
+  sqlite-web:
+    image: coleifer/sqlite-web
+    container_name: ragstack-sqlite-web
+    restart: unless-stopped
+    profiles: [dbtools]
+    ports:
+      - "127.0.0.1:8085:8080"
+    volumes:
+      # Read-only. Muốn edit trực tiếp thì tạm bỏ :ro và stop openwebui trước.
+      - ./data/openwebui:/data:ro
+    environment:
+      SQLITE_WEB_PASSWORD: ${SQLITE_WEB_PASSWORD:-changeme}
+    command:
+      - sqlite_web
+      - --host=0.0.0.0
+      - --port=8080
+      - --password
+      - --read-only
+      - /data/webui.db
 
 networks:
   default:

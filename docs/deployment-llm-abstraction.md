@@ -211,6 +211,8 @@ ls -lh ~/onelog/backup/openwebui-*.tgz.age
 | mcpo `401 Unauthorized` khi curl endpoint | Sai token — dùng `MCPO_API_KEY` (bảo vệ mcpo), không phải `MCP_TOKEN_OPENWEBUI` (mcpo → mcp-vl internal) |
 | mcpo container crash startup | Check `MCP_TOKEN_OPENWEBUI` có trong `MCP_BEARER_TOKENS` không — mcp-vl/mcp-semantic reject sẽ khiến mcpo fail health |
 | Gemini `401 API key not valid` | Key sai format — Gemini API key phải bắt đầu `AIzaSy` (39 ký tự) từ aistudio.google.com/apikey. Không phải OAuth token / Cloud API key |
+| Gemini `429 RESOURCE_EXHAUSTED quota: FreeTier` | Free tier = 20 req/day/model. Với MCP tool-use, mỗi câu hỏi ~2-3 req → hết ~10 câu. Enable billing tại aistudio.google.com/apikey hoặc chuyển default sang Claude/GPT |
+| Fallback `x-api-key header is required` | Provider fallback trong config.yaml đang trỏ về model không có key thật — cấp key cho tất cả provider trong `.env.llm`, hoặc rút bớt fallback chain |
 | `key/generate` báo `DB not connected` | Không tạo virtual key — dùng `OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}` |
 | `git pull` báo `local changes would be overwritten` | `git stash push -m "before-pull" && git pull` |
 | Windows: EPERM khi save hosts | PowerShell as admin: `Add-Content -Path "$env:windir\System32\drivers\etc\hosts" -Value "192.168.122.53 webui.local"` |

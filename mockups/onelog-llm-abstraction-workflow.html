@@ -66,16 +66,16 @@
     <div>
       <div class="flex items-center gap-2 mb-1">
         <span class="pill lime">DEPLOYED</span>
-        <span class="pill gray">Phase 1-3 verified</span>
+        <span class="pill gray">Phase 1-3 + mcpo bridge verified</span>
         <span class="pill vio">Plan 260701-1544</span>
       </div>
       <h1 class="text-2xl font-semibold tracking-tight">LLM Provider Abstraction — Trạng thái thực tế</h1>
-      <p class="mut text-sm mt-1">Deployed trên logserver-01 · 2026-07-02: agent LiteLLM adapter + LiteLLM proxy + OpenWebUI · MCP servers không đổi</p>
+      <p class="mut text-sm mt-1">logserver-01 · Phase 1-3 verified 2026-07-02, mcpo bridge + docs sync 2026-07-06 · agent LiteLLM adapter + LiteLLM proxy + mcpo + OpenWebUI</p>
     </div>
     <div class="text-right text-xs mut">
       <div>Owner · anhtct@inet.vn</div>
-      <div>Deployed · 2026-07-02</div>
-      <div>Commits · 14 (31f9644 → 65a5fa8)</div>
+      <div>Last update · 2026-07-06</div>
+      <div>Commits · 18 (31f9644 → c74a57f)</div>
     </div>
   </div>
 </header>
@@ -126,14 +126,20 @@ flowchart LR
   classDef new fill:#082f3f,stroke:#22d3ee,color:#cffafe,stroke-width:1.5px
   classDef exist fill:#111114,stroke:#3a3a44,color:#cdd2d8
   classDef prov fill:#1f1a3a,stroke:#a78bfa,color:#e9d5ff
+  classDef store fill:#0a1a10,stroke:#34d399,color:#d1fae5
 
-  U["👥 5 ops"]:::exist
-  A["👤 agent svc /chat SSE<br/><span style='font-size:10px'>Phase 1 · /api/*</span>"]:::new
-  UI["🖥️ OpenWebUI<br/><span style='font-size:10px'>Phase 3 · webui.local subdomain</span>"]:::new
+  U["👥 5 ops<br/>webui.local + /etc/hosts"]:::exist
+  A["👤 agent svc /chat SSE<br/><span style='font-size:10px'>Phase 1 · litellm SDK direct</span>"]:::new
+  UI["🖥️ OpenWebUI<br/><span style='font-size:10px'>Phase 3 · SQLite local</span>"]:::new
   C["Caddy<br/>reverse proxy<br/><span style='font-size:10px'>app.local + webui.local</span>"]:::exist
-  L["🧭 LiteLLM Proxy<br/><span style='font-size:10px'>Phase 2 · /llm/v1/* · profiles [llm,chat]</span>"]:::new
-  MV["mcp-vl"]:::exist
-  MS["mcp-semantic"]:::exist
+  L["🧭 LiteLLM Proxy<br/><span style='font-size:10px'>Phase 2 · in-memory · no DB</span>"]:::new
+  MB["🌉 mcpo bridge<br/><span style='font-size:10px'>MCP→OpenAPI · Phase 3 addendum</span>"]:::new
+  MV["mcp-vl<br/><span style='font-size:10px'>VictoriaLogs 12 tools</span>"]:::exist
+  MS["mcp-semantic<br/><span style='font-size:10px'>Qdrant + templates</span>"]:::exist
+
+  DBW[("SQLite<br/>./data/openwebui<br/>users · chats · settings")]:::store
+  DBL[("stdout JSON<br/>vector → VictoriaLogs<br/>cost · latency · tokens")]:::store
+  VLOG[("VictoriaLogs<br/>_stream=litellm-proxy")]:::store
 
   P1["Anthropic<br/>Claude Sonnet"]:::prov
   P2["OpenAI<br/>GPT-4.1-mini"]:::prov
@@ -143,23 +149,127 @@ flowchart LR
   U -->|HTTPS| C
   C -->|Host: webui.local| UI
   C -->|/api/chat| A
-  UI -->|OpenAI-compat| L
-  A -->|litellm SDK direct| P1
-  A -.->|SDK fallback list| P2
+  UI -->|OpenAI-compat<br/>OPENAI_API_KEY = master| L
+  UI -->|Bearer MCPO_API_KEY<br/>OpenAPI REST| MB
+  MB -->|MCP_TOKEN_OPENWEBUI<br/>SSE| MV
+  MB -->|MCP_TOKEN_OPENWEBUI<br/>SSE| MS
+  A -->|litellm.acompletion| L
+  A -.->|internal tools| MV
+  A -.->|internal tools| MS
   L --> P1
   L --> P2
   L --> P3
   L --> P4
-  UI -.->|MCP token OpenWebUI| MV
-  UI -.->|MCP token OpenWebUI| MS
-  A -.->|internal tools| MV
-  A -.->|internal tools| MS
+  UI --- DBW
+  L --- DBL
+  DBL -.-> VLOG
     </pre>
   </div>
   <div class="mt-3 text-xs mut">
     <b class="acc">Path 1 (chat UI):</b> ops → Caddy webui.local → OpenWebUI → LiteLLM proxy → provider ·
-    <b class="acc">Path 2 (agent API):</b> ops → Caddy /api → agent → LiteLLM SDK <b>direct</b> → provider ·
-    <b class="acc">MCP layer:</b> không đổi. Token riêng cho OpenWebUI (RT-F3) revoke độc lập.
+    <b class="acc">Path 2 (agent API):</b> ops → Caddy /api → agent → litellm.acompletion → LiteLLM proxy → provider ·
+    <b class="acc">Path 3 (MCP tools):</b> OpenWebUI → mcpo bridge (OpenAPI REST) → mcp-vl / mcp-semantic (SSE). OpenWebUI KHÔNG native MCP → bắt buộc bridge.
+  </div>
+</section>
+
+<!-- DATA STORAGE MAP -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">Data storage · nơi state của LLM stack sống</span>
+    <span class="pill gray">no dedicated Postgres cho LiteLLM</span>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="card2 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium">📦 OpenWebUI · SQLite</span>
+        <span class="pill lime">persistent</span>
+      </div>
+      <div class="text-[12px] mut mb-2">Bind-mount <code>./data/openwebui:/app/backend/data</code> · file <code>webui.db</code></div>
+      <ul class="text-[12px] space-y-1">
+        <li>• User accounts (local table), role, hashed password</li>
+        <li>• Chat history + messages + attachments</li>
+        <li>• Workspace tools config (mcpo endpoints registered)</li>
+        <li>• Settings, prompts, model presets</li>
+      </ul>
+      <div class="mt-2 text-[11px] mut">Backup: <code>backup-openwebui.sh</code> · daily 03:00 · age-encrypted tarball → <code>~/onelog/backup/openwebui-*.tgz.age</code></div>
+    </div>
+
+    <div class="card2 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium">🧭 LiteLLM Proxy · in-memory only</span>
+        <span class="pill amber">no DB backend</span>
+      </div>
+      <div class="text-[12px] mut mb-2">DB backend tắt (<code>31643ec</code>) · Prisma không honor Postgres <code>search_path</code></div>
+      <ul class="text-[12px] space-y-1">
+        <li>• Master key: <code>LITELLM_MASTER_KEY</code> env only</li>
+        <li>• Virtual keys, budgets: RAM, mất khi restart (chấp nhận MVP)</li>
+        <li>• Cost/latency/tokens: <b>stdout JSON</b> (<code>json_logs: true</code>)</li>
+        <li>• Config: <code>config.yaml</code> read-only mount, model_list + fallback</li>
+      </ul>
+      <div class="mt-2 text-[11px] mut">Cost persist path: stdout → docker json-file logs → <b>vector</b> tail → <b>VictoriaLogs</b> <code>_stream=litellm-proxy</code></div>
+    </div>
+
+    <div class="card2 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium">👤 agent svc · stateless</span>
+        <span class="pill cyan">ephemeral</span>
+      </div>
+      <div class="text-[12px] mut mb-2">Container không mount volume nào cho state LLM</div>
+      <ul class="text-[12px] space-y-1">
+        <li>• Session/chat state → do FE truyền lại (SSE stateless)</li>
+        <li>• LLM call trực tiếp <code>litellm.acompletion</code> (không qua proxy khi test)</li>
+        <li>• Config từ env: <code>LLM_MODEL</code>, <code>LLM_FALLBACK_MODELS</code>, <code>LLM_MAX_TOKENS</code>, <code>LLM_ENABLE_PROMPT_CACHE</code></li>
+        <li>• Log: stdout → docker json-file → vector → VictoriaLogs</li>
+      </ul>
+    </div>
+
+    <div class="card2 p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium">🌉 mcpo bridge · token-only</span>
+        <span class="pill cyan">no persistence</span>
+      </div>
+      <div class="text-[12px] mut mb-2">Runtime substitutes <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code></div>
+      <ul class="text-[12px] space-y-1">
+        <li>• Auth 2 layer: <code>MCPO_API_KEY</code> (OpenWebUI ↔ mcpo) + <code>MCP_TOKEN_OPENWEBUI</code> (mcpo ↔ mcp-*)</li>
+        <li>• Tokens tách khỏi <code>trihd:</code> personal token — revoke độc lập (RT-F3)</li>
+        <li>• Không cache tool result, không session</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid-bg p-4 rounded-xl mt-4">
+    <pre class="mermaid text-[12px]">
+flowchart LR
+  classDef svc fill:#082f3f,stroke:#22d3ee,color:#cffafe
+  classDef vol fill:#0a1a10,stroke:#34d399,color:#d1fae5
+  classDef log fill:#2a1f06,stroke:#fbbf24,color:#fef3c7
+
+  UI2["OpenWebUI"]:::svc
+  LI2["LiteLLM"]:::svc
+  AG2["agent"]:::svc
+  MB2["mcpo"]:::svc
+
+  SQ[("SQLite<br/>webui.db")]:::vol
+  BAK[("tarball<br/>age-encrypted<br/>daily 03:00")]:::vol
+
+  DL["docker json-file<br/>max 10m × 5"]:::log
+  VEC["vector agent<br/>(existing)"]:::log
+  VL2[("VictoriaLogs<br/>_stream=litellm-proxy<br/>_stream=agent<br/>_stream=openwebui")]:::log
+
+  UI2 -->|read/write| SQ
+  SQ -->|cron 03:00| BAK
+  LI2 -->|stdout JSON| DL
+  AG2 -->|stdout| DL
+  UI2 -->|stdout| DL
+  MB2 -->|stdout| DL
+  DL -->|tail| VEC
+  VEC -->|ingest| VL2
+    </pre>
+  </div>
+  <div class="mt-3 text-[11px] mut">
+    <b class="acc">Query cost 7 ngày qua:</b>
+    <code>{_stream="litellm-proxy"} | json | keep model, response_cost | stats sum(response_cost) by model</code> ·
+    <b class="acc">Budget alert:</b> LiteLLM emit <code>budget_alert</code> event vào json_logs → <code>vmalert</code> fire.
   </div>
 </section>
 
@@ -398,9 +508,9 @@ sequenceDiagram
         <li><code class="acc">agent/pyproject.toml</code> <span class="mut">+ litellm&gt;=1.50</span></li>
         <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, fallback, prompt_cache toggle</span></li>
         <li><code class="acc">agent/src/agent/llm_client.py</code> <span class="mut">rewrite → litellm.acompletion + shape adapter</span></li>
-        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy [llm,chat], openwebui [chat], restore agent [agent]</span></li>
+        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy [llm,chat], mcpo [chat], openwebui [chat], restore agent [agent]</span></li>
         <li><code class="acc">infra/caddy/Caddyfile</code> <span class="mut">+ /llm/*, + site webui.local (subdomain thay subpath)</span></li>
-        <li><code class="acc">infra/.env.example</code> <span class="mut">+ LLM_*, LITELLM_MASTER_KEY, OPENWEBUI_*, MCP_TOKEN_OPENWEBUI</span></li>
+        <li><code class="acc">infra/.env.example</code> <span class="mut">+ LLM_*, LITELLM_MASTER_KEY, OPENWEBUI_*, MCP_TOKEN_OPENWEBUI, MCPO_API_KEY</span></li>
         <li><code class="acc">docs/deployment-guide.md</code> <span class="mut">rewrite: concise playbook style</span></li>
       </ul>
     </div>
@@ -410,7 +520,8 @@ sequenceDiagram
         <li><code class="ok">infra/litellm/config.yaml</code> <span class="mut">4 model alias · fallback chain · DB disabled</span></li>
         <li><code class="ok">infra/litellm/.env.llm.example</code> <span class="mut">provider keys tách chmod 0400</span></li>
         <li><code class="ok">infra/litellm/callbacks/custom_callbacks.py</code> <span class="mut">RT-F10 empty-response guard</span></li>
-        <li><code class="ok">infra/openwebui/mcp-config.json</code> <span class="mut">MCP token riêng RT-F3</span></li>
+        <li><code class="ok">infra/mcpo/config.template.json</code> <span class="mut">2 MCP server proxy · sed inject <code>__MCP_TOKEN__</code></span></li>
+        <li><code class="ok">infra/openwebui/mcp-config.json</code> <span class="mut">MCP token riêng RT-F3 (native path, unused)</span></li>
         <li><code class="ok">infra/scripts/backup-openwebui.sh</code> <span class="mut">age encryption RT-F4</span></li>
         <li><code class="ok">agent/tests/test_llm_client.py</code> <span class="mut">13 test shape adapter</span></li>
         <li><code class="ok">docs/deployment-llm-abstraction.md</code> <span class="mut">playbook 264 dòng</span></li>
@@ -475,6 +586,11 @@ sequenceDiagram
       <tr><td>6</td><td><code>docker compose exec</code> từ <code>~/onelog</code> báo no configuration file</td><td>Golden rule §0: luôn <code>cd ~/onelog/infra</code></td><td><code>6897b41</code></td></tr>
       <tr><td>7</td><td>Agent service <code>no such service</code> — bị comment từ mcp-only rollout</td><td>Restore agent service với LiteLLM env vars</td><td><code>373053d</code></td></tr>
       <tr><td>8</td><td>Git pull báo <code>local changes would be overwritten</code></td><td>Pattern <code>git stash push</code> trước pull</td><td>doc</td></tr>
+      <tr><td>9</td><td>OpenWebUI call <code>grep_knowledge_files</code> thay vì MCP tool</td><td>OpenWebUI KHÔNG native MCP — thêm mcpo bridge (MCP→OpenAPI). Register tools trong Admin → Tools</td><td><code>c74a57f</code></td></tr>
+      <tr><td>10</td><td>mcpo báo <code>401</code> khi curl endpoint</td><td>Dùng <code>MCPO_API_KEY</code> (public), không nhầm với <code>MCP_TOKEN_OPENWEBUI</code> (internal mcpo→mcp-*)</td><td>doc</td></tr>
+      <tr><td>11</td><td>mcpo crash startup vì config.json không expand env</td><td>Entrypoint <code>sed</code> substitute <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code> trước khi <code>exec mcpo</code></td><td><code>c74a57f</code></td></tr>
+      <tr><td>12</td><td><code>docker compose restart litellm-proxy</code> không re-read <code>.env.llm</code></td><td>Phải <code>sudo up -d --force-recreate litellm-proxy</code> khi đổi provider key</td><td>doc</td></tr>
+      <tr><td>13</td><td>Gemini free tier 429 sau ~10 câu chat (MCP tool-use = 2-3 req/query)</td><td>Enable billing tại aistudio.google.com/apikey hoặc đổi default → Claude/GPT</td><td>doc</td></tr>
     </tbody>
   </table>
   <div class="mt-3 text-[11px] mut">Tất cả đã consolidate vào <code>docs/deployment-llm-abstraction.md</code> troubleshooting table + <code>.claude/skills/deploy-doc</code> anti-patterns.</div>
@@ -490,8 +606,9 @@ sequenceDiagram
         <li>LiteLLM proxy <code>Up (healthy)</code>, list 4 model alias</li>
         <li>OpenWebUI reachable qua <code>http://webui.local/</code>, admin login OK</li>
         <li>Agent SSE <code>/chat</code> trả events đầy đủ, shape adapter đúng</li>
-        <li>Bootstrap admin lock signup xong</li>
-        <li>Compose YAML + Caddyfile syntax OK</li>
+        <li>mcpo bridge <code>Up</code>, 2 openapi.json (onelog-vl, onelog-semantic) 200</li>
+        <li>OpenWebUI gọi <code>search_log_templates</code> (thay vì <code>grep_knowledge_files</code>)</li>
+        <li>Bootstrap admin lock signup xong · webui.db backup age-encrypted</li>
       </ul>
     </div>
     <div>

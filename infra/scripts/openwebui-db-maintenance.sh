@@ -37,6 +37,9 @@ MODE="${1:-check}"
 SKIP_BACKUP=0
 [[ "${2:-}" == "--skip-backup" ]] && SKIP_BACKUP=1
 
+# Error trap — nếu script chết vì set -e, in dòng lỗi ra stderr thay vì im lặng.
+trap 'rc=$?; echo "{\"_msg\":\"script_error\",\"line\":$LINENO,\"exit_code\":$rc,\"cmd\":\"${BASH_COMMAND//\"/\\\"}\"}" >&2; exit $rc' ERR
+
 # ─── helpers ─────────────────────────────────────────────────────────────
 log_json() {
   # $1 = event name, rest = key=value pairs
@@ -60,17 +63,61 @@ file_size() {
   stat -c%s "$DB_HOST_PATH" 2>/dev/null || echo 0
 }
 
-# Chạy SQL trong container openwebui (đang up). No downtime.
-sqlite_exec_live() {
-  $COMPOSE exec -T openwebui sqlite3 "$DB_CTR_PATH" "$@"
+# Chạy SQL trong container openwebui đang up qua Python stdlib sqlite3.
+# LÝ DO không dùng binary `sqlite3`: image openwebui Python-based không cài
+# CLI sqlite3. Module `sqlite3` thì luôn có (Python stdlib) → portable hơn.
+# Trả về scalar đầu tiên của query đầu tiên (giữ signature giống sqlite3 CLI).
+sqlite_query_live() {
+  local sql="$1"
+  $COMPOSE exec -T openwebui python3 - "$DB_CTR_PATH" "$sql" <<'PY'
+import sqlite3, sys
+db, sql = sys.argv[1], sys.argv[2]
+con = sqlite3.connect(db, timeout=30)
+try:
+    row = con.execute(sql).fetchone()
+    print(row[0] if row else "")
+finally:
+    con.close()
+PY
 }
 
-# Chạy SQL qua container tạm khi openwebui đã stop. Cần vì VACUUM lock file.
+# Exec pragma/statement, không cần return value. Dùng cho PRAGMA optimize, VACUUM.
+sqlite_exec_live() {
+  local sql="$1"
+  $COMPOSE exec -T openwebui python3 - "$DB_CTR_PATH" "$sql" <<'PY'
+import sqlite3, sys
+db, sql = sys.argv[1], sys.argv[2]
+con = sqlite3.connect(db, timeout=60, isolation_level=None)
+try:
+    for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
+        con.execute(stmt)
+finally:
+    con.close()
+PY
+}
+
+# Chạy SQL qua container Python tạm khi openwebui đã stop (VACUUM cần
+# exclusive lock nên phải stop main container trước).
+# Dùng image python:3-alpine (nhẹ ~50MB, đã có sqlite3 stdlib).
 sqlite_exec_offline() {
-  docker run --rm \
+  local sql="$1"
+  docker run --rm -i \
     -v "$INFRA_DIR/data/openwebui:/data" \
-    keinos/sqlite3:latest \
-    sqlite3 /data/webui.db "$@"
+    python:3-alpine \
+    python3 - "$sql" <<'PY'
+import sqlite3, sys
+sql = sys.argv[1]
+con = sqlite3.connect("/data/webui.db", timeout=300, isolation_level=None)
+try:
+    for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
+        print(f">>> {stmt[:80]}", file=sys.stderr)
+        cur = con.execute(stmt)
+        row = cur.fetchone()
+        if row is not None:
+            print(f"<<< {row}", file=sys.stderr)
+finally:
+    con.close()
+PY
 }
 
 require_db_exists() {
@@ -87,9 +134,9 @@ do_check() {
   local size_before; size_before=$(file_size)
   # Đọc freelist qua openwebui live (read-only query, không lock).
   local page_count page_size freelist
-  page_count=$(sqlite_exec_live "PRAGMA page_count;" | tr -d '[:space:]')
-  page_size=$(sqlite_exec_live  "PRAGMA page_size;"  | tr -d '[:space:]')
-  freelist=$(sqlite_exec_live   "PRAGMA freelist_count;" | tr -d '[:space:]')
+  page_count=$(sqlite_query_live "PRAGMA page_count" | tr -d '[:space:]')
+  page_size=$(sqlite_query_live  "PRAGMA page_size"  | tr -d '[:space:]')
+  freelist=$(sqlite_query_live   "PRAGMA freelist_count" | tr -d '[:space:]')
 
   local dead_bytes=$((freelist * page_size))
   local ratio="0"
@@ -124,16 +171,16 @@ do_weekly() {
   log_json "weekly_start"
 
   # PRAGMA optimize = auto ANALYZE khi cần. Rất nhanh (< 1s cho DB < 1GB).
-  sqlite_exec_live "PRAGMA optimize;" >/dev/null
+  sqlite_exec_live "PRAGMA optimize" >/dev/null
 
   # Flush WAL vào main file. TRUNCATE mode = reset WAL về 0 bytes sau flush.
   # KHÔNG mất data — chỉ move từ WAL sang main. OpenWebUI vẫn append tiếp OK.
   local wal_result
-  wal_result=$(sqlite_exec_live "PRAGMA wal_checkpoint(TRUNCATE);" || true)
+  wal_result=$(sqlite_query_live "PRAGMA wal_checkpoint(TRUNCATE)" || echo "skip")
 
   # Integrity check — verify file không bị corrupt sau WAL flush.
   local integrity
-  integrity=$(sqlite_exec_live "PRAGMA integrity_check;" | tr -d '[:space:]')
+  integrity=$(sqlite_query_live "PRAGMA integrity_check" | tr -d '[:space:]')
 
   local t1=$(date +%s)
   local size_now; size_now=$(file_size)
@@ -182,7 +229,7 @@ do_monthly() {
   # Nếu image keinos/sqlite3 không có sẵn, docker sẽ pull tự động lần đầu.
   local vac_start=$(date +%s)
   local vac_status=0
-  if sqlite_exec_offline "PRAGMA integrity_check; VACUUM; PRAGMA integrity_check;" > /tmp/vacuum-out.txt 2>&1; then
+  if sqlite_exec_offline "PRAGMA integrity_check; VACUUM; PRAGMA integrity_check" > /tmp/vacuum-out.txt 2>&1; then
     log_json "vacuum_ok" duration_s=$(($(date +%s) - vac_start))
   else
     vac_status=$?
@@ -215,7 +262,7 @@ do_monthly() {
 
   # Verify sau khi start: DB reachable qua container live?
   sleep 3
-  if sqlite_exec_live "SELECT COUNT(*) FROM sqlite_master WHERE type='table';" >/dev/null 2>&1; then
+  if sqlite_query_live "SELECT COUNT(*) FROM sqlite_master WHERE type='table'" >/dev/null 2>&1; then
     log_json "post_verify_ok"
   else
     log_json "post_verify_fail" reason="openwebui không đọc được webui.db sau restart" >&2

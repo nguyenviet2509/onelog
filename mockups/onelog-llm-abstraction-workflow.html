@@ -66,16 +66,16 @@
     <div>
       <div class="flex items-center gap-2 mb-1">
         <span class="pill lime">DEPLOYED</span>
-        <span class="pill gray">Phase 1-3 + mcpo bridge verified</span>
+        <span class="pill gray">Phase 1-3 + mcpo bridge + DB ops</span>
         <span class="pill vio">Plan 260701-1544</span>
       </div>
       <h1 class="text-2xl font-semibold tracking-tight">LLM Provider Abstraction — Trạng thái thực tế</h1>
-      <p class="mut text-sm mt-1">logserver-01 · Phase 1-3 verified 2026-07-02, mcpo bridge + docs sync 2026-07-06 · agent LiteLLM adapter + LiteLLM proxy + mcpo + OpenWebUI</p>
+      <p class="mut text-sm mt-1">logserver-01 · Phase 1-3 verified 2026-07-02, mcpo bridge 2026-07-06, sqlite-web + DB monitor + maintenance script 2026-07-06</p>
     </div>
     <div class="text-right text-xs mut">
       <div>Owner · anhtct@inet.vn</div>
       <div>Last update · 2026-07-06</div>
-      <div>Commits · 18 (31f9644 → c74a57f)</div>
+      <div>Commits · 20+ (31f9644 → c61fa25)</div>
     </div>
   </div>
 </header>
@@ -270,6 +270,182 @@ flowchart LR
     <b class="acc">Query cost 7 ngày qua:</b>
     <code>{_stream="litellm-proxy"} | json | keep model, response_cost | stats sum(response_cost) by model</code> ·
     <b class="acc">Budget alert:</b> LiteLLM emit <code>budget_alert</code> event vào json_logs → <code>vmalert</code> fire.
+  </div>
+</section>
+
+<!-- SQLITE OPS & MAINTENANCE -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">OpenWebUI SQLite · monitor + maintenance</span>
+    <div class="flex gap-2">
+      <span class="chip on"><span class="dot" style="background:#34d399"></span> live 974 KB</span>
+      <span class="chip"><span class="dot" style="background:#7dd3fc"></span> sqliteui.local</span>
+      <span class="chip"><span class="dot" style="background:#fbbf24"></span> 4 vmalert rules</span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- MONITOR STACK -->
+    <div class="card2 p-4">
+      <div class="text-sm font-medium mb-2">📊 Auto monitor stack</div>
+      <ol class="text-[12px] mut space-y-1.5 list-decimal ml-4">
+        <li><b class="acc">vector exec source</b> <code>openwebui_db_size</code> — poll <code>stat -c%s webui.db</code> mỗi <b>5 phút</b>, emit JSON event.</li>
+        <li>Event chảy qua <code>redact</code> transform → sink <code>victorialogs</code> với <code>service=openwebui-db-monitor</code>.</li>
+        <li><b class="acc">vmalert</b> đọc LogsQL <code>max(size_bytes)</code>, evaluate mỗi 5m, <code>for: 15m</code> để tránh flap.</li>
+        <li>Mount read-only: <code>./data/openwebui:/monitor/openwebui:ro</code> — 0 tác dụng phụ.</li>
+      </ol>
+    </div>
+
+    <!-- ALERT THRESHOLDS -->
+    <div class="card2 p-4">
+      <div class="text-sm font-medium mb-2">🚨 vmalert thresholds</div>
+      <table class="k">
+        <thead><tr><th>Ngưỡng</th><th>Severity</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>&gt; 500 MB</td><td><span class="pill cyan">info</span></td><td>Hint sớm: schedule VACUUM</td></tr>
+          <tr><td>&gt; 2 GB</td><td><span class="pill amber">warning</span></td><td>Query p95 &gt; 1s: prune hoặc chuẩn bị migrate</td></tr>
+          <tr><td>&gt; 5 GB</td><td><span class="pill" style="background:#3a0f0f;color:#f87171">critical</span></td><td>Lock contention: <b>migrate Postgres NGAY</b></td></tr>
+          <tr><td>Probe stale 15m</td><td><span class="pill amber">warning</span></td><td>Vector chết hoặc mount hỏng</td></tr>
+        </tbody>
+      </table>
+      <div class="text-[11px] mut mt-2">Hiện tại 974 KB — cách 500 MB ngưỡng đầu ~500 lần. Alert im lặng suốt 12-18 tháng đầu.</div>
+    </div>
+
+    <!-- DEV UI VIEWER -->
+    <div class="card2 p-4">
+      <div class="text-sm font-medium mb-2">🔍 sqlite-web UI (dev tool)</div>
+      <ul class="text-[12px] mut space-y-1.5">
+        <li>• Container <code>coleifer/sqlite-web</code>, profile <code>[dbtools]</code></li>
+        <li>• Mount <code>./data/openwebui:/data:ro</code> — <b class="ok">READ-ONLY</b>, không lỡ tay UPDATE</li>
+        <li>• Basic Auth via <code>SQLITE_WEB_PASSWORD</code></li>
+        <li>• Route Caddy <code>http://sqliteui.local</code> (IP whitelist LAN)</li>
+        <li>• Ops thêm hosts: <code>192.168.122.53  sqliteui.local</code></li>
+        <li>• Deploy: <code>docker compose --profile dbtools up -d sqlite-web</code></li>
+      </ul>
+      <div class="text-[11px] mut mt-2">43 tables · 98 indexes · verified <code>chat</code> / <code>message</code> / <code>user</code> browsable.</div>
+    </div>
+  </div>
+
+  <!-- MAINTENANCE SCHEDULE -->
+  <div class="mt-4 card2 p-4">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm font-medium">🛠️ Maintenance script · <code>scripts/openwebui-db-maintenance.sh</code></div>
+      <div class="flex gap-2">
+        <span class="pill lime">zero data loss</span>
+        <span class="pill cyan">Python stdlib · no CLI dep</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <!-- CHECK -->
+      <div class="phase-cell" style="border-color:#164e63;background:#0a1620">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pill cyan">🔍 CHECK</span>
+          <span class="text-[10px] mut">on-demand · 0s downtime</span>
+        </div>
+        <div class="font-medium text-sm mb-1">Dry-run kiểm tra</div>
+        <div class="text-[11px] mut mb-2">Report size, freelist, dead_bytes, ratio. KHÔNG sửa file.</div>
+        <pre class="text-[11px]" style="background:#0a0a0d;padding:6px;border-radius:6px;border:1px solid #1f1f25"><code>bash scripts/openwebui-db-maintenance.sh check</code></pre>
+        <div class="text-[10px] mut mt-2">Output: 2 dòng JSON <code>db_check</code> + <code>recommend</code>.</div>
+      </div>
+
+      <!-- WEEKLY -->
+      <div class="phase-cell done">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pill lime">📅 WEEKLY</span>
+          <span class="text-[10px] mut">CN 04:30 · 0s downtime</span>
+        </div>
+        <div class="font-medium text-sm mb-1">Optimize + WAL flush</div>
+        <div class="text-[11px] mut mb-2">3 pragma an toàn, chạy khi container UP:</div>
+        <ul class="text-[11px] mut space-y-0.5 mb-2 ml-3">
+          <li>• <code>PRAGMA optimize</code> — refresh statistics</li>
+          <li>• <code>wal_checkpoint(TRUNCATE)</code> — flush WAL</li>
+          <li>• <code>integrity_check</code> — verify no corruption</li>
+        </ul>
+        <pre class="text-[11px]" style="background:#0a0a0d;padding:6px;border-radius:6px;border:1px solid #1f1f25"><code>30 4 * * 0  .../maintenance.sh weekly
+   >> /var/log/openwebui-db.log 2>&1</code></pre>
+      </div>
+
+      <!-- MONTHLY -->
+      <div class="phase-cell" style="border-color:#78350f;background:#1a1407">
+        <div class="flex items-center justify-between mb-2">
+          <span class="pill amber">🔧 MONTHLY</span>
+          <span class="text-[10px] mut">Ngày 1 · 04:00 · ~1-3ph downtime</span>
+        </div>
+        <div class="font-medium text-sm mb-1">VACUUM (khi cần)</div>
+        <div class="text-[11px] mut mb-2">4 bước tự động:</div>
+        <ol class="text-[11px] mut space-y-0.5 mb-2 ml-3 list-decimal">
+          <li>Backup age-encrypted (rollback point)</li>
+          <li>Stop openwebui</li>
+          <li>VACUUM qua container <code>python:3-alpine</code></li>
+          <li>Start + verify DB reachable</li>
+        </ol>
+        <pre class="text-[11px]" style="background:#0a0a0d;padding:6px;border-radius:6px;border:1px solid #1f1f25"><code>0 4 1 * *  .../maintenance.sh monthly
+   >> /var/log/openwebui-db.log 2>&1</code></pre>
+      </div>
+    </div>
+
+    <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="text-[12px]">
+        <div class="text-[11px] mut mb-1 tracking-wider">✅ ĐẢM BẢO GIỮ 100% DATA</div>
+        <ul class="space-y-1 mut">
+          <li><span class="ok">✓</span> KHÔNG <code>DELETE</code> / <code>DROP</code> / <code>TRUNCATE</code></li>
+          <li><span class="ok">✓</span> VACUUM chỉ rebuild file theo thứ tự, copy 100% row</li>
+          <li><span class="ok">✓</span> WebUI vẫn xem đủ chat/message/user sau khi chạy</li>
+          <li><span class="ok">✓</span> Backup age-encrypted TRƯỚC mỗi VACUUM — có rollback</li>
+          <li><span class="ok">✓</span> ERR trap in JSON <code>script_error</code> nếu bất kỳ pragma fail</li>
+        </ul>
+      </div>
+      <div class="text-[12px]">
+        <div class="text-[11px] mut mb-1 tracking-wider">📊 LOG OUTPUT (VictoriaLogs)</div>
+        <div class="mut mb-1">Mỗi lần chạy emit JSON events:</div>
+        <ul class="space-y-0.5 mut">
+          <li>• <code>db_check</code> — metrics hiện tại</li>
+          <li>• <code>weekly_start</code> → <code>weekly_done</code> (+ integrity, duration)</li>
+          <li>• <code>monthly_start</code> → <code>backup_ok</code> → <code>vacuum_ok</code> → <code>post_verify_ok</code></li>
+          <li>• <code>reclaimed_bytes</code> + <code>reclaimed_pct</code> ở event cuối</li>
+        </ul>
+        <div class="text-[11px] acc mt-2">LogsQL:
+          <code>service:openwebui-db-monitor _msg:monthly_done | sort by (_time desc)</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANNUAL ROADMAP -->
+  <div class="mt-4">
+    <div class="text-[11px] mut mb-2 tracking-wider">📆 LỘ TRÌNH THEO THỜI GIAN (5 ops · ~30-50 MB/tháng)</div>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-[12px]">
+      <div class="card2 p-3">
+        <div class="text-[10px] mut">Tháng 0-6</div>
+        <div class="font-medium mb-1">Idle</div>
+        <div class="mut text-[11px]">Chỉ weekly cron chạy. Alert im lặng. DB &lt; 300 MB.</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="text-[10px] mut">Tháng 6-12</div>
+        <div class="font-medium mb-1">First VACUUM</div>
+        <div class="mut text-[11px]">Nếu freelist &gt; 30% → monthly cron reclaim 20-40% file.</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="text-[10px] mut">Năm 2</div>
+        <div class="font-medium mb-1">Hint fire</div>
+        <div class="mut text-[11px]">DB &gt; 500 MB. Cron monthly đủ. Tiếp tục theo dõi p95 chat list.</div>
+      </div>
+      <div class="card2 p-3" style="border-color:#78350f">
+        <div class="text-[10px] mut">Năm 4-5</div>
+        <div class="font-medium mb-1 warn">Warning fire</div>
+        <div class="mut text-[11px]">DB &gt; 2 GB. Prune chat &gt; 12 tháng hoặc archive-in-place.</div>
+      </div>
+      <div class="card2 p-3" style="border-color:#3a0f0f">
+        <div class="text-[10px] mut">Sau 5 năm</div>
+        <div class="font-medium mb-1 err">Migrate</div>
+        <div class="mut text-[11px]">DB &gt; 5 GB → pgloader → Postgres. Data giữ 100%.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 text-[11px] mut">
+    <b class="acc">Tại sao SQLite mà không phải Postgres?</b> Default của OpenWebUI image, zero ops, backup = <code>cp</code>. Team 5 ops × ~2500 msg/tháng → SQLite thừa sức tối thiểu 3-5 năm. Migrate khi latency thực tế hit, không phải khi size hit.
   </div>
 </section>
 
@@ -508,8 +684,10 @@ sequenceDiagram
         <li><code class="acc">agent/pyproject.toml</code> <span class="mut">+ litellm&gt;=1.50</span></li>
         <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, fallback, prompt_cache toggle</span></li>
         <li><code class="acc">agent/src/agent/llm_client.py</code> <span class="mut">rewrite → litellm.acompletion + shape adapter</span></li>
-        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy [llm,chat], mcpo [chat], openwebui [chat], restore agent [agent]</span></li>
-        <li><code class="acc">infra/caddy/Caddyfile</code> <span class="mut">+ /llm/*, + site webui.local (subdomain thay subpath)</span></li>
+        <li><code class="acc">infra/docker-compose.yml</code> <span class="mut">+ litellm-proxy [llm,chat], mcpo [chat], openwebui [chat], sqlite-web [dbtools], vector mount data/openwebui:ro</span></li>
+        <li><code class="acc">infra/caddy/Caddyfile</code> <span class="mut">+ /llm/*, + site webui.local, + site sqliteui.local</span></li>
+        <li><code class="acc">infra/vector/vector.yaml</code> <span class="mut">+ exec source openwebui_db_size (poll 5m) → redact → VL</span></li>
+        <li><code class="acc">infra/vmalert/rules.yml</code> <span class="mut">+ group openwebui-db-capacity · 4 rules (hint/warning/critical/stale)</span></li>
         <li><code class="acc">infra/.env.example</code> <span class="mut">+ LLM_*, LITELLM_MASTER_KEY, OPENWEBUI_*, MCP_TOKEN_OPENWEBUI, MCPO_API_KEY</span></li>
         <li><code class="acc">docs/deployment-guide.md</code> <span class="mut">rewrite: concise playbook style</span></li>
       </ul>
@@ -525,6 +703,7 @@ sequenceDiagram
         <li><code class="ok">infra/scripts/backup-openwebui.sh</code> <span class="mut">age encryption RT-F4</span></li>
         <li><code class="ok">agent/tests/test_llm_client.py</code> <span class="mut">13 test shape adapter</span></li>
         <li><code class="ok">docs/deployment-llm-abstraction.md</code> <span class="mut">playbook 264 dòng</span></li>
+        <li><code class="ok">infra/scripts/openwebui-db-maintenance.sh</code> <span class="mut">3 mode (check/weekly/monthly) · Python stdlib · ERR trap JSON</span></li>
         <li><code class="ok">.claude/skills/deploy-doc/SKILL.md</code> <span class="mut">skill reuse pattern</span></li>
       </ul>
       <div class="text-[11px] mut mb-2 mt-4 tracking-wider">DELETED / ABANDONED</div>
@@ -591,6 +770,10 @@ sequenceDiagram
       <tr><td>11</td><td>mcpo crash startup vì config.json không expand env</td><td>Entrypoint <code>sed</code> substitute <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code> trước khi <code>exec mcpo</code></td><td><code>c74a57f</code></td></tr>
       <tr><td>12</td><td><code>docker compose restart litellm-proxy</code> không re-read <code>.env.llm</code></td><td>Phải <code>sudo up -d --force-recreate litellm-proxy</code> khi đổi provider key</td><td>doc</td></tr>
       <tr><td>13</td><td>Gemini free tier 429 sau ~10 câu chat (MCP tool-use = 2-3 req/query)</td><td>Enable billing tại aistudio.google.com/apikey hoặc đổi default → Claude/GPT</td><td>doc</td></tr>
+      <tr><td>14</td><td><code>sqliteui.local</code> trả 410 "web UI deprecated"</td><td>Thiếu site block trong Caddyfile — thêm <code>http://sqliteui.local { reverse_proxy sqlite-web:8080 }</code></td><td>caddy</td></tr>
+      <tr><td>15</td><td>Maintenance script chạy im lặng, exit 0</td><td>Image openwebui không có CLI <code>sqlite3</code> → refactor sang <code>python3 -</code> (stdlib) + ERR trap emit JSON</td><td>script</td></tr>
+      <tr><td>16</td><td>Cron log <code>Permission denied /var/log/openwebui-db.log</code></td><td><code>sudo touch + chown vietnt:vietnt</code> file log trước khi cài cron</td><td>doc</td></tr>
+      <tr><td>17</td><td><code>git pull</code> báo local changes chặn merge script</td><td>Pattern <code>git stash push -- path</code> → pull → <code>stash drop</code></td><td>doc</td></tr>
     </tbody>
   </table>
   <div class="mt-3 text-[11px] mut">Tất cả đã consolidate vào <code>docs/deployment-llm-abstraction.md</code> troubleshooting table + <code>.claude/skills/deploy-doc</code> anti-patterns.</div>
@@ -609,6 +792,8 @@ sequenceDiagram
         <li>mcpo bridge <code>Up</code>, 2 openapi.json (onelog-vl, onelog-semantic) 200</li>
         <li>OpenWebUI gọi <code>search_log_templates</code> (thay vì <code>grep_knowledge_files</code>)</li>
         <li>Bootstrap admin lock signup xong · webui.db backup age-encrypted</li>
+        <li>sqlite-web <code>Up</code> qua <code>http://sqliteui.local</code>, 43 tables · 98 indexes · read-only</li>
+        <li>Maintenance script <code>check</code> pass — DB 974KB, freelist 7.5%, action=none</li>
       </ul>
     </div>
     <div>

@@ -25,7 +25,13 @@ schema: dict[str, Any] = {
         "service/host/time window. Output is capped at the server limit; refine the "
         "query if you need more detail. LogsQL examples: "
         "`service:mock-mysql AND severity:err`, "
-        "`service:mock-sshd AND _msg:~\"Failed password\"`."
+        "`service:mock-sshd AND _msg:~\"Failed password\"`. "
+        "For quantitative questions (how many logs, count, trend) MUST use `| stats` "
+        "with explicit `start`/`end` — do NOT sum counts from `search_log_templates`. "
+        "Examples: `{host=\"srv-01\"} | stats count() as total` (total in window), "
+        "`{host=\"srv-01\"} | stats by (_time:1h) count() as c` (hourly trend), "
+        "`* | stats by (service) count() as c` (breakdown). Stats results come back "
+        "as a single (or few) JSON line(s) in `lines`; read the aggregated fields there."
     ),
     "input_schema": {
         "type": "object",

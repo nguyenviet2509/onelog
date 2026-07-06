@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · Production Deploy — Step-by-step VPS Playbook</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--acc2:#a5f3fc;
+    --warn:#fbbf24;--ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)} .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .h-title{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.err{background:#3a0f0f;color:#f87171}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .cmd{background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;padding:10px 12px;font-family:ui-monospace;font-size:12px;color:#cffafe;white-space:pre-wrap;word-break:break-all;position:relative}
+  .cmd .prompt{color:#4c9c8f;user-select:none}
+  .cmd .comment{color:#5f5f6b}
+  .step{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+  .step-num{flex:0 0 32px;width:32px;height:32px;border-radius:8px;background:#082f3f;border:1px solid #164e63;display:grid;place-items:center;font-weight:700;color:#7dd3fc;font-size:14px}
+  .step-body{flex:1;min-width:0}
+  .step-title{font-size:14px;font-weight:600;margin-bottom:6px}
+  .step-desc{font-size:12px;color:var(--mut);margin-bottom:8px}
+  table.k{width:100%;font-size:12px;border-collapse:collapse}
+  table.k th,table.k td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:16px 0}
+  .glow-lime{box-shadow:0 0 0 1px #14532d,0 0 30px -14px #86efac66}
+  .glow-amber{box-shadow:0 0 0 1px #78350f,0 0 30px -14px #fbbf2466}
+  .glow-cyan{box-shadow:0 0 0 1px #164e63,0 0 30px -14px #22d3ee66}
+  .stack-node{background:#0d0d11;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px}
+  .stack-node.new{border-color:#164e63;background:#082f3f}
+  .stack-node.core{border-color:#14532d;background:#0a1a10}
+  .stack-node.skip{opacity:.4;text-decoration:line-through}
+  ol.checklist{counter-reset:c;list-style:none;padding:0}
+  ol.checklist li{counter-increment:c;position:relative;padding-left:28px;margin-bottom:6px;font-size:12px}
+  ol.checklist li::before{content:counter(c);position:absolute;left:0;top:0;width:20px;height:20px;background:#15151a;border:1px solid var(--line);border-radius:4px;text-align:center;font-size:10px;line-height:20px;color:var(--acc)}
+  .grid-bg{background-image:linear-gradient(#15151a 1px,transparent 1px),linear-gradient(90deg,#15151a 1px,transparent 1px);background-size:24px 24px;background-position:-1px -1px}
+  /* Native HTML architecture diagram */
+  .arch-lane{position:relative;padding:14px 16px;border-radius:10px;border:1px solid var(--line);background:#0d0d11}
+  .arch-lane.lane-ext{border-color:#4a4a55;background:linear-gradient(180deg,#141419 0%,#0d0d11 100%)}
+  .arch-lane.lane-edge{border-color:#0e7490;background:linear-gradient(180deg,#0a2a35 0%,#0d0d11 100%)}
+  .arch-lane.lane-app{border-color:#7c3aed;background:linear-gradient(180deg,#1f0f3a 0%,#0d0d11 100%)}
+  .arch-lane.lane-data{border-color:#059669;background:linear-gradient(180deg,#0a2a1a 0%,#0d0d11 100%)}
+  .arch-lane.lane-ops{border-color:#d97706;background:linear-gradient(180deg,#2a1808 0%,#0d0d11 100%)}
+  .lane-label{position:absolute;top:-10px;left:14px;background:#0a0a0b;padding:0 8px;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .lane-label.ext{color:#9ca3af} .lane-label.edge{color:#22d3ee}
+  .lane-label.app{color:#c4b5fd} .lane-label.data{color:#34d399}
+  .lane-label.ops{color:#fbbf24}
+  .svc{background:#15151c;border:1px solid #2a2a35;border-radius:8px;padding:10px 12px;text-align:center;display:flex;flex-direction:column;gap:2px;min-height:64px;justify-content:center}
+  .svc.edge{border-color:#0e7490;background:#0a2530}
+  .svc.app{border-color:#7c3aed;background:#1f1332}
+  .svc.data{border-color:#059669;background:#0a2a1a}
+  .svc.ops{border-color:#d97706;background:#2a1808}
+  .svc.ext{border-color:#4a4a55;background:#15151c}
+  .svc.store{border-color:#10b981;background:#0f3d26;border-radius:20px 8px 8px 20px}
+  .svc-name{font-size:13px;font-weight:700;color:#f3f4f6;line-height:1.15}
+  .svc-desc{font-size:10px;color:#9ca3af;line-height:1.2}
+  .flow-arrow{display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:20px;padding:4px 0}
+  .flow-arrow .label{font-size:10px;color:#9ca3af;margin:0 8px;background:#0a0a0b;padding:1px 8px;border-radius:4px;border:1px solid var(--line)}
+  .layer-box{background:#0d0d11;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .layer-box.edge{border-color:#164e63}
+  .layer-box.app{border-color:#4c1d95}
+  .layer-box.data{border-color:#14532d}
+  .layer-box.ops{border-color:#78350f}
+</style>
+</head>
+<body>
+<div class="max-w-[1280px] mx-auto p-6">
+
+<!-- HEADER -->
+<header class="mb-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="pill lime">PRODUCTION</span>
+        <span class="pill gray">Ubuntu 24.04 · Docker Compose</span>
+        <span class="pill vio">17 container · 6 profile</span>
+        <span class="pill cyan">Lab reference: 192.168.122.0/24</span>
+      </div>
+      <h1 class="text-2xl font-semibold tracking-tight">OneLog Production Deploy — Playbook copy-paste</h1>
+      <p class="mut text-sm mt-1">Step-by-step deploy stack lên VPS production. Mỗi lệnh paste được. Kèm sẵn <b class="acc">IP/CIDR lab hiện tại</b> để ánh xạ trực tiếp sang VPS prod.</p>
+    </div>
+    <div class="text-right text-xs mut">
+      <div>Owner · anhtct@inet.vn</div>
+      <div>Verified · logserver-01 · 192.168.122.53</div>
+      <div>Repo · github.com/nguyenviet2509/onelog</div>
+    </div>
+  </div>
+</header>
+
+<!-- SYSTEM ARCHITECTURE (deploy-oriented view) -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title">Mô hình hệ thống OneLog · 4 lớp · 17 container</span>
+    <div class="flex gap-2">
+      <span class="pill cyan">edge</span>
+      <span class="pill vio">app</span>
+      <span class="pill lime">data</span>
+      <span class="pill amber">ops</span>
+    </div>
+  </div>
+
+  <!-- Architecture diagram — native HTML/CSS, no scroll, fit viewport -->
+  <div class="grid-bg p-5 rounded-xl space-y-4">
+
+    <!-- EXTERNAL row — split ops thành 2 kênh chat -->
+    <div class="arch-lane lane-ext">
+      <span class="lane-label ext">🌐 External · 2 kênh chat + 2 syslog client + 4 provider + Telegram</span>
+
+      <div class="text-[10px] mut mb-2 mt-1 tracking-wider">👥 TEAM OPS · 2 KÊNH TRUY CẬP</div>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div class="svc" style="border-color:#22d3ee;background:linear-gradient(135deg,#0a2530 0%,#15151c 100%)">
+          <div class="svc-name" style="color:#67e8f9">💬 Path A · WebUI chat</div>
+          <div class="svc-desc">Browser → HTTPS <b>chat.local</b> → OpenWebUI · click tool ON</div>
+        </div>
+        <div class="svc" style="border-color:#c4b5fd;background:linear-gradient(135deg,#1f1332 0%,#15151c 100%)">
+          <div class="svc-name" style="color:#ddd6fe">🖥️ Path B · Claude Desktop</div>
+          <div class="svc-desc">mcp-remote → HTTPS <b>app.local/mcp/*</b> → mcp-vl · mcp-semantic (SSE)</div>
+        </div>
+      </div>
+
+      <div class="text-[10px] mut mb-2 tracking-wider">📡 LOG SOURCES + 🤖 LLM PROVIDER + 📢 NOTIFY</div>
+      <div class="grid grid-cols-7 gap-2">
+        <div class="svc ext"><div class="svc-name">📡 srv-01</div><div class="svc-desc">rsyslog client</div></div>
+        <div class="svc ext"><div class="svc-name">📡 srv-02</div><div class="svc-desc">rsyslog client</div></div>
+        <div class="svc ext"><div class="svc-name">🤖 Anthropic</div><div class="svc-desc">Claude Sonnet</div></div>
+        <div class="svc ext"><div class="svc-name">🤖 OpenAI</div><div class="svc-desc">GPT-4.1-mini</div></div>
+        <div class="svc ext"><div class="svc-name">🤖 Gemini</div><div class="svc-desc">Flash · default</div></div>
+        <div class="svc ext"><div class="svc-name">🤖 DeepSeek</div><div class="svc-desc">chat · fallback</div></div>
+        <div class="svc ext"><div class="svc-name">📢 Telegram</div><div class="svc-desc">alert bot</div></div>
+      </div>
+    </div>
+
+    <!-- Arrow: user + client → edge -->
+    <div class="flow-arrow">
+      <span class="label" style="border-color:#0e7490;color:#67e8f9">A: HTTPS chat.* → WebUI</span>
+      <span class="label" style="border-color:#7c3aed;color:#ddd6fe">B: HTTPS app.*/mcp/* → MCP</span>
+      ▼
+      <span class="label">syslog 6514</span>
+      <span class="label">LLM HTTPS ▲</span>
+    </div>
+
+    <!-- EDGE lane — Caddy split 3 route rõ ràng -->
+    <div class="arch-lane lane-edge">
+      <span class="lane-label edge">🛡️ Edge · 1 container · Caddy phân 3 route</span>
+      <div class="grid grid-cols-1 mb-2">
+        <div class="svc edge" style="max-width:640px;margin:0 auto"><div class="svc-name">🌐 Caddy · 80 / 443</div><div class="svc-desc">reverse proxy · LE auto-cert · IP whitelist · route theo Host header</div></div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-[10px]">
+        <div class="p-2 rounded" style="background:#0a2530;border:1px dashed #22d3ee;color:#a5f3fc">
+          <b>Route A:</b> <code>Host: chat.local</code> → <b>OpenWebUI</b> (WebUI path)
+        </div>
+        <div class="p-2 rounded" style="background:#1f1332;border:1px dashed #c4b5fd;color:#ddd6fe">
+          <b>Route B:</b> <code>app.local /mcp/vl/*</code> + <code>/mcp/semantic/*</code> → <b>mcp-*</b> (Claude Desktop path) · forward_auth
+        </div>
+        <div class="p-2 rounded" style="background:#0d0d11;border:1px dashed #6b7280;color:#9ca3af">
+          <b>Route C:</b> <code>/api/*</code> → <b>agent</b> · <code>/llm/*</code> → LiteLLM (internal API)
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow: edge → app -->
+    <div class="flow-arrow">
+      <span class="label" style="border-color:#0e7490;color:#67e8f9">A</span>▼<span class="label" style="border-color:#7c3aed;color:#ddd6fe">B</span>▼<span class="label">C</span>
+    </div>
+
+    <!-- APP lane — chia 3 sub-group để tách 2 path -->
+    <div class="arch-lane lane-app">
+      <span class="lane-label app">🧩 App · 6 container · 2 path chat cùng share MCP layer</span>
+
+      <div class="grid grid-cols-12 gap-2 mt-1">
+        <!-- WebUI path (col-span-6) -->
+        <div class="col-span-6 p-2 rounded" style="border:1px dashed #22d3ee;background:rgba(14,74,95,.2)">
+          <div class="text-[10px] text-cyan-300 font-bold mb-1 tracking-wider">💬 PATH A · WEBUI CHAT (browser)</div>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="svc app"><div class="svc-name">🖥️ OpenWebUI</div><div class="svc-desc">chat UI · SQLite</div></div>
+            <div class="svc app"><div class="svc-name">🌉 mcpo</div><div class="svc-desc">MCP→OpenAPI bridge</div></div>
+            <div class="svc app"><div class="svc-name">🧭 LiteLLM</div><div class="svc-desc">4-provider gw</div></div>
+          </div>
+        </div>
+
+        <!-- Claude Desktop path (col-span-3) -->
+        <div class="col-span-3 p-2 rounded" style="border:1px dashed #c4b5fd;background:rgba(31,19,50,.4)">
+          <div class="text-[10px] text-purple-300 font-bold mb-1 tracking-wider">🖥️ PATH B · CLAUDE DESKTOP</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="svc app"><div class="svc-name">🔌 mcp-vl</div><div class="svc-desc">12 LogsQL tools</div></div>
+            <div class="svc app"><div class="svc-name">🧠 mcp-semantic</div><div class="svc-desc">Qdrant search</div></div>
+          </div>
+          <div class="text-[9px] mut mt-1 text-center">shared với Path A qua mcpo bridge</div>
+        </div>
+
+        <!-- Agent API (col-span-3) -->
+        <div class="col-span-3 p-2 rounded" style="border:1px dashed #6b7280;background:rgba(30,30,40,.4)">
+          <div class="text-[10px] text-gray-300 font-bold mb-1 tracking-wider">🔧 PATH C · AGENT API</div>
+          <div class="grid grid-cols-1">
+            <div class="svc app"><div class="svc-name">👤 agent</div><div class="svc-desc">SSE /chat · tool loop</div></div>
+          </div>
+          <div class="text-[9px] mut mt-1 text-center">gọi LiteLLM SDK + MCP internal</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow: app → data -->
+    <div class="flow-arrow">
+      <span class="label">query LogsQL · write session</span>▼<span class="label">syslog ingest ▲</span>
+    </div>
+
+    <!-- DATA lane -->
+    <div class="arch-lane lane-data">
+      <span class="lane-label data">💾 Data · 8 container · persistence + ingest</span>
+      <div class="grid grid-cols-4 gap-2 mb-2">
+        <div class="svc data"><div class="svc-name">📥 Vector</div><div class="svc-desc">ingest · PII redact</div></div>
+        <div class="svc data"><div class="svc-name">📊 Indexer</div><div class="svc-desc">Drain3 template</div></div>
+        <div class="svc store"><div class="svc-name">🗄️ VictoriaLogs</div><div class="svc-desc">log store 7-30d</div></div>
+        <div class="svc store"><div class="svc-name">🗺️ Qdrant</div><div class="svc-desc">vector db</div></div>
+      </div>
+      <div class="grid grid-cols-4 gap-2">
+        <div class="svc store"><div class="svc-name">🐘 Postgres</div><div class="svc-desc">rag metadata</div></div>
+        <div class="svc store"><div class="svc-name">🔐 Redis</div><div class="svc-desc">session · rate-limit</div></div>
+        <div class="svc store"><div class="svc-name">📨 NATS</div><div class="svc-desc">WARN+ tap queue</div></div>
+        <div class="svc store"><div class="svc-name">💽 SQLite</div><div class="svc-desc">webui.db (OpenWebUI)</div></div>
+      </div>
+    </div>
+
+    <!-- Arrow: data → ops -->
+    <div class="flow-arrow">
+      <span class="label">vmalert eval LogsQL</span>▼<span class="label">Alertmanager → Telegram</span>
+    </div>
+
+    <!-- OPS lane -->
+    <div class="arch-lane lane-ops">
+      <span class="lane-label ops">🚨 Ops · 3 container · monitoring + tooling</span>
+      <div class="grid grid-cols-3 gap-2">
+        <div class="svc ops"><div class="svc-name">🚨 vmalert</div><div class="svc-desc">LogsQL rules · fire 30s-5m</div></div>
+        <div class="svc ops"><div class="svc-name">📢 Alertmanager</div><div class="svc-desc">route notify · Telegram</div></div>
+        <div class="svc ops"><div class="svc-name">🔍 sqlite-web</div><div class="svc-desc">dev DB UI · SSH tunnel</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+    <div class="layer-box edge">
+      <div class="text-[11px] text-cyan-300 mb-1 font-medium">🛡️ EDGE (1 container)</div>
+      <div class="text-[11px] mut">Caddy reverse proxy · terminate TLS · IP whitelist · route theo Host header (app.local / chat.local / sqliteui.local)</div>
+    </div>
+    <div class="layer-box app">
+      <div class="text-[11px] text-purple-300 mb-1 font-medium">🧩 APP (6 container)</div>
+      <div class="text-[11px] mut">OpenWebUI + mcpo + agent SSE + LiteLLM proxy + 2 MCP server. Traffic user + tool call, không persist state riêng.</div>
+    </div>
+    <div class="layer-box data">
+      <div class="text-[11px] text-emerald-300 mb-1 font-medium">💾 DATA (7 container)</div>
+      <div class="text-[11px] mut">VictoriaLogs + Qdrant + Postgres + Redis + NATS + Vector + Indexer. Toàn bộ persistent volume dưới <code>./data/*</code>.</div>
+    </div>
+    <div class="layer-box ops">
+      <div class="text-[11px] text-amber-300 mb-1 font-medium">🚨 OPS (3 container)</div>
+      <div class="text-[11px] mut">vmalert + Alertmanager (alert Telegram) + sqlite-web (dev DB UI, opt-in). Không nằm trên critical path.</div>
+    </div>
+  </div>
+
+  <hr class="sep"/>
+
+  <div class="text-[11px] mut mb-2 tracking-wider">🔄 4 DATA FLOW CHÍNH — CẦN HIỂU TRƯỚC KHI DEPLOY</div>
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+    <div class="card2 p-3">
+      <div class="text-[12px] font-medium mb-1"><span class="pill lime">1</span> Log ingest</div>
+      <div class="text-[11px] mut">Client syslog TCP 6514 → Vector (redact PII) → VictoriaLogs. WARN+ tap song song → NATS → Indexer (Drain3) → Qdrant + VL. Retention 7-30d.</div>
+    </div>
+    <div class="card2 p-3" style="border-color:#0e7490">
+      <div class="text-[12px] font-medium mb-1"><span class="pill cyan">2A</span> Chat via WebUI</div>
+      <div class="text-[11px] mut">Browser → Caddy → OpenWebUI → LiteLLM → provider. Model gọi tool → <b>mcpo bridge</b> (MCP→OpenAPI) → mcp-vl/semantic → VL/Qdrant. UI dùng cho team ops không cần Claude Desktop.</div>
+    </div>
+    <div class="card2 p-3" style="border-color:#7c3aed">
+      <div class="text-[12px] font-medium mb-1"><span class="pill vio">2B</span> Chat via Claude Desktop</div>
+      <div class="text-[11px] mut">Claude Desktop → <b>mcp-remote</b> proxy → Caddy <code>/mcp/vl/*</code> + <code>/mcp/semantic/*</code> (Bearer token) → mcp-vl/semantic SSE → VL/Qdrant. KHÔNG đi qua OpenWebUI hay LiteLLM. Model provider là Claude native.</div>
+    </div>
+    <div class="card2 p-3">
+      <div class="text-[12px] font-medium mb-1"><span class="pill amber">3</span> Alert + monitor</div>
+      <div class="text-[11px] mut">vmalert eval LogsQL rule mỗi 30s-5m → nếu match → Alertmanager → Telegram. Bao gồm alert DB size (probe Vector 5m/lần).</div>
+    </div>
+  </div>
+
+  <hr class="sep"/>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🔑 SECURITY BOUNDARY</div>
+      <ul class="text-[11px] space-y-1">
+        <li>• <b class="acc">Caddy</b> = single ingress, tất cả internal port bind <code>127.0.0.1</code> only</li>
+        <li>• <b class="acc">Provider keys</b> tách <code>.env.llm</code> chmod 0400 root — chỉ litellm-proxy đọc</li>
+        <li>• <b class="acc">MCP 2-tier token</b>: <code>MCPO_API_KEY</code> (OpenWebUI↔mcpo) + <code>MCP_TOKEN_OPENWEBUI</code> (mcpo↔mcp-*)</li>
+        <li>• <b class="acc">PII redact</b> tại Vector trước khi ghi VL (email, IP private, JWT, LLM API key, PEM key)</li>
+        <li>• <b class="acc">Backup</b> age-encrypted (public key trên logserver, private key ở ops vault offsite)</li>
+      </ul>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">📦 PORT EXPOSURE MATRIX</div>
+      <ul class="text-[11px] space-y-1">
+        <li>• <b class="ok">Public 0.0.0.0</b>: 80, 443 (Caddy) · 514/udp, 6514/tcp, 6515/tcp (Vector syslog, limit theo <code>LAN_CIDR</code>)</li>
+        <li>• <b class="warn">Loopback 127.0.0.1</b>: 4000 (LiteLLM) · 8080 (agent) · 8090 (OpenWebUI) · 8091 (mcpo) · 9428 (VL) · 8880 (vmalert) · 9093 (Alertmanager)</li>
+        <li>• <b class="err">SSH tunnel only</b>: 8085 (sqlite-web) — KHÔNG expose Internet</li>
+        <li>• <b class="mut">Internal Docker network</b>: mcp-vl, mcp-semantic, redis, nats, postgres, qdrant, indexer</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- LAB → PROD IP MAPPING (reference cheatsheet) -->
+<section class="card p-5 mb-6 glow-cyan">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title acc">Lab → Production IP mapping · ánh xạ khi deploy</span>
+    <span class="pill cyan">fill cột phải trước khi paste lệnh</span>
+  </div>
+  <div class="text-[13px] mb-3">Lab đang chạy trên <b class="acc">KVM/libvirt subnet 192.168.122.0/24</b>. Khi deploy prod: <b>giữ cùng logserver-01</b> → paste nguyên; <b>VPS mới</b> → thay các placeholder <code>&lt;PROD_*&gt;</code>.</div>
+  <table class="k">
+    <thead>
+      <tr><th style="width:22%">Biến</th><th style="width:32%">Lab hiện tại</th><th style="width:32%">Prod (điền vào)</th><th>Ghi chú</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>LOGSERVER_IP</code></td>
+        <td><code class="ok">192.168.122.53</code></td>
+        <td><code class="warn">&lt;PROD_VPS_IP&gt;</code></td>
+        <td>IP VPS chính chạy stack</td>
+      </tr>
+      <tr>
+        <td><code>LAN_CIDR</code></td>
+        <td><code class="ok">192.168.122.0/24</code></td>
+        <td><code class="warn">&lt;PROD_LAN_CIDR&gt;</code></td>
+        <td>Xem bảng chọn ở dưới</td>
+      </tr>
+      <tr>
+        <td><code>SRV_01_IP</code> (syslog client)</td>
+        <td><code class="ok">192.168.122.52</code></td>
+        <td><code class="warn">&lt;PROD_SRV_01&gt;</code></td>
+        <td>Server nguồn log #1</td>
+      </tr>
+      <tr>
+        <td><code>SRV_02_IP</code> (syslog client)</td>
+        <td><code class="ok">192.168.122.51</code></td>
+        <td><code class="warn">&lt;PROD_SRV_02&gt;</code></td>
+        <td>Server nguồn log #2</td>
+      </tr>
+      <tr>
+        <td><code>SSH_USER</code></td>
+        <td><code class="ok">vietnt</code></td>
+        <td><code class="warn">&lt;PROD_SSH_USER&gt;</code></td>
+        <td>Sudo user, KHÔNG root</td>
+      </tr>
+      <tr>
+        <td><code>APP_DOMAIN</code></td>
+        <td><code class="ok">app.local</code> (hosts entry)</td>
+        <td><code class="warn">onelog.company.com</code></td>
+        <td>Prod bắt buộc domain thật (LE TLS)</td>
+      </tr>
+      <tr>
+        <td><code>CHAT_DOMAIN</code></td>
+        <td><code class="ok">webui.local</code> (hosts entry)</td>
+        <td><code class="warn">chat.onelog.company.com</code></td>
+        <td>OpenWebUI</td>
+      </tr>
+      <tr>
+        <td><code>DB_UI_DOMAIN</code></td>
+        <td><code class="ok">sqliteui.local</code> (hosts entry)</td>
+        <td><code class="warn">— skip on prod —</code></td>
+        <td>Prod chỉ truy cập qua SSH tunnel</td>
+      </tr>
+      <tr>
+        <td><code>ALLOWED_CIDR</code> (Caddyfile whitelist)</td>
+        <td><code class="ok">192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1</code></td>
+        <td><code class="warn">&lt;VPN_CIDR&gt; hoặc bỏ (rely TLS+Auth)</code></td>
+        <td>Nếu VPS public + không có VPN, list trắng theo IP tĩnh</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr class="sep"/>
+
+  <div class="text-[11px] mut mb-2 tracking-wider">🔍 CHỌN LAN_CIDR THEO TOPOLOGY PROD</div>
+  <table class="k">
+    <thead>
+      <tr><th>Case</th><th>LAN_CIDR</th><th>Ví dụ</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Deploy trên <b>chính logserver-01 lab</b> (giữ nguyên)</td>
+        <td><code class="ok">192.168.122.0/24</code></td>
+        <td>Không đổi</td>
+      </tr>
+      <tr>
+        <td>VPS trong <b>VPC riêng</b> (DO/Vultr/GCP)</td>
+        <td><code>10.10.0.0/16</code> hoặc range VPC</td>
+        <td>DO Private: <code>10.130.0.0/16</code></td>
+      </tr>
+      <tr>
+        <td>VPS public + team qua <b>Tailscale/WireGuard</b></td>
+        <td>CGNAT range hoặc VPN subnet</td>
+        <td>Tailscale: <code>100.64.0.0/10</code> · WG: <code>10.8.0.0/24</code></td>
+      </tr>
+      <tr>
+        <td>VPS public + <b>không VPN</b>, rely HTTPS</td>
+        <td><code class="warn">0.0.0.0/0</code></td>
+        <td>Bảo vệ bởi TLS cert + OpenWebUI auth</td>
+      </tr>
+      <tr>
+        <td>Team ops IP tĩnh nhỏ (2-5 người)</td>
+        <td>List /32 comma-separated</td>
+        <td><code>1.2.3.4/32,5.6.7.8/32</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="mt-3 text-[11px] mut">
+    <b class="acc">Verify IP hiện tại của lab:</b> <code>ip addr | grep -E 'inet 192|inet 10'</code> →
+    kỳ vọng thấy <code>192.168.122.53/24</code> trên interface libvirt bridge.
+  </div>
+</section>
+
+<!-- OVERVIEW & STACK MAP -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <div class="card p-5 lg:col-span-2">
+    <div class="h-title mb-3">Container topology — 17 services triển khai · 1 legacy skip</div>
+    <div class="grid grid-cols-3 md:grid-cols-4 gap-2 text-[11px]">
+      <div class="stack-node core">📥 vector<br/><span class="mut">syslog + db probe</span></div>
+      <div class="stack-node core">🗄️ victorialogs<br/><span class="mut">log store</span></div>
+      <div class="stack-node core">🗺️ qdrant<br/><span class="mut">vector search</span></div>
+      <div class="stack-node core">🐘 postgres<br/><span class="mut">rag metadata</span></div>
+      <div class="stack-node core">📨 nats<br/><span class="mut">warn-tap queue</span></div>
+      <div class="stack-node core">🌐 caddy<br/><span class="mut">edge proxy</span></div>
+      <div class="stack-node core">🔌 mcp-vl<br/><span class="mut">VL MCP tools</span></div>
+      <div class="stack-node core">🧠 mcp-semantic<br/><span class="mut">semantic MCP</span></div>
+      <div class="stack-node new">🔐 redis<br/><span class="mut">[agent]</span></div>
+      <div class="stack-node new">👤 agent<br/><span class="mut">[agent] SSE</span></div>
+      <div class="stack-node new">📊 indexer<br/><span class="mut">[indexer] Drain3</span></div>
+      <div class="stack-node new">🚨 vmalert<br/><span class="mut">[alerts]</span></div>
+      <div class="stack-node new">📢 alertmanager<br/><span class="mut">[alerts] Telegram</span></div>
+      <div class="stack-node new">🧭 litellm-proxy<br/><span class="mut">[llm+chat]</span></div>
+      <div class="stack-node new">🌉 mcpo<br/><span class="mut">[chat] MCP→OpenAPI</span></div>
+      <div class="stack-node new">🖥️ openwebui<br/><span class="mut">[chat] SQLite UI</span></div>
+      <div class="stack-node" style="border-color:#78350f;background:#1a1407">🔍 sqlite-web<br/><span class="mut">[dbtools] opt-in dev</span></div>
+      <div class="stack-node skip">💀 ragstack-web<br/><span class="mut">deprecated, skip</span></div>
+    </div>
+    <div class="text-[11px] mut mt-3">
+      <b class="acc">Core (always-on):</b> 8 service không cần profile flag ·
+      <b class="acc">Full stack production:</b> <code>--profile agent --profile indexer --profile alerts --profile llm --profile chat</code> ·
+      <b class="err">SKIP:</b> <code>web</code> service (Next.js frontend decommission 2026-06-24) — nếu container cũ còn chạy, <code>docker rm -f ragstack-web</code>.
+    </div>
+  </div>
+
+  <div class="card p-5">
+    <div class="h-title mb-3">VPS requirements</div>
+    <table class="k">
+      <tbody>
+        <tr><td>OS</td><td>Ubuntu 22.04 / 24.04 LTS</td></tr>
+        <tr><td>vCPU</td><td>4+ (4 min, 8 khuyến nghị)</td></tr>
+        <tr><td>RAM</td><td>8 GB min, 16 GB thoải mái</td></tr>
+        <tr><td>Disk</td><td>100 GB SSD (log 7d + backup 90d)</td></tr>
+        <tr><td>Ports mở</td><td>22, 80, 443 · syslog 514/udp 6514/tcp (nếu client bên ngoài)</td></tr>
+        <tr><td>Domain</td><td>Sub-domain thật cho HTTPS (LE auto-cert)</td></tr>
+        <tr><td>User</td><td>Sudo user (KHÔNG root direct)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- STEP-BY-STEP -->
+<section class="card p-5 mb-6">
+  <div class="flex items-center justify-between mb-4">
+    <span class="h-title">Deploy — 15 bước copy-paste</span>
+    <div class="flex gap-2">
+      <span class="pill lime">green = safe</span>
+      <span class="pill amber">amber = edit</span>
+      <span class="pill err">red = destructive</span>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">SSH vào VPS + set timezone</div>
+      <div class="step-desc">Sudo user (KHÔNG root). Timezone Asia/Saigon để log timestamp khớp team.</div>
+      <div class="cmd"><span class="comment"># Lab reference: ssh vietnt@192.168.122.53</span>
+<span class="prompt">$</span> ssh &lt;SSH_USER&gt;@&lt;LOGSERVER_IP&gt; && sudo timedatectl set-timezone Asia/Saigon && date</div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Cài base package + NTP sync</div>
+      <div class="step-desc">Bắt buộc chrony trước ingest — timestamp lệch = trace vỡ.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo apt-get update && sudo apt-get install -y curl wget git ca-certificates ufw chrony age jq sqlite3 && sudo systemctl enable --now chrony && chronyc tracking | grep Leap</div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Clone repo vào home directory</div>
+      <div class="step-desc">MUST vào <code>~/onelog</code>, KHÔNG <code>/opt/onelog</code>. Scripts auto-detect qua <code>$SCRIPT_DIR</code>.</div>
+      <div class="cmd"><span class="prompt">$</span> cd ~ && git clone https://github.com/nguyenviet2509/onelog.git && cd ~/onelog</div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">One-shot setup: Docker CE + UFW + docker group</div>
+      <div class="step-desc">Thay <code>&lt;LAN_CIDR&gt;</code> theo bảng "Chọn LAN_CIDR" ở đầu trang. Lab hiện tại dùng <code class="ok">192.168.122.0/24</code>.</div>
+      <div class="cmd"><span class="comment"># Lab reference: LAN_CIDR=192.168.122.0/24</span>
+<span class="prompt">$</span> sudo INVOKING_USER=$USER LAN_CIDR=&lt;LAN_CIDR&gt; bash ~/onelog/infra/scripts/setup-log-server.sh</div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Re-login để group docker có hiệu lực</div>
+      <div class="step-desc">Bắt buộc — không re-login = <code>docker ps</code> đòi sudo.</div>
+      <div class="cmd"><span class="prompt">$</span> exit
+<span class="comment"># ssh lại lần nữa · lab reference: ssh vietnt@192.168.122.53</span>
+<span class="prompt">$</span> ssh &lt;SSH_USER&gt;@&lt;LOGSERVER_IP&gt; && docker ps</div>
+    </div>
+  </div>
+
+  <!-- STEP 6 -->
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <div class="step-title">Sinh 6 secret + copy .env.example</div>
+      <div class="step-desc">Copy output ra tạm, paste vào <code>.env</code> ở bước 7.</div>
+      <div class="cmd"><span class="prompt">$</span> cd ~/onelog/infra && cp .env.example .env && printf "POSTGRES_PASSWORD=%s\nQDRANT_API_KEY=%s\nREDIS_PASSWORD=%s\nLITELLM_MASTER_KEY=sk-litellm-%s\nOPENWEBUI_SECRET_KEY=%s\nMCP_TOKEN_OPENWEBUI=sk-mcp-owui-%s\nMCPO_API_KEY=sk-mcpo-%s\nSQLITE_WEB_PASSWORD=%s\n" $(openssl rand -hex 24) $(openssl rand -hex 24) $(openssl rand -hex 24) $(openssl rand -hex 32) $(openssl rand -hex 32) $(openssl rand -hex 24) $(openssl rand -hex 24) $(openssl rand -hex 16)</div>
+    </div>
+  </div>
+
+  <!-- STEP 7 -->
+  <div class="step">
+    <div class="step-num">7</div>
+    <div class="step-body">
+      <div class="step-title"><span class="pill amber">EDIT</span> Paste secrets + provider keys vào .env</div>
+      <div class="step-desc">Sửa các dòng chính. Lab reference bên phải:</div>
+      <div class="cmd"><span class="comment"># Lệnh mở editor</span>
+<span class="prompt">$</span> vi .env
+
+<span class="comment"># Các dòng cần điền (LAB → PROD):
+#   APP_DOMAIN=app.local                 → onelog.company.com
+#   ALLOWED_CIDR=192.168.122.0/24        → &lt;LAN_CIDR&gt;
+#   VMUI_BASE_URL=http://app.local       → https://onelog.company.com
+#   POSTGRES_PASSWORD=&lt;paste từ bước 6&gt;
+#   QDRANT_API_KEY=&lt;paste&gt;
+#   REDIS_PASSWORD=&lt;paste&gt;
+#   LITELLM_MASTER_KEY=&lt;paste&gt;
+#   OPENWEBUI_SECRET_KEY=&lt;paste&gt;
+#   OPENWEBUI_LITELLM_VIRTUAL_KEY=${LITELLM_MASTER_KEY}
+#   MCP_TOKEN_OPENWEBUI=&lt;paste&gt;
+#   MCPO_API_KEY=&lt;paste&gt;
+#   SQLITE_WEB_PASSWORD=&lt;paste&gt;
+#   ANTHROPIC_API_KEY=sk-ant-...         (real key)
+#   GEMINI_API_KEY=AIzaSy...             (real key)
+#   OPENAI_API_KEY=sk-...                (real key)
+#   LLM_MOCK=true                        → false
+#   TELEGRAM_BOT_TOKEN=&lt;bot&gt;             (nếu dùng alert)
+#   TELEGRAM_ALERT_CHAT_ID=-1001234567
+#   TELEGRAM_MOCK=true                   → false
+#   VL_RETENTION=7d                      → 30d (prod giữ log lâu hơn)</span></div>
+    </div>
+  </div>
+
+  <!-- STEP 8 -->
+  <div class="step">
+    <div class="step-num">8</div>
+    <div class="step-body">
+      <div class="step-title"><span class="pill amber">EDIT</span> Tạo .env.llm cho LiteLLM (chmod 0400 root)</div>
+      <div class="step-desc">Provider keys tách riêng, chỉ litellm-proxy đọc. Blast radius separation RT-F1.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo install -m 0400 -o root -g root litellm/.env.llm.example litellm/.env.llm && sudo vi litellm/.env.llm</div>
+    </div>
+  </div>
+
+  <!-- STEP 9 -->
+  <div class="step">
+    <div class="step-num">9</div>
+    <div class="step-body">
+      <div class="step-title">Pull image toàn bộ profile</div>
+      <div class="step-desc">Pull trước khi up để tránh timeout race. ~2-5 GB tùy bandwidth.</div>
+      <div class="cmd"><span class="prompt">$</span> cd ~/onelog/infra && docker compose --profile agent --profile indexer --profile alerts --profile llm --profile chat pull</div>
+    </div>
+  </div>
+
+  <!-- STEP 10 -->
+  <div class="step">
+    <div class="step-num">10</div>
+    <div class="step-body">
+      <div class="step-title">Deploy full stack production</div>
+      <div class="step-desc">5 profile = agent + indexer + alerts + llm + chat. sqlite-web (dbtools) opt-in ở bước sau nếu cần. Đợi 60s cho container boot.</div>
+      <div class="cmd"><span class="prompt">$</span> docker compose --profile agent --profile indexer --profile alerts --profile llm --profile chat up -d && sleep 60 && docker compose --profile agent --profile indexer --profile alerts --profile llm --profile chat ps</div>
+    </div>
+  </div>
+
+  <!-- STEP 11 -->
+  <div class="step">
+    <div class="step-num">11</div>
+    <div class="step-body">
+      <div class="step-title">Bootstrap OpenWebUI admin + lock signup</div>
+      <div class="step-desc">2 dòng ENV vào .env, restart openwebui, verify log tạo admin, rồi comment lại để lock.</div>
+      <div class="cmd"><span class="prompt">$</span> printf "\nOPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local\nOPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe2026!\n" >> .env && docker compose --profile chat restart openwebui && sleep 30 && docker compose --profile chat logs openwebui --tail=10 | grep -i admin</div>
+      <div class="cmd" style="margin-top:6px"><span class="prompt">$</span> <span class="comment"># Sau khi verify + đổi password → lock signup</span>
+sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env && docker compose --profile chat restart openwebui</div>
+    </div>
+  </div>
+
+  <!-- STEP 12 -->
+  <div class="step">
+    <div class="step-num">12</div>
+    <div class="step-body">
+      <div class="step-title">Register MCP tools vào OpenWebUI (browser)</div>
+      <div class="step-desc">Đăng nhập &lt;CHAT_DOMAIN&gt; (lab: <code class="ok">http://webui.local</code> · prod: <code class="warn">https://chat.onelog.company.com</code>) → Settings → Tools → + Add Connection × 2:</div>
+      <div class="cmd" style="margin-top:6px">URL 1: http://mcpo:8080/onelog-vl        Auth: Bearer &lt;MCPO_API_KEY&gt;
+URL 2: http://mcpo:8080/onelog-semantic  Auth: Bearer &lt;MCPO_API_KEY&gt;</div>
+      <div class="step-desc mt-2">Verify: chat mới, toggle 2 tool ON dưới input box, hỏi <i>"Có template log lỗi mysql trong 24h qua không?"</i>. Model phải gọi <code>search_log_templates</code>.</div>
+    </div>
+  </div>
+
+  <!-- STEP 13 -->
+  <div class="step">
+    <div class="step-num">13</div>
+    <div class="step-body">
+      <div class="step-title">Encrypted backup (age) + snapshot daily cron</div>
+      <div class="step-desc">Age key ra <code>/root/vault</code> — private key MUST copy offsite trước khi rely vào backup.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo mkdir -p /root/vault /etc/onelog && sudo age-keygen -o /root/vault/backup-age.key && sudo chmod 0400 /root/vault/backup-age.key && sudo grep "public key" /root/vault/backup-age.key | awk '{print $NF}' | sudo tee /etc/onelog/backup-age.pub && sudo cp /root/vault/backup-age.key /tmp/backup-age.key.OFFSITE-ME</div>
+      <div class="cmd" style="margin-top:6px"><span class="prompt">$</span> (crontab -l 2>/dev/null; echo "0 2 * * * $HOME/onelog/infra/scripts/snapshot-daily.sh >> /var/log/ragstack-snapshot.log 2>&1"; echo "0 3 * * * $HOME/onelog/infra/scripts/backup-openwebui.sh >> /var/log/openwebui-backup.log 2>&1") | crontab -</div>
+    </div>
+  </div>
+
+  <!-- STEP 14 -->
+  <div class="step">
+    <div class="step-num">14</div>
+    <div class="step-body">
+      <div class="step-title">DB monitoring cron (weekly + monthly)</div>
+      <div class="step-desc">Prepare log file quyền rồi cài cron cho <code>openwebui-db-maintenance.sh</code>.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo touch /var/log/openwebui-db.log && sudo chown $USER:$USER /var/log/openwebui-db.log && (crontab -l 2>/dev/null; echo "30 4 * * 0 $HOME/onelog/infra/scripts/openwebui-db-maintenance.sh weekly >> /var/log/openwebui-db.log 2>&1"; echo "0 4 1 * * $HOME/onelog/infra/scripts/openwebui-db-maintenance.sh monthly >> /var/log/openwebui-db.log 2>&1") | crontab -</div>
+    </div>
+  </div>
+
+  <!-- STEP 15 -->
+  <div class="step">
+    <div class="step-num">15</div>
+    <div class="step-body">
+      <div class="step-title">Systemd auto-start on reboot</div>
+      <div class="step-desc">Install unit file — VPS reboot xong stack tự up. Verify <code>systemctl status ragstack</code> phải active.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo bash ~/onelog/infra/scripts/install-systemd-unit.sh && echo "COMPOSE_PROFILES=agent,indexer,alerts,llm,chat" | sudo tee /etc/onelog-ragstack.env && sudo systemctl restart ragstack && sudo systemctl status ragstack --no-pager | head -10</div>
+    </div>
+  </div>
+</section>
+
+<!-- CADDY HTTPS PRODUCTION -->
+<section class="card p-5 mb-6 glow-cyan">
+  <div class="flex items-center justify-between mb-3">
+    <span class="h-title acc">Caddy HTTPS production — 1 lần setup domain</span>
+    <span class="pill cyan">skip nếu lab / IP-only</span>
+  </div>
+  <div class="text-[13px] mb-3">Lab mode dùng hosts entry trỏ <code>192.168.122.53</code> (workstation <code>/etc/hosts</code> hoặc <code>C:\Windows\System32\drivers\etc\hosts</code>). <b>Production phải có domain thật</b> để Let's Encrypt auto-issue TLS cert.</div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+    <div class="card2 p-3">
+      <div class="text-[11px] mut mb-2">Lab hosts entry (workstation) hiện tại</div>
+      <div class="cmd"><span class="comment"># Windows Admin PowerShell hoặc macOS/Linux sudo</span>
+192.168.122.53  app.local
+192.168.122.53  webui.local
+192.168.122.53  sqliteui.local</div>
+    </div>
+    <div class="card2 p-3">
+      <div class="text-[11px] mut mb-2">Prod DNS records — set ở registrar</div>
+      <div class="cmd">A     onelog.company.com          → &lt;LOGSERVER_IP&gt;
+A     chat.onelog.company.com     → &lt;LOGSERVER_IP&gt;
+<span class="comment"># db.onelog.company.com KHÔNG expose public — SSH tunnel only</span></div>
+    </div>
+    <div class="card2 p-3 md:col-span-2">
+      <div class="text-[11px] mut mb-2">Firewall — bắt buộc mở (áp dụng cả lab + prod)</div>
+      <div class="cmd"><span class="prompt">$</span> sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw allow from &lt;LAN_CIDR&gt; to any port 514 proto udp && sudo ufw allow from &lt;LAN_CIDR&gt; to any port 6514 proto tcp && sudo ufw --force enable && sudo ufw status</div>
+      <div class="text-[11px] mut mt-2">Syslog 514/6514 chỉ mở cho <code>&lt;LAN_CIDR&gt;</code> (lab: <code class="ok">192.168.122.0/24</code>) để syslog client forward — KHÔNG expose Internet.</div>
+    </div>
+  </div>
+
+  <div class="text-[11px] mut mb-2">Sửa <code>infra/caddy/Caddyfile</code>: bỏ <code>auto_https off</code>, thay <code>http://webui.local</code> bằng <code>chat.onelog.company.com</code> (drop <code>http://</code>), tương tự <code>db.onelog.company.com</code>. Caddy tự pull LE cert lần đầu boot (~30s).</div>
+  <div class="cmd"><span class="prompt">$</span> vi ~/onelog/infra/caddy/Caddyfile && docker compose restart caddy && docker compose logs caddy --tail=30 | grep -i "certificate obtained"</div>
+
+  <div class="text-[11px] mut mt-3">
+    <b class="acc">Rate limit:</b> LE issue 50 cert/domain/tuần. Nếu test nhiều, dùng staging: thêm <code>acme_ca https://acme-staging-v02.api.letsencrypt.org/directory</code> vào block <code>{}</code> global.
+  </div>
+</section>
+
+<!-- VERIFY CHECKLIST -->
+<section class="card p-5 mb-6 glow-lime">
+  <div class="h-title mb-3 ok">Verify checklist — sau deploy phải PASS toàn bộ</div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🐳 CONTAINER</div>
+      <div class="cmd"><span class="prompt">$</span> docker compose --profile agent --profile indexer --profile alerts --profile llm --profile chat ps --format "table {{.Name}}\t{{.Status}}"</div>
+      <div class="text-[11px] mut mt-2">Kỳ vọng: 17 service <code>Up</code> / <code>healthy</code>, KHÔNG có <code>Restarting</code>.</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🌐 EDGE + LLM</div>
+      <div class="cmd"><span class="comment"># Lab: -H "Host: webui.local" http://192.168.122.53/health
+# Prod: https://chat.onelog.company.com/health</span>
+<span class="prompt">$</span> curl -fsS -H "Host: &lt;CHAT_DOMAIN&gt;" http://&lt;LOGSERVER_IP&gt;/ | grep -o "&lt;title&gt;[^&lt;]*" && curl -fsS http://127.0.0.1:4000/health/liveliness && curl -fsS http://127.0.0.1:8080/health</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">📊 LOGS INGEST</div>
+      <div class="cmd"><span class="prompt">$</span> curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=* | limit 3' | head -c 500</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🚨 ALERTS</div>
+      <div class="cmd"><span class="prompt">$</span> curl -s http://127.0.0.1:8880/api/v1/alerts | jq '.data.alerts | length'</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🔍 MCP</div>
+      <div class="cmd"><span class="prompt">$</span> curl -fsS -H "Authorization: Bearer $(grep '^MCPO_API_KEY=' .env | cut -d= -f2)" http://127.0.0.1:8091/onelog-vl/openapi.json | jq '.info.title'</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">💬 OPENWEBUI · syslog client (từ srv-01)</div>
+      <div class="cmd"><span class="comment"># Test log forward từ client — chạy trên srv-01 (lab: 192.168.122.52)</span>
+<span class="prompt">$</span> logger -n &lt;LOGSERVER_IP&gt; -P 514 -T "test from $(hostname) $(date -Is)" && sleep 3 && curl -sG http://&lt;LOGSERVER_IP&gt;:9428/select/logsql/query --data-urlencode 'query=_msg:"test from" | limit 1'</div>
+    </div>
+  </div>
+
+  <hr class="sep"/>
+  <div class="text-[11px] mut mb-2 tracking-wider">🧪 SMOKE TEST end-to-end</div>
+  <ol class="checklist">
+    <li>Đăng nhập &lt;CHAT_DOMAIN&gt; (lab: <code class="ok">http://webui.local</code>) bằng admin đã bootstrap</li>
+    <li>Đổi password khỏi <code>ChangeMe2026!</code></li>
+    <li>Chọn model <b>gemini-flash</b> (default)</li>
+    <li>Enable 2 tool <code>onelog-vl</code> + <code>onelog-semantic</code></li>
+    <li>Hỏi: "Server nào có lỗi ssh trong 1h qua?" — model phải gọi <code>query</code> tool → trả kèm citation</li>
+    <li>Check cost log: <code>curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=_stream:litellm-proxy | keep model, response_cost | limit 5'</code></li>
+  </ol>
+</section>
+
+<!-- OPTIONAL DB TOOLS -->
+<section class="card p-5 mb-6 glow-amber">
+  <div class="h-title mb-3 warn">Optional — sqlite-web UI (dev only, KHÔNG expose public)</div>
+  <div class="text-[13px] mb-3">Bật khi dev cần browse trực tiếp <code>webui.db</code>. Read-only mount + basic auth. Truy cập qua SSH tunnel để không expose ra Internet.</div>
+  <div class="cmd"><span class="prompt">$</span> docker compose --profile dbtools up -d sqlite-web && docker compose --profile dbtools logs sqlite-web --tail=5</div>
+  <div class="text-[11px] mut mt-2">Từ workstation:</div>
+  <div class="cmd"><span class="comment"># Lab: ssh -L 8085:127.0.0.1:8085 vietnt@192.168.122.53</span>
+<span class="prompt">$</span> ssh -L 8085:127.0.0.1:8085 &lt;SSH_USER&gt;@&lt;LOGSERVER_IP&gt;
+<span class="comment"># Mở browser workstation: http://127.0.0.1:8085 · password lấy từ .env</span>
+<span class="prompt">$</span> grep SQLITE_WEB_PASSWORD ~/onelog/infra/.env</div>
+  <div class="text-[11px] err mt-3">
+    ⚠ KHÔNG mở subdomain public cho sqlite-web trên production. Nếu cần view remote, luôn qua SSH tunnel + IP whitelist.
+  </div>
+</section>
+
+<!-- SYSLOG CLIENT DEPLOY — 8-step playbook -->
+<section class="card p-5 mb-6" style="border-color:#4c1d95">
+  <div class="flex items-center justify-between mb-4">
+    <span class="h-title vio">Client deploy · 8 bước cho mỗi server nguồn log</span>
+    <div class="flex gap-2">
+      <span class="pill vio">chạy trên CLIENT (srv-01, srv-02, ...)</span>
+      <span class="pill gray">~5 phút / client</span>
+    </div>
+  </div>
+
+  <div class="text-[13px] mb-3">
+    Sau khi logserver PASS 15 bước ở trên, wire từng server nguồn log vào. Lab lặp cho <code>&lt;SRV_01_IP&gt;</code> và <code>&lt;SRV_02_IP&gt;</code>. Prod scale ra N server. Script <code>setup-rsyslog-client.sh</code> config rsyslog forward TCP 6514 RFC5424 + queue on-disk 500MB (log không mất khi logserver reboot).
+  </div>
+
+  <!-- CLIENT STEP 1 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">1</div>
+    <div class="step-body">
+      <div class="step-title">SSH vào client + set timezone + verify reachability</div>
+      <div class="step-desc">MUST timezone khớp logserver (Asia/Saigon) để log timestamp không lệch. Verify TCP 6514 tới logserver mở trước.</div>
+      <div class="cmd"><span class="comment"># Lab: ssh vietnt@192.168.122.52 · logserver = 192.168.122.53</span>
+<span class="prompt">$</span> ssh &lt;SSH_USER&gt;@&lt;SRV_01_IP&gt; && sudo timedatectl set-timezone Asia/Saigon && timeout 3 bash -c 'cat &lt;/dev/tcp/&lt;LOGSERVER_IP&gt;/6514' && echo " REACHABLE"</div>
+      <div class="text-[11px] mut mt-1">Nếu <code>REACHABLE</code> không print → firewall giữa client-logserver chưa mở 6514/tcp. Sửa trước bước tiếp.</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 2 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">2</div>
+    <div class="step-body">
+      <div class="step-title">Cài rsyslog + chrony (nếu chưa có)</div>
+      <div class="step-desc">Ubuntu/Debian thường có sẵn rsyslog. Chrony bắt buộc — client clock drift = log timestamp sai.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo apt-get update && sudo apt-get install -y rsyslog chrony && sudo systemctl enable --now chrony rsyslog && chronyc tracking | grep -E 'Leap|System time'</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 3 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">3</div>
+    <div class="step-body">
+      <div class="step-title">Copy setup script từ workstation sang client</div>
+      <div class="step-desc">2 cách. Cách A: scp từ workstation đã clone repo. Cách B: curl trực tiếp từ GitHub (không cần workstation trung gian).</div>
+      <div class="cmd"><span class="comment"># Cách A — scp từ workstation (chạy trên workstation, KHÔNG trên client)</span>
+<span class="prompt">$</span> scp ~/onelog/infra/scripts/setup-rsyslog-client.sh &lt;SSH_USER&gt;@&lt;SRV_01_IP&gt;:/tmp/</div>
+      <div class="cmd" style="margin-top:6px"><span class="comment"># Cách B — curl từ GitHub raw (chạy trên client)</span>
+<span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/nguyenviet2509/onelog/master/infra/scripts/setup-rsyslog-client.sh -o /tmp/setup-rsyslog-client.sh</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 4 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">4</div>
+    <div class="step-body">
+      <div class="step-title">Chạy setup script</div>
+      <div class="step-desc">Script tự làm: (a) install rsyslog nếu thiếu, (b) backup config cũ <code>.bak</code>, (c) drop <code>/etc/rsyslog.d/90-forward-onelog.conf</code> với queue on-disk 500MB, (d) syntax check + restart, (e) fire test log.</div>
+      <div class="cmd"><span class="comment"># Lab: LOG_SERVER_IP=192.168.122.53</span>
+<span class="prompt">$</span> sudo LOG_SERVER_IP=&lt;LOGSERVER_IP&gt; bash /tmp/setup-rsyslog-client.sh</div>
+      <div class="text-[11px] mut mt-1">Output kỳ vọng cuối: <code>[5/5] ✓ TCP connection ESTABLISHED tới ...</code></div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 5 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">5</div>
+    <div class="step-body">
+      <div class="step-title">Verify TCP connection ổn định (trên client)</div>
+      <div class="step-desc">Sau restart rsyslog phải có socket ESTABLISHED tới logserver:6514. Nếu chỉ có SYN-SENT / CLOSE-WAIT = logserver chưa accept.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo ss -tnp | grep :6514 && sudo systemctl status rsyslog --no-pager | head -8</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 6 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">6</div>
+    <div class="step-body">
+      <div class="step-title">Fire test log + verify từ logserver</div>
+      <div class="step-desc">Gửi 1 log tag riêng, chờ 3s, query VL từ logserver. Nếu count = 1 → pipeline OK end-to-end.</div>
+      <div class="cmd"><span class="comment"># Trên client — fire log</span>
+<span class="prompt">$</span> logger -t onboard-check "verify $(hostname) $(date -Is)"</div>
+      <div class="cmd" style="margin-top:6px"><span class="comment"># Trên logserver — verify (SSH lại logserver hoặc mở terminal khác)</span>
+<span class="prompt">$</span> sleep 3 && curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=service:onboard-check | limit 3' | jq</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 7 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">7</div>
+    <div class="step-body">
+      <div class="step-title">Firewall client-side · outbound 6514/tcp</div>
+      <div class="step-desc">Nếu client có UFW/iptables outbound rule strict, cần allow explicit. Đa số distro default allow all outbound — bước này chỉ áp dụng khi có policy đặc biệt.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo ufw status | grep -E 'Status|6514' && sudo ufw allow out to &lt;LOGSERVER_IP&gt; port 6514 proto tcp comment "onelog syslog forward"</div>
+    </div>
+  </div>
+
+  <!-- CLIENT STEP 8 -->
+  <div class="step">
+    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">8</div>
+    <div class="step-body">
+      <div class="step-title">Lặp cho các client còn lại (loop 1 command)</div>
+      <div class="step-desc">Sau khi 1 client PASS, deploy hàng loạt bằng loop. SSH key phải configured trước cho tất cả IP (workflow: <code>ssh-copy-id</code> cho mỗi client).</div>
+      <div class="cmd"><span class="comment"># Chạy trên WORKSTATION — auto SSH + copy + run cho mỗi client</span>
+<span class="prompt">$</span> for IP in &lt;SRV_01_IP&gt; &lt;SRV_02_IP&gt; &lt;SRV_03_IP&gt;; do
+    echo "=== $IP ==="
+    scp ~/onelog/infra/scripts/setup-rsyslog-client.sh &lt;SSH_USER&gt;@$IP:/tmp/ &&
+    ssh &lt;SSH_USER&gt;@$IP "sudo LOG_SERVER_IP=&lt;LOGSERVER_IP&gt; bash /tmp/setup-rsyslog-client.sh";
+  done</div>
+    </div>
+  </div>
+
+  <hr class="sep"/>
+
+  <!-- FINAL VERIFY -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">✅ VERIFY toàn bộ · TỪ LOGSERVER</div>
+      <div class="cmd"><span class="comment"># Đếm log mỗi host trong 5 phút qua — mỗi client PHẢI có count > 0</span>
+<span class="prompt">$</span> curl -sG http://127.0.0.1:9428/select/logsql/query \
+  --data-urlencode 'query=_time:5m | stats by (host) count() as n | sort by (n desc)' | jq</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🔍 TROUBLESHOOT nhanh · client-side</div>
+      <table class="k">
+        <tbody>
+          <tr><td>Không thấy log từ client</td><td>ss -tnp | grep 6514 · rsyslog restart</td></tr>
+          <tr><td>ESTAB nhưng VL không có</td><td>Vector strict parser reject — check <code>docker logs vector | grep parse</code> trên logserver</td></tr>
+          <tr><td>Client reboot → mất log gap</td><td>Queue on-disk fix có sẵn, chỉ cần enable <code>rsyslog.service</code></td></tr>
+          <tr><td>Timestamp lệch giờ</td><td>chrony chưa sync — <code>sudo chronyc makestep</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="text-[11px] mut mt-3">
+    <b class="acc">Log source phong phú hơn:</b> Sau khi rsyslog forward all facility, có thể mở thêm app log riêng (nginx, mysql, docker) bằng cách bổ sung <code>/etc/rsyslog.d/*-app.conf</code> tail file → forward cùng pipeline. Xem <code>docs/ops-cheatsheet.md</code>.
+  </div>
+</section>
+
+<!-- POST-DEPLOY -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">Post-deploy — trong tuần đầu</div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">✅ SECURITY HARDENING</div>
+      <ul class="text-[12px] space-y-1.5">
+        <li>• Copy <code>/root/vault/backup-age.key</code> ra ops vault offsite</li>
+        <li>• Disable SSH password auth, chỉ SSH key</li>
+        <li>• Set <code>fail2ban</code> cho sshd (auto-ban 5 fail attempts)</li>
+        <li>• Rotate <code>ChangeMe2026!</code> admin password</li>
+        <li>• Enable Telegram alert bot: paste <code>TELEGRAM_BOT_TOKEN</code> + chat ID vào .env → restart alertmanager</li>
+        <li>• Verify HTTPS cert auto-renew: <code>docker compose exec caddy caddy list-certificates</code></li>
+      </ul>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🎯 ONBOARDING TEAM</div>
+      <ul class="text-[12px] space-y-1.5">
+        <li>• Gửi 5 ops link <code>&lt;CHAT_DOMAIN&gt;</code> (lab: <code>http://webui.local</code>)</li>
+        <li>• Admin invite trực tiếp trong OpenWebUI (KHÔNG bật signup)</li>
+        <li>• Đưa link <code>docs/openwebui-user-guide.md</code></li>
+        <li>• Demo 30 phút: 3 use case điển hình (search lỗi, trace request, cost visibility)</li>
+        <li>• Set alert Telegram channel cho team ops</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ROLLBACK + TROUBLESHOOT -->
+<section class="card p-5 mb-6">
+  <div class="h-title mb-3">Rollback + troubleshoot phổ biến</div>
+  <table class="k">
+    <thead><tr><th>Triệu chứng</th><th>Chẩn đoán</th><th>Fix 1 dòng</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>no configuration file provided</code></td>
+        <td>Đứng sai directory</td>
+        <td><code>cd ~/onelog/infra</code></td>
+      </tr>
+      <tr>
+        <td><code>no such service: X</code></td>
+        <td>Thiếu <code>--profile</code> flag</td>
+        <td>Thêm <code>--profile agent --profile chat</code>...</td>
+      </tr>
+      <tr>
+        <td>LiteLLM stuck 20 phút boot</td>
+        <td>DB backend chưa disable</td>
+        <td><code>git pull</code> (fix <code>31643ec</code>) → force-recreate</td>
+      </tr>
+      <tr>
+        <td>Container Restarting exit 78 (Vector)</td>
+        <td>Config invalid — env var interp</td>
+        <td><code>docker compose logs vector --tail=50 | grep -i error</code></td>
+      </tr>
+      <tr>
+        <td>OpenWebUI "Failed to connect backend"</td>
+        <td>LiteLLM chưa healthy hoặc virtual key sai</td>
+        <td>Verify <code>OPENWEBUI_LITELLM_VIRTUAL_KEY = ${LITELLM_MASTER_KEY}</code></td>
+      </tr>
+      <tr>
+        <td>Caddy trả 410 "web UI deprecated"</td>
+        <td>Rơi vào default <code>:80</code> catch-all</td>
+        <td>Thêm site block cho domain + <code>docker compose restart caddy</code></td>
+      </tr>
+      <tr>
+        <td>Telegram không nhận alert</td>
+        <td><code>TELEGRAM_MOCK=true</code> hoặc chat_id sai</td>
+        <td><code>sed -i 's/TELEGRAM_MOCK=true/TELEGRAM_MOCK=false/' .env</code> + restart alertmanager</td>
+      </tr>
+      <tr>
+        <td><code>git pull</code> báo local changes</td>
+        <td>Config bị sửa tại chỗ</td>
+        <td><code>git stash push -m before-pull && git pull</code></td>
+      </tr>
+      <tr>
+        <td>DB webui.db &gt; 500 MB</td>
+        <td>Alert <code>OpenWebUIDbSizeHint</code> fire</td>
+        <td><code>bash scripts/openwebui-db-maintenance.sh monthly</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <hr class="sep"/>
+  <div class="text-[11px] mut mb-2 tracking-wider">🚨 EMERGENCY ROLLBACK</div>
+  <div class="cmd"><span class="prompt">$</span> cd ~/onelog/infra && docker compose --profile agent --profile chat --profile llm --profile alerts --profile indexer down && git log --oneline | head -5 && git checkout &lt;prev_sha&gt; && docker compose --profile agent --profile chat --profile llm --profile alerts --profile indexer up -d</div>
+  <div class="text-[11px] mut mt-2">Data volumes (<code>./data/*</code>) KHÔNG bị xóa bởi <code>down</code>. Chỉ container recreate.</div>
+</section>
+
+<!-- STACK LEGEND -->
+<section class="card p-5 mb-8">
+  <div class="h-title mb-3">Reference — 17 container map</div>
+  <table class="k">
+    <thead>
+      <tr><th>Container</th><th>Profile</th><th>Port host</th><th>Vai trò</th><th>Persistent volume</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>victorialogs</code></td><td>—</td><td>9428</td><td>Log store · retention 7d</td><td><code>./data/victorialogs</code></td></tr>
+      <tr><td><code>qdrant</code></td><td>—</td><td>6333</td><td>Vector search cho MCP semantic</td><td><code>./data/qdrant</code></td></tr>
+      <tr><td><code>postgres</code></td><td>—</td><td>5432</td><td>Metadata cho rag-agent</td><td><code>./data/postgres</code></td></tr>
+      <tr><td><code>nats</code></td><td>—</td><td>4222</td><td>WARN+ tap queue → indexer</td><td><code>./data/nats</code></td></tr>
+      <tr><td><code>vector</code></td><td>—</td><td>514/udp · 6514/tcp · 6515/tcp</td><td>Ingest syslog + DB probe</td><td><code>./data/vector</code></td></tr>
+      <tr><td><code>caddy</code></td><td>—</td><td>80 · 443</td><td>Reverse proxy + LE TLS</td><td><code>./caddy/data</code></td></tr>
+      <tr><td><code>mcp-vl</code></td><td>—</td><td>internal</td><td>MCP VictoriaLogs tools</td><td>—</td></tr>
+      <tr><td><code>mcp-semantic</code></td><td>—</td><td>internal</td><td>MCP semantic search + auth</td><td><code>./data/audit</code></td></tr>
+      <tr><td><code>redis</code></td><td>agent</td><td>6379</td><td>Rate limit + session cache</td><td><code>./data/redis</code></td></tr>
+      <tr><td><code>agent</code></td><td>agent</td><td>8080</td><td>SSE chat API + tool dispatch</td><td>—</td></tr>
+      <tr><td><code>indexer</code></td><td>indexer</td><td>9100</td><td>Drain3 template clustering</td><td><code>./data/indexer</code></td></tr>
+      <tr><td><code>vmalert</code></td><td>alerts</td><td>8880</td><td>LogsQL rule evaluator</td><td>—</td></tr>
+      <tr><td><code>alertmanager</code></td><td>alerts</td><td>9093</td><td>Route alert → Telegram</td><td>—</td></tr>
+      <tr><td><code>litellm-proxy</code></td><td>llm+chat</td><td>4000</td><td>4-provider gateway</td><td>—</td></tr>
+      <tr><td><code>mcpo</code></td><td>chat</td><td>8091</td><td>MCP → OpenAPI bridge</td><td>—</td></tr>
+      <tr><td><code>openwebui</code></td><td>chat</td><td>8090</td><td>Team chat UI</td><td><code>./data/openwebui</code></td></tr>
+      <tr><td><code>sqlite-web</code></td><td>dbtools</td><td>8085</td><td>Dev browse webui.db (opt-in)</td><td>—</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer class="text-[11px] mut text-center py-4 border-t border-[var(--line)]">
+  OneLog Production Deploy Playbook · Verified logserver-01 2026-07-06 ·
+  <a href="../docs/deployment-guide.md" class="acc">deployment-guide.md</a> ·
+  <a href="../docs/deployment-llm-abstraction.md" class="acc">deployment-llm-abstraction.md</a>
+</footer>
+
+</div>
+
+</body>
+</html>

@@ -64,25 +64,6 @@
     </div>
   </header>
 
-  <!-- Update banner: LLM abstraction added -->
-  <div class="mt-4 card p-3.5 flex items-start gap-3" style="border-color:#082f3f;background:linear-gradient(180deg,#07171f,#0e0e12)">
-    <span class="pill cyan mt-0.5">UPDATED 2026-07-02</span>
-    <div class="text-[13px] leading-relaxed">
-      Thêm <b>LLM Provider Abstraction</b> (plan 260701-1544): <span class="pill cyan">litellm-proxy</span> + <span class="pill vio">openwebui</span> mở đường thay 4 provider (Claude/GPT/Gemini/DeepSeek) qua 1 env var.
-      Agent service (<code>ragstack-agent</code>) <b>restored</b> với LiteLLM adapter — thay Anthropic direct SDK.
-      Team ops có 2 UX song song: (a) OpenWebUI <code>http://webui.local/</code>, (b) Claude Desktop qua MCP (như cũ).
-      Chi tiết: <code>docs/deployment-llm-abstraction.md</code>.
-    </div>
-  </div>
-
-  <!-- Legacy web decommission (still valid) -->
-  <div class="mt-3 card p-3 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
-    <span class="pill amber mt-0.5">STILL DECOMMISSIONED</span>
-    <div class="text-[12px] leading-relaxed mut">
-      Web UI (Next.js :3000) vẫn commented trong <code>docker-compose.yml</code>. Chức năng chat đã thay bằng OpenWebUI (subdomain webui.local). Code <code>web/</code> giữ trên master để resurrect nếu cần. Redis (cache cho web cũ) cũng chưa reactivate.
-    </div>
-  </div>
-
   <!-- TOC + Hero -->
   <section class="grid grid-cols-[1fr_280px] gap-4 mt-5">
     <div class="card p-6 grid-bg">
@@ -149,7 +130,7 @@ flowchart LR
     LLM["litellm-proxy :4000<br/>(4 model alias)<br/>NEW 2026-07"]
     OWU["openwebui :8090<br/>(webui.local)<br/>NEW 2026-07"]
     CAD["Caddy 80/443<br/>app.local + webui.local<br/>IP allowlist + Bearer"]
-    DECOM["~~web (Next.js) :3000~~<br/><i>still decommissioned</i>"]
+    DECOM["web Next.js :3000<br/>(decommissioned)"]
   end
   CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
   OW["Browser<br/>(webui.local)"]
@@ -170,10 +151,10 @@ flowchart LR
   CAD -- "/api/chat" --> AG
   CAD -- "/llm/v1/*" --> LLM
   OWU -- "OpenAI-compat" --> LLM
-  OWU -.- "MCP token OpenWebUI" .-> MSE
-  OWU -.- "MCP token OpenWebUI" .-> MVL
+  OWU -. "MCP token OpenWebUI" .-> MSE
+  OWU -. "MCP token OpenWebUI" .-> MVL
   AG -- "LiteLLM SDK direct" --> P1
-  AG -.- "internal tools" .-> MSE
+  AG -. "internal tools" .-> MSE
   LLM --> P1
   MVL -- "LogsQL" --> VL
   MSE -- "vector search" --> Q
@@ -191,6 +172,26 @@ flowchart LR
   <!-- 2. COMPONENTS -->
   <section id="components" class="anchor mt-8">
     <h2 class="text-lg font-semibold"><span class="step-num">2</span> &nbsp;Components stack</h2>
+
+    <!-- Update banner: LLM abstraction added -->
+    <div class="mt-3 card p-3.5 flex items-start gap-3" style="border-color:#082f3f;background:linear-gradient(180deg,#07171f,#0e0e12)">
+      <span class="pill cyan mt-0.5">UPDATED 2026-07-02</span>
+      <div class="text-[13px] leading-relaxed">
+        Thêm <b>LLM Provider Abstraction</b> (plan 260701-1544): <span class="pill cyan">litellm-proxy</span> + <span class="pill vio">openwebui</span> mở đường thay 4 provider (Claude/GPT/Gemini/DeepSeek) qua 1 env var.
+        Agent service (<code>ragstack-agent</code>) <b>restored</b> với LiteLLM adapter — thay Anthropic direct SDK.
+        Team ops có 2 UX song song: (a) OpenWebUI <code>http://webui.local/</code>, (b) Claude Desktop qua MCP (như cũ).
+        Chi tiết: <code>docs/deployment-llm-abstraction.md</code>.
+      </div>
+    </div>
+
+    <!-- Legacy web decommission (still valid) -->
+    <div class="mt-2 card p-3 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
+      <span class="pill amber mt-0.5">STILL DECOMMISSIONED</span>
+      <div class="text-[12px] leading-relaxed mut">
+        Web UI (Next.js :3000) vẫn commented trong <code>docker-compose.yml</code>. Chức năng chat đã thay bằng OpenWebUI (subdomain webui.local). Code <code>web/</code> giữ trên master để resurrect nếu cần. Redis (cache cho web cũ) cũng chưa reactivate.
+      </div>
+    </div>
+
     <div class="card mt-3 p-2">
       <table class="k">
         <thead>

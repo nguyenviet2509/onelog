@@ -25,6 +25,11 @@ import sys
 
 from litellm.integrations.custom_logger import CustomLogger
 
+# Debug beacon at module import time — confirms the file is actually loaded
+# by LiteLLM's Python interpreter. Grep container logs for this line during
+# first-boot troubleshooting: `docker compose logs litellm-proxy | grep BEACON`.
+print(json.dumps({"event": "onelog_callback_module_loaded", "file": __file__}), flush=True)
+
 
 def _emit_cost_record(kwargs: dict, response_obj, start_time, end_time) -> None:
     """Emit 1 JSON line to stdout with cost/token/user metadata for VL ingest.
@@ -105,11 +110,13 @@ class OnelogValidateHandler(CustomLogger):
     """Validate completions + emit cost record on success."""
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        print(json.dumps({"event": "onelog_callback_fired", "path": "async_log_success"}), flush=True)
         _validate_completion(response_obj)
         _emit_cost_record(kwargs, response_obj, start_time, end_time)
 
     # Sync path for older LiteLLM code paths — same rule.
     def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        print(json.dumps({"event": "onelog_callback_fired", "path": "sync_log_success"}), flush=True)
         _validate_completion(response_obj)
         _emit_cost_record(kwargs, response_obj, start_time, end_time)
 

@@ -58,11 +58,11 @@ litellm_settings:
   # [RT-F10] Reject empty / malformed completions instead of returning them
   # as success — otherwise fallback chain never triggers on subtly-broken
   # provider responses. Callback module ships in /app/callbacks.
-  # `callbacks:` = proxy handler slot (validate + interceptor)
-  # `success_callback:` = logging slot (per-request cost record emit)
-  # Same instance serves both: OnelogValidateHandler implements both hooks.
+  # `callbacks:` slot triggers CustomLogger's log_success_event / async_log_success_event
+  # per request (verified via `onelog_callback_fired` beacon).
+  # `success_callback:` reserved for BUILT-IN tags only (prometheus, s3, datadog,
+  # langfuse…) — passing a module.instance string causes proxy startup crash.
   callbacks: custom_callbacks.proxy_handler_instance
-  success_callback: ["custom_callbacks.proxy_handler_instance"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

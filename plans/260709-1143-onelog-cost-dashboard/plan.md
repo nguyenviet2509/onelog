@@ -3,7 +3,7 @@ name: onelog-cost-dashboard
 title: OneLog LLM Cost Dashboard — 5 ops · 4 providers
 slug: onelog-cost-dashboard
 date: 2026-07-09
-status: implementation-complete-awaiting-deploy
+status: completed
 owner: trihd@inet.vn
 mode: --auto
 uiApproach: grafana
@@ -40,11 +40,11 @@ UI: **Grafana OSS** container mới trong compose, mount sau Caddy `admin.webui.
 
 | # | Phase | Effort | Status | File |
 |---|---|---|---|---|
-| 01 | Grafana container + Caddy admin subdomain | 0.5 ngày | code-ready | [phase-01-grafana-container-admin-subdomain.md](phase-01-grafana-container-admin-subdomain.md) |
-| 02 | LogsQL panels — Phase A quick win | 0.5 ngày | code-ready (dashboard JSON scaffolded, field name verify pending) | [phase-02-logsql-panels-phase-a.md](phase-02-logsql-panels-phase-a.md) |
-| 03 | Provider balance poll script | 0.5 ngày | code-ready (admin keys pending) | [phase-03-provider-balance-poll.md](phase-03-provider-balance-poll.md) |
-| 04 | Balance panels + vmalert cost rules | 0.5 ngày | code-ready (1 rule disabled — math pipe unverified) | [phase-04-balance-panels-alerts.md](phase-04-balance-panels-alerts.md) |
-| 05 | Docs + runbook | 0.25 ngày | code-ready | [phase-05-docs-runbook.md](phase-05-docs-runbook.md) |
+| 01 | Grafana container + Caddy admin subdomain | 0.5 ngày | ✅ done | [phase-01-grafana-container-admin-subdomain.md](phase-01-grafana-container-admin-subdomain.md) |
+| 02 | LogsQL panels — Phase A quick win | 0.5 ngày | ✅ done | [phase-02-logsql-panels-phase-a.md](phase-02-logsql-panels-phase-a.md) |
+| 03 | Provider balance poll script | 0.5 ngày | ✅ done — DeepSeek live; OpenAI/Anthropic pending admin keys | [phase-03-provider-balance-poll.md](phase-03-provider-balance-poll.md) |
+| 04 | Balance panels + vmalert cost rules | 0.5 ngày | ✅ done — 5 rules loaded (`AnthropicCacheHitLow` still disabled) | [phase-04-balance-panels-alerts.md](phase-04-balance-panels-alerts.md) |
+| 05 | Docs + runbook | 0.25 ngày | ✅ done | [phase-05-docs-runbook.md](phase-05-docs-runbook.md) |
 
 **Tổng effort:** ~2.25 ngày.
 
@@ -130,3 +130,15 @@ Implementation done (code + config), deploy trên logserver + verify:
   - W3: disabled `AnthropicCacheHitLow` rule (math pipe unverified) — enable when vmui test passes
   - W2: dropped `2>&1` on curl in poll script — stderr stays out of jq input
 - Full review report: `plans/260709-1143-onelog-cost-dashboard/reports/code-reviewer-260709-1324-cost-dashboard-implementation.md`
+
+## Deploy notes (2026-07-09 afternoon)
+
+Live on `admin.webui.local` (logserver-01). Fixes applied during deploy:
+
+- **Caddy admin subdomain**: dropped Bearer layer per user request ("không thể cài ModHeader từng ops") → CIDR + Grafana login only. `ADMIN_STRICT_CIDR` = space-separated list.
+- **VectorLogs plugin quirk**: dashboard queries need `"queryType": "stats"` field in each target — plugin returns raw log frames otherwise ("Data is missing a number field").
+- **VL LogsQL no `last()`**: replaced with `avg()` in both dashboard queries + vmalert rules (`DeepSeekBalanceLow`, `OpenAIDailyCostHigh`).
+- **Vector transform**: added `filter_litellm_cost` (event=="litellm_cost") to prevent 500+ non-cost stdout lines from getting tagged `service:litellm_cost`.
+- **rsyslog forward**: `/etc/rsyslog.d/50-onelog-provider-cost.conf` forwards tag=`provider_cost` → 127.0.0.1:6514 (Vector syslog_tcp).
+- **Cron**: `/etc/cron.d/onelog-provider-cost` runs `poll-provider-cost.sh` every 15m with `ENV_FILE=/home/vietnt/onelog/infra/litellm/.env.cost`.
+- **vmalert group `llm_cost`**: 5 rules load `health: ok, state: inactive` (thresholds not breached at $71.75 balance).

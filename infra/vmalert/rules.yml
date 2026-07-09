@@ -247,7 +247,7 @@ groups:
       # Below $5 means ~1-2 days runway at typical usage — top up urgently.
       - alert: DeepSeekBalanceLow
         expr: |
-          service:provider_cost provider:deepseek
+          service:provider_cost provider:deepseek _time:15m
             | stats avg(balance_usd) as b
             | filter b:>0 AND b:<100
         for: 0m
@@ -262,7 +262,7 @@ groups:
       # runaway usage or a rogue user — investigate before monthly cap hit.
       - alert: OpenAIDailyCostHigh
         expr: |
-          service:provider_cost provider:openai
+          service:provider_cost provider:openai _time:15m
             | stats avg(cost_usd_day) as c
             | filter c:>3
         for: 0m
@@ -277,7 +277,7 @@ groups:
       # buffer before hard billing cap. for=15m avoids transient sum spikes.
       - alert: AnthropicMonthlyNearCap
         expr: |
-          service:provider_cost provider:anthropic
+          service:provider_cost provider:anthropic _time:30d
             | stats sum(cost_usd_day) as m
             | filter m:>14
         for: 15m
@@ -293,7 +293,7 @@ groups:
       # for=5m: avoid alerting on brief spikes during deployment windows.
       - alert: FallbackRateHigh
         expr: |
-          service:litellm_cost fallback:true
+          service:litellm_cost fallback:true _time:24h
             | stats count() as n
             | filter n:>20
         for: 5m
@@ -309,7 +309,7 @@ groups:
       # for=5m: prevents alert on short usage bursts within normal session.
       - alert: UserDailyBudgetExceeded
         expr: |
-          service:litellm_cost user_api_key_alias:*
+          service:litellm_cost user_api_key_alias:* _time:24h
             | stats by (user_api_key_alias) sum(response_cost) as spent
             | filter spent:>2
         for: 5m

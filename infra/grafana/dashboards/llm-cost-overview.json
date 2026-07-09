@@ -56,7 +56,7 @@
   "annotations": {
     "list": []
   },
-  "description": "OneLog LLM Cost Dashboard — 5 ops · 4 providers. Data from LiteLLM json_logs via VictoriaLogs.\n\nTODO (Phase 02 verification): Confirm exact field name for request cost. LiteLLM default is `response_cost`; some deployments emit `spend` or nested `metadata.usage.cost`. Run: curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=service:litellm_cost _time:5m' | jq 'keys' to verify before using panels.",
+  "description": "OneLog LLM Cost Dashboard — 5 ops · 4 providers. Data from LiteLLM json_logs via VictoriaLogs.\n\nTODO (Phase 02 verification): Confirm exact field name for request cost. LiteLLM default is `response_cost`; some deployments emit `spend` or nested `metadata.usage.cost`. Run: curl -s 'http://localhost:9428/select/logsql/query' --data-urlencode 'query=service:litellm_cost event:litellm_cost _time:5m' | jq 'keys' to verify before using panels.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -105,7 +105,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:30d\n  | stats sum(response_cost) as total",
+          "expr": "service:litellm_cost event:litellm_cost _time:30d\n  | stats sum(response_cost) as total",
           "legendFormat": "total",
           "refId": "A"
         }
@@ -145,7 +145,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:1d\n  | stats sum(response_cost) as today",
+          "expr": "service:litellm_cost event:litellm_cost _time:1d\n  | stats sum(response_cost) as today",
           "legendFormat": "today",
           "refId": "A"
         }
@@ -181,7 +181,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:24h\n  | stats sum(prompt_tokens) as tin,\n          sum(completion_tokens) as tout",
+          "expr": "service:litellm_cost event:litellm_cost _time:24h\n  | stats sum(prompt_tokens) as tin,\n          sum(completion_tokens) as tout",
           "legendFormat": "__auto",
           "refId": "A"
         }
@@ -224,7 +224,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:24h model:claude*\n  | stats sum(cache_read_input_tokens) as cached,\n          sum(prompt_tokens) as total\n  | math (cached / total) * 100 as hit_pct",
+          "expr": "service:litellm_cost event:litellm_cost _time:24h model:claude*\n  | stats sum(cache_read_input_tokens) as cached,\n          sum(prompt_tokens) as total\n  | math (cached / total) * 100 as hit_pct",
           "legendFormat": "cache hit %",
           "refId": "A"
         }
@@ -265,7 +265,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:24h fallback:true\n  | stats count() as n",
+          "expr": "service:litellm_cost event:litellm_cost _time:24h fallback:true\n  | stats count() as n",
           "legendFormat": "fallbacks",
           "refId": "A"
         }
@@ -323,7 +323,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:30d\n  | stats by (_time:1d, model) sum(response_cost) as cost",
+          "expr": "service:litellm_cost event:litellm_cost _time:30d\n  | stats by (_time:1d, model) sum(response_cost) as cost",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -356,7 +356,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:7d\n  | stats by (model) sum(response_cost) as cost\n  | sort by (cost) desc",
+          "expr": "service:litellm_cost event:litellm_cost _time:7d\n  | stats by (model) sum(response_cost) as cost\n  | sort by (cost) desc",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -405,7 +405,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:7d user_api_key_alias:*\n  | stats by (user_api_key_alias)\n          sum(response_cost) as spent,\n          count() as reqs\n  | sort by (spent) desc",
+          "expr": "service:litellm_cost event:litellm_cost _time:7d user_api_key_alias:*\n  | stats by (user_api_key_alias)\n          sum(response_cost) as spent,\n          count() as reqs\n  | sort by (spent) desc",
           "legendFormat": "{{user_api_key_alias}}",
           "refId": "A"
         }
@@ -463,7 +463,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:24h fallback:true\n  | fields _time, model, fallback_model, exception_type\n  | sort by (_time) desc\n  | limit 50",
+          "expr": "service:litellm_cost event:litellm_cost _time:24h fallback:true\n  | fields _time, model, fallback_model, exception_type\n  | sort by (_time) desc\n  | limit 50",
           "legendFormat": "",
           "refId": "A"
         }
@@ -630,7 +630,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:30d model:gemini*\n  | stats sum(response_cost) as estimate",
+          "expr": "service:litellm_cost event:litellm_cost _time:30d model:gemini*\n  | stats sum(response_cost) as estimate",
           "legendFormat": "estimate",
           "refId": "A"
         }

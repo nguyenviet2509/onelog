@@ -85,6 +85,10 @@ services:
       # Read-only mount cho exec source poll size (openwebui SQLite).
       # KHÔNG copy dữ liệu, chỉ `stat` file để emit metric event.
       - ./data/openwebui:/monitor/openwebui:ro
+      # Docker socket read-only — cần cho source `docker_litellm` (docker_logs
+      # type) để đọc stdout LiteLLM container. LiteLLM dùng logging driver
+      # json-file (không phải syslog), nên phải qua Docker API để lấy log.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - victorialogs
       - nats

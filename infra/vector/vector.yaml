@@ -48,6 +48,14 @@ sources:
       - /bin/sh
       - /etc/vector/probe-openwebui-db.sh
 
+  # Docker container stdout — chỉ nhắm LiteLLM để lấy json_logs cost stream.
+  # Requires `/var/run/docker.sock` mounted read-only on vector container.
+  # LiteLLM emits structured JSON per request when `json_logs: true` in
+  # config.yaml — captured in .message field, parsed by `parse_litellm_cost`.
+  docker_litellm:
+    type: docker_logs
+    include_containers: [ragstack-litellm]
+
 transforms:
   enrich:
     type: remap
@@ -142,20 +150,22 @@ transforms:
       if trace != null { .trace = trace }
 
   # LiteLLM container stdout → tag service:litellm_cost for cost tracking.
-  # LiteLLM logs cost metadata lines to stdout; Docker logging driver forwards
-  # them to syslog with appname = container name (ragstack-litellm).
-  # Placed AFTER `redact` so PII redaction still runs on LiteLLM log lines.
-  # After `enrich`, .service holds the former appname — `redact` preserves it.
-  # Non-LiteLLM events pass through to victorialogs unchanged (just service retag skipped).
+  # LiteLLM stdout → parse JSON cost stream → tag service=litellm_cost.
+  # Input from docker_litellm source (docker_logs, requires socket mount).
+  # LiteLLM json_logs emits mixed lines: some are structured JSON (cost/spend
+  # records), others are plain startup/error text. parse_json fail-safe: keep
+  # event but skip merging when non-JSON line encountered.
   tag_litellm_cost:
     type: remap
-    inputs: [redact]
+    inputs: [docker_litellm]
     source: |
-      # `enrich` maps .appname → .service; `redact` preserves .service.
-      # Only retag events from the LiteLLM container.
-      if (string(.service) ?? "") == "ragstack-litellm" {
-        .service = "litellm_cost"
+      raw_msg = string(.message) ?? ""
+      parsed, err = parse_json(raw_msg)
+      if err == null && is_object(parsed) {
+        # Merge parsed cost/spend fields (response_cost, model, user_api_key_alias, tokens…)
+        . = merge(., parsed) ?? .
       }
+      .service = "litellm_cost"
 
   # provider_cost syslog events → parse JSON body into flat fields.
   # Emitted by poll-provider-cost.sh via `logger -t provider_cost`.

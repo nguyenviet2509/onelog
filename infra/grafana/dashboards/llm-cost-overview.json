@@ -107,6 +107,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:30d\n  | stats sum(response_cost) as total",
           "legendFormat": "total",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -147,6 +148,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:1d\n  | stats sum(response_cost) as today",
           "legendFormat": "today",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -183,6 +185,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:24h\n  | stats sum(prompt_tokens) as tin,\n          sum(completion_tokens) as tout",
           "legendFormat": "__auto",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -226,6 +229,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:24h model:claude*\n  | stats sum(cache_read_input_tokens) as cached,\n          sum(prompt_tokens) as total\n  | math (cached / total) * 100 as hit_pct",
           "legendFormat": "cache hit %",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -267,6 +271,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:24h fallback:true\n  | stats count() as n",
           "legendFormat": "fallbacks",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -325,6 +330,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:30d\n  | stats by (_time:1d, model) sum(response_cost) as cost",
           "legendFormat": "{{model}}",
+          "queryType": "range",
           "refId": "A"
         }
       ]
@@ -358,6 +364,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:7d\n  | stats by (model) sum(response_cost) as cost\n  | sort by (cost) desc",
           "legendFormat": "{{model}}",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -407,6 +414,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:7d user_api_key_alias:*\n  | stats by (user_api_key_alias)\n          sum(response_cost) as spent,\n          count() as reqs\n  | sort by (spent) desc",
           "legendFormat": "{{user_api_key_alias}}",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -465,6 +473,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:24h fallback:true\n  | fields _time, model, fallback_model, exception_type\n  | sort by (_time) desc\n  | limit 50",
           "legendFormat": "",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -513,6 +522,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:provider_cost provider:deepseek _time:1h\n  | fields _time, balance_usd\n  | sort by (_time) desc\n  | limit 1",
           "legendFormat": "balance",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -554,6 +564,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:provider_cost provider:openai _time:1h\n  | fields _time, cost_usd_day\n  | sort by (_time) desc\n  | limit 1",
           "legendFormat": "daily cost",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -595,6 +606,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:provider_cost provider:anthropic _time:30d\n  | stats sum(cost_usd_day) as month,\n          sum(tokens_in)    as tin,\n          sum(tokens_out)   as tout,\n          sum(cache_read)   as cache",
           "legendFormat": "__auto",
+          "queryType": "instant",
           "refId": "A"
         }
       ]
@@ -632,6 +644,7 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:30d model:gemini*\n  | stats sum(response_cost) as estimate",
           "legendFormat": "estimate",
+          "queryType": "instant",
           "refId": "A"
         }
       ]

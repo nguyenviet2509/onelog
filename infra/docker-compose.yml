@@ -526,7 +526,7 @@ services:
   # Bring up: docker compose --profile dashboard up -d grafana
   # Access: http://admin.webui.local/ (strict CIDR + Bearer + Grafana login)
   grafana:
-    image: grafana/grafana-oss:11-slim
+    image: grafana/grafana-oss:11.4.0
     container_name: ragstack-grafana
     restart: unless-stopped
     profiles: [dashboard]

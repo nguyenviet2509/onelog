@@ -22,11 +22,11 @@ route:
   repeat_interval: 15m
   routes:
     # LLM cost rules (team=llm-cost): cost/balance alerts, cooldown 30m to
-    # avoid billing-spike spam. Routes to telegram-trend (send_resolved=true)
+    # avoid billing-spike spam. Routes to telegram-llm-cost (Quota alert topic)
     # so ops sees when balance recovers after top-up.
     - matchers:
         - team="llm-cost"
-      receiver: telegram-trend
+      receiver: telegram-llm-cost
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 30m
@@ -67,6 +67,17 @@ receivers:
         message_thread_id: __TELEGRAM_THREAD_ID__
         parse_mode: HTML
         send_resolved: false   # event-style: chỉ FIRING, không gửi RESOLVED
+        message: *telegram_message_template
+
+  # LLM cost/quota alerts → separate topic (Quota alert). Same send_resolved=true
+  # semantics as telegram-trend (ops needs RESOLVED after top-up).
+  - name: telegram-llm-cost
+    telegram_configs:
+      - bot_token: "__TELEGRAM_BOT_TOKEN__"
+        chat_id: __TELEGRAM_CHAT_ID__
+        message_thread_id: __TELEGRAM_THREAD_ID_LLM_COST__
+        parse_mode: HTML
+        send_resolved: true
         message: *telegram_message_template
 
 inhibit_rules: []

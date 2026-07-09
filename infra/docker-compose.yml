@@ -532,6 +532,12 @@ services:
     profiles: [dashboard]
     ports:
       - "127.0.0.1:3000:3000"
+    # Public DNS — Host dùng systemd-resolved (127.0.0.53) mà container không
+    # reach được → plugin install từ grafana.com fail. Set DNS công cộng cho
+    # container. Không đụng host resolver.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

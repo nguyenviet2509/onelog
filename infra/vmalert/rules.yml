@@ -241,7 +241,7 @@ groups:
   # ─────────────────────────────────────────────────────────────────────────
   - name: llm_cost
     type: vlogs
-    interval: 60s
+    interval: 5m
     rules:
       # Threshold $5: minimum comfortable buffer for overnight batch jobs.
       # Below $5 means ~1-2 days runway at typical usage — top up urgently.

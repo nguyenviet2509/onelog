@@ -248,7 +248,7 @@ groups:
       - alert: DeepSeekBalanceLow
         expr: |
           service:provider_cost provider:deepseek
-            | stats last(balance_usd) as b
+            | stats avg(balance_usd) as b
             | filter b:>0 AND b:<5
         for: 0m
         labels:
@@ -263,7 +263,7 @@ groups:
       - alert: OpenAIDailyCostHigh
         expr: |
           service:provider_cost provider:openai
-            | stats last(cost_usd_day) as c
+            | stats avg(cost_usd_day) as c
             | filter c:>3
         for: 0m
         labels:

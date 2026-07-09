@@ -91,6 +91,12 @@ sudo systemctl status ragstack --no-pager
 
 Nếu deploy thêm LLM abstraction (LiteLLM + OpenWebUI), xem [deployment-llm-abstraction.md](deployment-llm-abstraction.md).
 
+## Optional · Cost dashboard
+
+Dashboard xem cost/quota realtime cho 4 LLM provider (Anthropic, OpenAI, DeepSeek, Gemini). Deploy sau khi stack chính OK · Phase A tốn ~5 phút · Phase B thêm 15 phút khi có admin key.
+
+Xem chi tiết: [cost-dashboard.md](cost-dashboard.md) — bring-up 5 lệnh + admin key rotate SOP.
+
 ---
 
 ## Config .env (block chính)

@@ -1,0 +1,26 @@
+# Runtime data — never commit
+infra/data/
+infra/.env
+infra/litellm/.env.llm
+infra/litellm/.env.cost
+
+# Backups
+backup/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv-scripts/
+
+# Environment files
+.env
+*.env.local
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

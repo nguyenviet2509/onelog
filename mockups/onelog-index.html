@@ -95,7 +95,7 @@
       <div class="mt-2 text-xs"><code>onelog-client-deploy-config.html</code> · 1276 dòng · 7 sections</div>
     </a>
 
-    <a class="card p-5 col-span-2" href="onelog-llm-abstraction-workflow.html" style="--from:#c4b5fd;--to:#7dd3fc">
+    <a class="card p-5" href="onelog-llm-abstraction-workflow.html" style="--from:#c4b5fd;--to:#7dd3fc">
       <div class="accent-bar"></div>
       <div class="flex items-baseline justify-between">
         <div class="text-xs font-bold" style="color:#c4b5fd;letter-spacing:.14em">⑤ LLM ABSTRACTION WORKFLOW</div>
@@ -105,6 +105,18 @@
       <p class="text-sm mt-2 mut">LLM Provider Abstraction (Phase 2-3): LiteLLM proxy routing 4 provider · OpenWebUI team chat · mcpo bridge · workflow request/response · virtual keys · fallback chain · cost tracking.</p>
       <div class="mt-3 text-xs mut">Mở khi: <b class="text-white">thêm LLM provider mới</b>, migrate khỏi Claude Desktop, tune cost/latency, quản lý virtual keys.</div>
       <div class="mt-2 text-xs"><code>onelog-llm-abstraction-workflow.html</code> · 838 dòng · 12 sections</div>
+    </a>
+
+    <a class="card p-5" href="onelog-cost-dashboard.html" style="--from:#f59e0b;--to:#10b981">
+      <div class="accent-bar"></div>
+      <div class="flex items-baseline justify-between">
+        <div class="text-xs font-bold" style="color:#fbbf24;letter-spacing:.14em">⑥ COST DASHBOARD</div>
+        <span class="pill lime">LIVE</span>
+      </div>
+      <div class="text-xl font-bold mt-2">LLM Cost · Quota — realtime 4 providers</div>
+      <p class="text-sm mt-2 mut">Cost dashboard: xem spend/quota realtime từ Anthropic · OpenAI · DeepSeek · Gemini. Grafana + LogsQL panels từ LiteLLM logs. Provider balance poll 15m. Alert khi vượt budget.</p>
+      <div class="mt-3 text-xs mut">Mở khi: <b class="text-white">xem ai đang burn quota</b>, tune provider threshold, rotate admin key 90d, disable estimate panel.</div>
+      <div class="mt-2 text-xs"><code>onelog-cost-dashboard.html</code> · mockup preview · Phase A + B</div>
     </a>
 
   </div>
@@ -128,6 +140,7 @@
         <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4">Không nhớ lệnh <code>docker compose</code> nào</td><td><a class="text-amber-300" href="onelog-client-deploy-config.html#ls-docker">④ client-deploy-config → Docker cmds</a></td></tr>
         <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4">Thêm LLM provider · đổi model default</td><td><a class="text-violet-300" href="onelog-llm-abstraction-workflow.html">⑤ llm-abstraction-workflow</a></td></tr>
         <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4">Tune Alertmanager · Telegram routing</td><td><a class="text-violet-300" href="onelog-services-detail.html">② services-detail</a> + <a class="text-amber-300" href="onelog-client-deploy-config.html#ls-scenarios">④ scenarios</a></td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4">Xem ai đang burn LLM quota · rotate admin key 90d</td><td><a class="text-yellow-400" href="onelog-cost-dashboard.html">⑥ cost-dashboard</a></td></tr>
       </tbody>
     </table>
   </div>

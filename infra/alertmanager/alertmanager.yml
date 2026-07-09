@@ -21,6 +21,16 @@ route:
   group_interval: 5m
   repeat_interval: 15m
   routes:
+    # LLM cost rules (team=llm-cost): cost/balance alerts, cooldown 30m to
+    # avoid billing-spike spam. Routes to telegram-trend (send_resolved=true)
+    # so ops sees when balance recovers after top-up.
+    - matchers:
+        - team="llm-cost"
+      receiver: telegram-trend
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 30m
+
     # Event-style rules (OomKillEvent, DiskFullErrors, NewUserOrSudoer):
     # event đã xảy ra rồi, RESOLVED chỉ nói "không có thêm trong 5m" → noise.
     - matchers:

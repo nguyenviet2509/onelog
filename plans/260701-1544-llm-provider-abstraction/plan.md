@@ -7,6 +7,8 @@ owner: anhtct@inet.vn
 brainstorm: ../reports/brainstorm-260701-1544-llm-provider-abstraction.md
 blockedBy: []
 blocks: []
+relatedPlans:
+  - plans/260709-1143-onelog-cost-dashboard
 ---
 
 # Plan — LLM Provider Abstraction

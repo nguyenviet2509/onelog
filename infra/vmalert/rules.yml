@@ -231,3 +231,119 @@ groups:
         annotations:
           summary: "OpenWebUI DB size probe im lặng ≥15m"
           description: "Không có event webui_db_size trong 15m — check vector container + mount /monitor/openwebui:ro."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # LLM COST — cost tracking + balance monitoring. Source: provider_cost stream
+  # (DeepSeek/OpenAI/Anthropic polling) + litellm_cost stream (LiteLLM proxy).
+  # interval=60s: cost data updates every 60s from probe scripts.
+  # Thresholds: hardcoded MVP values. Tune via .env after 1 week ops baseline.
+  # NOTE: `_time:` filters removed — vmalert injects window via `interval`.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: llm_cost
+    type: vlogs
+    interval: 60s
+    rules:
+      # Threshold $5: minimum comfortable buffer for overnight batch jobs.
+      # Below $5 means ~1-2 days runway at typical usage — top up urgently.
+      - alert: DeepSeekBalanceLow
+        expr: |
+          service:provider_cost provider:deepseek
+            | stats last(balance_usd) as b
+            | filter b:>0 AND b:<5
+        for: 0m
+        labels:
+          severity: warning
+          team: llm-cost
+        annotations:
+          summary: "DeepSeek balance còn {{ $value }} USD"
+          description: "Balance < $5. Top up trước khi hết — liên hệ platform.deepseek.com"
+
+      # Threshold $3/day: OpenAI daily budget cap. Daily spend > $3 suggests
+      # runaway usage or a rogue user — investigate before monthly cap hit.
+      - alert: OpenAIDailyCostHigh
+        expr: |
+          service:provider_cost provider:openai
+            | stats last(cost_usd_day) as c
+            | filter c:>3
+        for: 0m
+        labels:
+          severity: warning
+          team: llm-cost
+        annotations:
+          summary: "OpenAI hôm nay đã tiêu {{ $value }} USD (cap $3)"
+          description: "OpenAI daily cost vượt $3. Check litellm spend logs / per-user breakdown."
+
+      # Threshold $14/month ≈ 70% of $20 soft cap. Fire early to allow 30%
+      # buffer before hard billing cap. for=15m avoids transient sum spikes.
+      - alert: AnthropicMonthlyNearCap
+        expr: |
+          service:provider_cost provider:anthropic
+            | stats sum(cost_usd_day) as m
+            | filter m:>14
+        for: 15m
+        labels:
+          severity: warning
+          team: llm-cost
+        annotations:
+          summary: "Anthropic tháng {{ $value }} USD > 70% cap $20"
+          description: "Anthropic monthly cost > $14. Review usage hoặc raise billing cap nếu cần."
+
+      # Threshold >20 fallback events/24h: indicates persistent provider issues.
+      # Occasional fallbacks are normal; sustained >20 = systemic problem.
+      # for=5m: avoid alerting on brief spikes during deployment windows.
+      - alert: FallbackRateHigh
+        expr: |
+          service:litellm_cost fallback:true
+            | stats count() as n
+            | filter n:>20
+        for: 5m
+        labels:
+          severity: warning
+          team: llm-cost
+        annotations:
+          summary: "Fallback events 24h = {{ $value }} (> 20). Provider unstable."
+          description: "Cao bất thường — check primary provider health + LiteLLM fallback logs. Runbook: docs/deployment-llm-abstraction.md"
+
+      # Threshold $2/user/day: per-user daily budget guard.
+      # user_api_key_alias:* excludes empty/anonymous keys intentionally.
+      # for=5m: prevents alert on short usage bursts within normal session.
+      - alert: UserDailyBudgetExceeded
+        expr: |
+          service:litellm_cost user_api_key_alias:*
+            | stats by (user_api_key_alias) sum(response_cost) as spent
+            | filter spent:>2
+        for: 5m
+        labels:
+          severity: info
+          team: llm-cost
+        annotations:
+          summary: "User {{ $labels.user_api_key_alias }} spent {{ $value }} USD hôm nay"
+          description: "Daily budget $2 vượt. Check nếu automation script chạy không kiểm soát."
+
+      # DISABLED — `math` pipe operator support in VictoriaLogs LogsQL is
+      # unconfirmed for current pinned image. Enabling this rule when the pipe
+      # is unsupported would parse-error and break the whole `llm_cost` group.
+      #
+      # Re-enable path when verified (or use recording rule pair):
+      #   1. Test in vmui: `service:litellm_cost model:claude* | stats sum(cache_read_input_tokens) as cr, sum(prompt_tokens) as pt | math (cr / pt) * 100 as pct`
+      #   2. If parse OK → uncomment block below.
+      #   3. If parse fail → convert to recording-rule pair (emit cr/pt as
+      #      metrics, alert on ratio in PromQL-compatible expr).
+      #
+      # Threshold rationale: Anthropic prompt caching yields >60% hit rate
+      # with stable system prompts. Below 40% ⇒ cache_control header missing
+      # or system prompt churn too high. for=30m avoids cold-start noise.
+      #
+      # - alert: AnthropicCacheHitLow
+      #   expr: |
+      #     service:litellm_cost model:claude*
+      #       | stats sum(cache_read_input_tokens) as cr, sum(prompt_tokens) as pt
+      #       | math (cr / pt) * 100 as pct
+      #       | filter pct:>0 AND pct:<40
+      #   for: 30m
+      #   labels:
+      #     severity: info
+      #     team: llm-cost
+      #   annotations:
+      #     summary: "Anthropic cache hit {{ $value }}% < 40% — kiểm tra prompt caching header"
+      #     description: "Cache hit thấp = token wasted. Verify cache_control header trong LiteLLM system prompt config."

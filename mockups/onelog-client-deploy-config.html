@@ -375,6 +375,48 @@
                 Source code app tự viết. <span class="mut text-xs">Compose build từ Dockerfile. Sửa khi thay đổi logic.</span>
               </td>
             </tr>
+            <tr>
+              <td class="file mono">infra/grafana/<b>grafana.ini</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> Grafana server config · admin password env · root URL.<br/>
+                <span class="mut text-xs">Sửa khi: change Grafana bootstrap password, adjust cookie settings, disable telemetry.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/grafana/provisioning/<b>datasources/</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> VictoriaLogs datasource auto-inject (uid: victorialogs).<br/>
+                <span class="mut text-xs">Sửa khi: change VL endpoint URL, adjust proxy settings. Rarely touched.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/grafana/dashboards/<b>llm-cost-overview.json</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> Cost dashboard JSON definition · 4 provider panels · alerts.<br/>
+                <span class="mut text-xs">Sửa qua Grafana UI, export JSON → commit. Manual edit: restart grafana.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/litellm/<b>.env.cost</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> Admin provider API keys (chmod 0400 root). Phase B only.<br/>
+                <span class="mut text-xs">Sửa khi: rotate admin key 90d, add DeepSeek key. Secrets — never commit.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/litellm/<b>.env.cost.example</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> Template for .env.cost (no real keys, placeholder format).<br/>
+                <span class="mut text-xs">Reference only. Keep in git. Users copy to .env.cost and fill real keys.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/scripts/<b>poll-provider-cost.sh</b></td>
+              <td>
+                <span class="pill warn">DASHBOARD</span> Cron script: poll OpenAI/Anthropic/DeepSeek balance → syslog.<br/>
+                <span class="mut text-xs">Sửa khi: add new provider, change poll interval, adjust fail-soft logic.</span>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -470,6 +512,26 @@
           <td><span class="pill gray">Backup</span> Snapshot daily</td>
           <td class="file mono">scripts/snapshot-daily.sh <span class="mut">+</span> crontab</td>
           <td>Đích: <code>~/onelog/backup/</code> → <code class="kbd">crontab -e</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill warn">Dashboard</span> Grafana admin password đổi 90d</td>
+          <td class="file mono">infra/.env <span class="mut">+</span> grafana.ini</td>
+          <td><code>GRAFANA_ADMIN_PASSWORD</code> (rồi reset qua Grafana UI) → <code class="kbd">--profile dashboard restart grafana</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill warn">Dashboard</span> Cost alert threshold tune</td>
+          <td class="file mono">infra/vmalert/rules.yml <span class="mut">hoặc</span> infra/.env</td>
+          <td>Sửa <code>COST_ALERT_*</code> vars hoặc <code>llm_cost</code> rule group → <code class="kbd">restart vmalert</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill warn">Dashboard</span> Add / edit Grafana panel</td>
+          <td class="file mono">infra/grafana/dashboards/llm-cost-overview.json</td>
+          <td>Edit UI → export JSON → save file → <code class="kbd">--profile dashboard restart grafana</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill warn">Dashboard</span> Rotate admin provider API key (90d)</td>
+          <td class="file mono">infra/litellm/.env.cost</td>
+          <td>Create new key provider side → paste → <code>chmod 0400</code> → test script → revoke old key</td>
         </tr>
       </tbody>
     </table>
@@ -702,6 +764,134 @@ dc stop qdrant
 dc up -d qdrant</div>
         </div>
 
+      </div>
+
+      <hr class="sep"/>
+
+      <!-- ENV RELOAD dedicated block -->
+      <div class="card2 p-4" style="border-color:#78350f">
+        <div class="flex items-baseline justify-between mb-3">
+          <div class="pill amber">⚡ Sau khi sửa <code>.env</code> / <code>.env.llm</code></div>
+          <span class="text-xs mut">Docker chỉ đọc env lúc <b>tạo</b> container — <code>restart</code> KHÔNG reload!</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- LEFT: map -->
+          <div>
+            <div class="h-title mb-2">Ai đọc biến nào → recreate service nào</div>
+            <table class="k">
+              <thead><tr>
+                <th style="width:44%">Biến trong .env</th>
+                <th>Service cần recreate</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="mono text-xs"><code>POSTGRES_PASSWORD</code></td>
+                  <td class="mono text-xs">postgres · agent · litellm-proxy</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>QDRANT_API_KEY</code></td>
+                  <td class="mono text-xs">qdrant · agent · indexer · mcp-semantic</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>REDIS_PASSWORD</code></td>
+                  <td class="mono text-xs">redis · agent</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>LLM_MODEL</code>, <code>LLM_FALLBACK_MODELS</code>, <code>LLM_MOCK</code></td>
+                  <td class="mono text-xs">agent</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>VL_RETENTION</code></td>
+                  <td class="mono text-xs">victorialogs</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_ALERT_CHAT_ID</code></td>
+                  <td class="mono text-xs">alertmanager</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>MCP_BEARER_TOKENS</code>, <code>MCP_ALLOW_ANON</code></td>
+                  <td class="mono text-xs">mcp-semantic · mcp-vl</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>MCP_TOKEN_OPENWEBUI</code>, <code>MCPO_API_KEY</code></td>
+                  <td class="mono text-xs">mcpo</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>OPENWEBUI_SECRET_KEY</code>, <code>OPENWEBUI_LITELLM_VIRTUAL_KEY</code></td>
+                  <td class="mono text-xs">openwebui</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>LITELLM_MASTER_KEY</code></td>
+                  <td class="mono text-xs">litellm-proxy · openwebui</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>ADMIN_ALLOW_CIDR</code>, <code>APP_DOMAIN</code></td>
+                  <td class="mono text-xs">caddy <span class="mut">(hoặc reload nóng nếu chỉ Caddyfile)</span></td>
+                </tr>
+                <tr class="border-t border-[#78350f]">
+                  <td class="mono text-xs"><b>.env.llm</b> — provider keys</td>
+                  <td class="mono text-xs"><b>litellm-proxy</b> only</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- RIGHT: workflow -->
+          <div class="space-y-3">
+            <div>
+              <div class="h-title mb-1">A. Sửa 1-2 biến, biết service nào dùng</div>
+              <div class="cmd"><span class="c"># Ví dụ: đổi LLM_MODEL trong .env</span>
+vi ~/onelog/infra/.env
+dc up -d --force-recreate <span class="acc">agent</span>
+
+<span class="c"># Verify env đã vào container</span>
+dc exec agent env | grep LLM_MODEL</div>
+            </div>
+
+            <div>
+              <div class="h-title mb-1">B. Sửa provider key (.env.llm)</div>
+              <div class="cmd"><span class="c"># Chỉ litellm-proxy đọc file này</span>
+vi ~/onelog/infra/litellm/.env.llm
+chmod 0400 ~/onelog/infra/litellm/.env.llm
+
+dc up -d --force-recreate <span class="acc">litellm-proxy</span>
+
+<span class="c"># Smoke: gọi thử qua LiteLLM</span>
+curl -s http://localhost:4000/health/liveliness</div>
+            </div>
+
+            <div>
+              <div class="h-title mb-1">C. Sửa nhiều biến / không chắc ai đọc</div>
+              <div class="cmd"><span class="c"># Recreate toàn stack — env mới apply hết</span>
+dc $P up -d --force-recreate
+
+<span class="c"># Ngắn hơn: chỉ recreate service có env thay đổi</span>
+dc $P up -d</div>
+            </div>
+
+            <div class="rule err text-xs">
+              <b class="err">❌ Đừng dùng</b> — <code>dc restart</code> · <code>docker restart</code> ·
+              <code>systemctl restart ragstack</code> đều KHÔNG đọc lại <code>.env</code>.
+              Container reuse env cũ lúc create. <b>Phải</b> <code>up -d --force-recreate</code>
+              (hoặc <code>down &amp;&amp; up -d</code>).
+            </div>
+          </div>
+        </div>
+
+        <hr class="sep"/>
+
+        <div class="h-title mb-2">Checklist "env đã vào container chưa?"</div>
+        <div class="cmd"><span class="c"># 1. Xem env runtime của service — biến mới phải xuất hiện</span>
+dc exec <span class="acc">&lt;svc&gt;</span> env | sort | grep -E 'LLM_|QDRANT_|POSTGRES_|REDIS_|TELEGRAM_'
+
+<span class="c"># 2. So sánh giá trị</span>
+grep '^LLM_MODEL=' ~/onelog/infra/.env
+dc exec agent env | grep '^LLM_MODEL='
+<span class="c"># 2 dòng phải khớp. Không khớp = chưa recreate.</span>
+
+<span class="c"># 3. Check compose thấy .env đã đổi</span>
+dc $P config | grep -A2 <span class="acc">agent:</span> | grep LLM_MODEL</div>
       </div>
 
       <hr class="sep"/>

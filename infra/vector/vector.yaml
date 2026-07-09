@@ -141,6 +141,66 @@ transforms:
       }
       if trace != null { .trace = trace }
 
+  # LiteLLM container stdout → tag service:litellm_cost for cost tracking.
+  # LiteLLM logs cost metadata lines to stdout; Docker logging driver forwards
+  # them to syslog with appname = container name (ragstack-litellm).
+  # Placed AFTER `redact` so PII redaction still runs on LiteLLM log lines.
+  # After `enrich`, .service holds the former appname — `redact` preserves it.
+  # Non-LiteLLM events pass through to victorialogs unchanged (just service retag skipped).
+  tag_litellm_cost:
+    type: remap
+    inputs: [redact]
+    source: |
+      # `enrich` maps .appname → .service; `redact` preserves .service.
+      # Only retag events from the LiteLLM container.
+      if (string(.service) ?? "") == "ragstack-litellm" {
+        .service = "litellm_cost"
+      }
+
+  # provider_cost syslog events → parse JSON body into flat fields.
+  # Emitted by poll-provider-cost.sh via `logger -t provider_cost`.
+  # Input: syslog_tcp (port 6514) — rsyslog on host forwards logger output here.
+  # Step 1 — filter: keep only events with appname == provider_cost.
+  # All other syslog_tcp events are already handled by enrich → redact.
+  # Using a 2-step (filter → remap) avoids conditional branching in remap and
+  # prevents non-matching events from being double-ingested into VictoriaLogs.
+  filter_provider_cost:
+    type: filter
+    inputs: [syslog_tcp]
+    condition: '(string(.appname) ?? "") == "provider_cost"'
+
+  # Step 2 — remap: parse JSON body and normalise to OneLog schema.
+  tag_provider_cost:
+    type: remap
+    inputs: [filter_provider_cost]
+    source: |
+      # Capture syslog-provided fields BEFORE any merge so they survive.
+      syslog_host = string(.hostname) ?? "logserver"
+      raw_msg     = string(.message)  ?? ""
+
+      parsed, err = parse_json(raw_msg)
+      if err == null && is_object(parsed) {
+        # Merge parsed JSON fields into event (provider, balance_usd, etc.)
+        . = merge!(., parsed)
+      } else {
+        # Keep raw message, tag parse failure for debug query.
+        ._msg = raw_msg
+        .parse_error = string(err) ?? "unknown"
+      }
+      # Ensure canonical OneLog schema fields — override anything from merge/syslog.
+      .service = "provider_cost"
+      .host    = syslog_host
+      ._msg    = raw_msg
+      # Drop syslog-specific fields not part of OneLog schema.
+      del(.appname)
+      del(.hostname)
+      del(.source_type)
+      del(.source_ip)
+      del(.version)
+      del(.procid)
+      del(.message)
+      del(.timestamp)
+
   # Exec source `openwebui_db_size` chỉ ra 1 dòng JSON/lần chạy trong `.message`.
   # Parse ra top-level fields để sink `_stream_fields: "service,host"` bind đúng.
   # KHÔNG đi qua `redact` (không có PII, event là metric monitor thuần).
@@ -231,10 +291,11 @@ transforms:
 sinks:
   victorialogs:
     type: elasticsearch
-    # `redact` = syslog + rsyslog JSON stream (PII-redacted).
-    # `openwebui_db_parse` = probe metric events (no PII, không cần redact).
-    # Cả 2 chảy chung sink với _stream_fields=service,host để tag đúng namespace.
-    inputs: [redact, openwebui_db_parse]
+    # tag_litellm_cost   = all PII-redacted syslog/rsyslog events (LiteLLM retagged;
+    #                       other services pass through with their original .service)
+    # openwebui_db_parse = SQLite probe metrics (no PII, exec source)
+    # tag_provider_cost  = provider balance/cost JSON from poll-provider-cost.sh cron
+    inputs: [tag_litellm_cost, openwebui_db_parse, tag_provider_cost]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

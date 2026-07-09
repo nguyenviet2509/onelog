@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · Cost Dashboard — Mockup Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--warn:#fbbf24;
+    --ok:#34d399;--err:#f87171;--vio:#c4b5fd;--lime:#86efac;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)} .acc{color:var(--acc)} .ok{color:var(--ok)}
+  .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .h-title{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  pre,code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.err{background:#3a0f0f;color:#f87171}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .cmd{background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;padding:10px 12px;
+       font-family:ui-monospace;font-size:12px;color:#cffafe;white-space:pre-wrap;word-break:break-word}
+  .cmd .p{color:#4c9c8f} .cmd .c{color:#5f5f6b} .cmd .k{color:#c4b5fd} .cmd .s{color:#86efac}
+  table.k{width:100%;font-size:12.5px;border-collapse:collapse}
+  table.k th,table.k td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+  table.k td.mono{white-space:nowrap;color:#7dd3fc}
+
+  /* Provider card */
+  .prov{background:#0e0e12;border:1px solid var(--line);border-radius:12px;padding:14px;position:relative;overflow:hidden}
+  .prov::before{content:"";position:absolute;top:0;left:0;right:0;height:3px}
+  .prov.deepseek::before{background:#3b82f6}
+  .prov.openai::before{background:#10a37f}
+  .prov.anthropic::before{background:#d97706}
+  .prov.gemini::before{background:#c4b5fd}
+  .prov .p-name{font-size:16px;font-weight:700;letter-spacing:.02em}
+  .prov .p-src{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.14em}
+  .prov .big{font-size:26px;font-weight:800;margin-top:6px;letter-spacing:-.02em}
+  .prov .sub{font-size:11px;color:var(--mut);margin-top:2px}
+  .bar{height:6px;border-radius:999px;background:#15151c;overflow:hidden;margin-top:10px}
+  .bar-fill{height:100%;border-radius:999px}
+  .badge-ok{background:#0c2a12;color:#86efac}
+  .badge-warn{background:#2a1f06;color:#fbbf24}
+  .badge-err{background:#3a0f0f;color:#f87171}
+  .badge{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:600}
+
+  .kpi{background:#0d0d11;border:1px solid var(--line);border-radius:10px;padding:12px}
+  .kpi .label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--mut)}
+  .kpi .v{font-size:22px;font-weight:800;margin-top:4px;letter-spacing:-.02em}
+  .kpi .d{font-size:11px;color:var(--mut);margin-top:2px}
+
+  /* User row */
+  .u-row{display:grid;grid-template-columns:100px 1fr 90px 60px;gap:10px;align-items:center;
+         padding:8px 10px;border-radius:8px}
+  .u-row:hover{background:#15151c}
+  .u-bar{height:8px;background:#15151c;border-radius:999px;overflow:hidden;position:relative}
+  .u-bar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#c4b5fd)}
+
+  .chart-wrap{position:relative;height:220px}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:14px 0}
+  .kbd{background:#15151a;border:1px solid #2a2a35;border-radius:4px;padding:1px 6px;
+       font-size:11px;font-family:ui-monospace;color:#a5f3fc}
+  .rule{border-left:3px solid var(--acc);padding:6px 10px;background:#0a1a22;border-radius:0 6px 6px 0;font-size:12.5px}
+  .rule.warn{border-color:var(--warn);background:#1a1408}
+  .rule.err{border-color:var(--err);background:#1a0a0a}
+
+  /* Arch diagram */
+  .node{background:#15151c;border:1px solid #2a2a35;border-radius:8px;padding:10px 12px;text-align:center}
+  .node.src{border-color:#0e7490;background:#0a2530}
+  .node.proc{border-color:#7c3aed;background:#1f1332}
+  .node.store{border-color:#059669;background:#0a2a1a}
+  .node.ui{border-color:#d97706;background:#2a1808}
+  .arrow{text-align:center;color:#6b7280;font-size:18px}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-[1360px] mx-auto p-6 space-y-6">
+
+  <!-- Header -->
+  <header class="card p-5">
+    <div class="flex items-baseline justify-between flex-wrap gap-2">
+      <div>
+        <div class="h-title">OneLog Cost Dashboard · MOCKUP PREVIEW</div>
+        <h1 class="text-2xl font-bold mt-1">LLM Quota &amp; Cost — 5 ops · 4 providers</h1>
+        <p class="mut text-sm mt-1">Realtime từ LiteLLM logs · Cross-check với provider balance API mỗi 15 phút</p>
+      </div>
+      <div class="flex gap-2">
+        <span class="pill gray">Cập nhật: 09/07/2026 11:42</span>
+        <span class="pill lime">All sources OK</span>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <div class="grid grid-cols-5 gap-3 mt-5">
+      <div class="kpi">
+        <div class="label">Cost tháng này</div>
+        <div class="v">$47.82</div>
+        <div class="d ok">▼ 12% vs tháng trước</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Cost hôm nay</div>
+        <div class="v">$1.94</div>
+        <div class="d mut">3,241 requests</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Token 24h</div>
+        <div class="v">2.4M</div>
+        <div class="d mut">Input 1.8M · Output 0.6M</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Cache hit rate</div>
+        <div class="v ok">61%</div>
+        <div class="d mut">Chỉ Anthropic (prompt cache)</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Fallback triggered</div>
+        <div class="v warn">7</div>
+        <div class="d mut">24h · chủ yếu gemini→gpt</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 4 Provider balance cards -->
+  <section class="card p-5">
+    <div class="h-title mb-3">Balance / Quota theo provider</div>
+
+    <div class="grid grid-cols-4 gap-4">
+      <!-- DeepSeek -->
+      <div class="prov deepseek">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="p-name">DeepSeek</div>
+            <div class="p-src">/user/balance · realtime</div>
+          </div>
+          <span class="badge badge-ok">HEALTHY</span>
+        </div>
+        <div class="big">$18.42</div>
+        <div class="sub">Còn lại từ $25 top-up · granted $5</div>
+        <div class="bar"><div class="bar-fill" style="width:73%;background:#3b82f6"></div></div>
+        <div class="flex justify-between text-xs mut mt-2">
+          <span>Đã dùng $6.58</span>
+          <span>73% còn lại</span>
+        </div>
+        <div class="text-xs mt-3 pt-2 border-t border-[#1f1f25] mut">
+          Rate hôm nay: <b class="text-white">$0.31</b> · ước tính hết trong <b class="text-white">~60 ngày</b>
+        </div>
+      </div>
+
+      <!-- OpenAI -->
+      <div class="prov openai">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="p-name">OpenAI</div>
+            <div class="p-src">/organization/costs · 15m</div>
+          </div>
+          <span class="badge badge-ok">HEALTHY</span>
+        </div>
+        <div class="big">$12.34</div>
+        <div class="sub">Đã tiêu tháng 07 · quota $50 hard cap</div>
+        <div class="bar"><div class="bar-fill" style="width:25%;background:#10a37f"></div></div>
+        <div class="flex justify-between text-xs mut mt-2">
+          <span>25% quota</span>
+          <span>Còn $37.66</span>
+        </div>
+        <div class="text-xs mt-3 pt-2 border-t border-[#1f1f25] mut">
+          Alert soft-cap tại <b class="text-white">$40</b> · hard-cap tại <b class="text-white">$50</b>
+        </div>
+      </div>
+
+      <!-- Anthropic -->
+      <div class="prov anthropic">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="p-name">Anthropic</div>
+            <div class="p-src">/usage_report · 15m</div>
+          </div>
+          <span class="badge badge-warn">HIGH USE</span>
+        </div>
+        <div class="big">$14.28</div>
+        <div class="sub">Tháng 07 · claude-sonnet-4-5</div>
+        <div class="bar"><div class="bar-fill" style="width:71%;background:#d97706"></div></div>
+        <div class="flex justify-between text-xs mut mt-2">
+          <span>Cache hit 61%</span>
+          <span>Save ~$22 nhờ cache</span>
+        </div>
+        <div class="text-xs mt-3 pt-2 border-t border-[#1f1f25] mut">
+          Input <b class="text-white">890k</b> · Output <b class="text-white">340k</b> · Cache read <b class="text-white">1.2M</b>
+        </div>
+      </div>
+
+      <!-- Gemini -->
+      <div class="prov gemini">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="p-name">Gemini <span class="text-xs mut font-normal">(AI Studio)</span></div>
+            <div class="p-src">LiteLLM estimate · no API</div>
+          </div>
+          <span class="badge badge-warn">ESTIMATE</span>
+        </div>
+        <div class="big">$2.78</div>
+        <div class="sub">Ước từ token count · gemini-2.5-flash</div>
+        <div class="bar"><div class="bar-fill" style="width:12%;background:#c4b5fd"></div></div>
+        <div class="flex justify-between text-xs mut mt-2">
+          <span>~12% RPM limit</span>
+          <span>Free-tier còn dư</span>
+        </div>
+        <div class="text-xs mt-3 pt-2 border-t border-[#1f1f25] mut warn">
+          ⚠ Không có usage API — số ước từ pricing table LiteLLM, có thể lệch ~5-8%
+        </div>
+      </div>
+    </div>
+
+    <div class="rule mt-4 text-xs">
+      <b class="acc">Ghi chú</b> — DeepSeek/OpenAI/Anthropic dùng số <b>từ API provider</b> (ground truth, delay 15 phút).
+      Gemini dùng <b>ước tính LiteLLM</b> (realtime, không chính xác 100%).
+    </div>
+  </section>
+
+  <!-- Chart: 30-day cost trend -->
+  <section class="grid grid-cols-3 gap-4">
+    <div class="card p-5 col-span-2">
+      <div class="flex items-baseline justify-between">
+        <div class="h-title">Cost 30 ngày · per model</div>
+        <div class="flex gap-2 text-xs">
+          <span class="pill vio">gemini-flash</span>
+          <span class="pill amber">claude-sonnet</span>
+          <span class="pill lime">gpt-4-mini</span>
+          <span class="pill cyan">deepseek</span>
+        </div>
+      </div>
+      <div class="chart-wrap mt-3"><canvas id="chartTrend"></canvas></div>
+    </div>
+
+    <!-- Model split donut -->
+    <div class="card p-5">
+      <div class="h-title mb-3">Cost breakdown · 7d</div>
+      <div class="chart-wrap"><canvas id="chartDonut"></canvas></div>
+      <table class="k mt-3 text-xs">
+        <tbody>
+          <tr><td>🟪 gemini-flash</td><td class="mono text-right">$8.42 · 37%</td></tr>
+          <tr><td>🟧 claude-sonnet</td><td class="mono text-right">$9.15 · 40%</td></tr>
+          <tr><td>🟩 gpt-4-mini</td><td class="mono text-right">$3.28 · 14%</td></tr>
+          <tr><td>🟦 deepseek</td><td class="mono text-right">$2.07 · 9%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Per-user breakdown + Fallback events -->
+  <section class="grid grid-cols-2 gap-4">
+    <div class="card p-5">
+      <div class="flex items-baseline justify-between mb-3">
+        <div class="h-title">Per-user cost · 7 ngày</div>
+        <span class="pill gray">virtual key alias</span>
+      </div>
+      <div class="space-y-1">
+        <div class="u-row">
+          <span class="text-sm font-semibold">alice</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:82%"></div></div>
+          <span class="mono text-xs text-right">$8.24</span>
+          <span class="text-xs mut text-right">1,842 req</span>
+        </div>
+        <div class="u-row">
+          <span class="text-sm font-semibold">bob</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:64%"></div></div>
+          <span class="mono text-xs text-right">$6.41</span>
+          <span class="text-xs mut text-right">1,238 req</span>
+        </div>
+        <div class="u-row">
+          <span class="text-sm font-semibold">carol</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:41%"></div></div>
+          <span class="mono text-xs text-right">$4.13</span>
+          <span class="text-xs mut text-right">892 req</span>
+        </div>
+        <div class="u-row">
+          <span class="text-sm font-semibold">dave</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:28%"></div></div>
+          <span class="mono text-xs text-right">$2.81</span>
+          <span class="text-xs mut text-right">521 req</span>
+        </div>
+        <div class="u-row">
+          <span class="text-sm font-semibold">eve</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:19%"></div></div>
+          <span class="mono text-xs text-right">$1.92</span>
+          <span class="text-xs mut text-right">348 req</span>
+        </div>
+        <div class="u-row" style="border-top:1px dashed #1f1f25;margin-top:4px;padding-top:8px">
+          <span class="text-sm font-semibold mut">openwebui</span>
+          <div class="u-bar"><div class="u-bar-fill" style="width:15%;background:linear-gradient(90deg,#4a4a55,#8a8a96)"></div></div>
+          <span class="mono text-xs text-right mut">$1.48</span>
+          <span class="text-xs mut text-right">276 req</span>
+        </div>
+      </div>
+      <hr class="sep"/>
+      <div class="text-xs mut">Nguồn: <code>litellm_json_logs</code> field <code>user_api_key_alias</code> · LogsQL group by</div>
+    </div>
+
+    <div class="card p-5">
+      <div class="flex items-baseline justify-between mb-3">
+        <div class="h-title">Fallback events · 24h</div>
+        <span class="pill amber">7 lần</span>
+      </div>
+      <table class="k">
+        <thead><tr>
+          <th style="width:14%">Time</th>
+          <th>Primary → Fallback</th>
+          <th style="width:20%">Lý do</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono text-xs">10:42</td>
+            <td class="text-xs">gemini-flash → <span class="lime">gpt-4-mini</span></td>
+            <td class="text-xs mut">timeout 25s</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">09:18</td>
+            <td class="text-xs">gemini-flash → <span class="lime">gpt-4-mini</span></td>
+            <td class="text-xs mut">rate_limit 429</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">08:55</td>
+            <td class="text-xs">deepseek → <span class="lime">gpt-4-mini</span></td>
+            <td class="text-xs mut">empty completion</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">07:11</td>
+            <td class="text-xs">gemini-flash → <span class="lime">gpt-4-mini</span></td>
+            <td class="text-xs mut">timeout 25s</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">03:42</td>
+            <td class="text-xs">gemini-flash → <span class="amber">claude-sonnet</span></td>
+            <td class="text-xs mut">gpt-4-mini 500</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">02:18</td>
+            <td class="text-xs">gpt-4-mini → <span class="amber">claude-sonnet</span></td>
+            <td class="text-xs mut">timeout</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">01:05</td>
+            <td class="text-xs">gemini-flash → <span class="lime">gpt-4-mini</span></td>
+            <td class="text-xs mut">rate_limit 429</td>
+          </tr>
+        </tbody>
+      </table>
+      <hr class="sep"/>
+      <div class="text-xs mut">Fallback cost tăng thêm <b class="warn">~$1.20</b> · nếu &gt; $5/ngày → xem lại chain</div>
+    </div>
+  </section>
+
+  <!-- Alert thresholds + Health -->
+  <section class="card p-5">
+    <div class="h-title mb-3">Alert thresholds · trạng thái hiện tại</div>
+    <div class="grid grid-cols-3 gap-3">
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">DeepSeek balance</span>
+          <span class="badge badge-ok">OK</span>
+        </div>
+        <div class="text-xs mut mt-1">Alert khi &lt; $5 · hiện tại <b class="ok">$18.42</b></div>
+      </div>
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">OpenAI daily cap</span>
+          <span class="badge badge-ok">OK</span>
+        </div>
+        <div class="text-xs mut mt-1">Alert khi hôm nay &gt; $3 · hiện tại <b class="ok">$0.94</b></div>
+      </div>
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">Anthropic month soft-cap</span>
+          <span class="badge badge-warn">70%</span>
+        </div>
+        <div class="text-xs mut mt-1">Soft $20 · hiện <b class="warn">$14.28</b> → gần chạm ngưỡng</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">Fallback rate</span>
+          <span class="badge badge-ok">OK</span>
+        </div>
+        <div class="text-xs mut mt-1">Alert khi &gt; 20/ngày · hiện <b class="ok">7</b></div>
+      </div>
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">Cache hit Anthropic</span>
+          <span class="badge badge-ok">OK</span>
+        </div>
+        <div class="text-xs mut mt-1">Alert khi &lt; 40% · hiện <b class="ok">61%</b></div>
+      </div>
+      <div class="card2 p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">Per-user daily</span>
+          <span class="badge badge-warn">1 near cap</span>
+        </div>
+        <div class="text-xs mut mt-1">Alert khi user &gt; $2/ngày · <b class="warn">alice $1.87</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture + Data source -->
+  <section class="card p-5">
+    <div class="h-title mb-3">Data flow · nguồn ① LiteLLM logs + nguồn ② provider API</div>
+    <div class="grid grid-cols-5 gap-3 items-center">
+      <!-- Sources -->
+      <div class="space-y-2">
+        <div class="node src">
+          <div class="text-xs font-bold text-cyan-300">① LiteLLM proxy</div>
+          <div class="text-[10px] mut mt-1">json_logs stdout · realtime</div>
+        </div>
+        <div class="node src">
+          <div class="text-xs font-bold text-cyan-300">② Provider APIs</div>
+          <div class="text-[10px] mut mt-1">DeepSeek · OpenAI · Anthropic<br/>poll 15m via cron</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <!-- Processors -->
+      <div class="space-y-2">
+        <div class="node proc">
+          <div class="text-xs font-bold text-violet-300">Vector</div>
+          <div class="text-[10px] mut mt-1">tail container stdout<br/>tag: service=litellm_cost</div>
+        </div>
+        <div class="node proc">
+          <div class="text-xs font-bold text-violet-300">poll-provider-cost.sh</div>
+          <div class="text-[10px] mut mt-1">bash cron 15m<br/>emit JSON syslog</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <!-- Store + UI -->
+      <div class="space-y-2">
+        <div class="node store">
+          <div class="text-xs font-bold text-emerald-300">VictoriaLogs</div>
+          <div class="text-[10px] mut mt-1">unified schema<br/>retention 30d cost stream</div>
+        </div>
+        <div class="node ui">
+          <div class="text-xs font-bold text-amber-300">Grafana / vmui</div>
+          <div class="text-[10px] mut mt-1">LogsQL queries<br/>+ vmalert cho alert</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="pill vio mb-2">Schema unified vào VL</div>
+        <div class="cmd"><span class="c"># mỗi record cost trong VictoriaLogs</span>
+{
+  <span class="k">"_time"</span>: <span class="s">"2026-07-09T11:42:12Z"</span>,
+  <span class="k">"service"</span>: <span class="s">"litellm_cost"</span>,   <span class="c">// hoặc "provider_cost"</span>
+  <span class="k">"source"</span>:  <span class="s">"litellm"</span>,        <span class="c">// hoặc "deepseek_api"…</span>
+  <span class="k">"model"</span>:   <span class="s">"claude-sonnet-4-5"</span>,
+  <span class="k">"user"</span>:    <span class="s">"alice"</span>,
+  <span class="k">"cost_usd"</span>: <span class="s">0.00042</span>,
+  <span class="k">"tokens_in"</span>: <span class="s">1240</span>,
+  <span class="k">"tokens_out"</span>: <span class="s">380</span>,
+  <span class="k">"cache_read"</span>: <span class="s">920</span>,
+  <span class="k">"latency_ms"</span>: <span class="s">2140</span>,
+  <span class="k">"fallback"</span>: <span class="s">false</span>
+}</div>
+      </div>
+      <div>
+        <div class="pill lime mb-2">LogsQL query cho panel</div>
+        <div class="cmd"><span class="c"># Cost tuần theo model</span>
+service:litellm_cost _time:7d
+  | stats by (model)
+    sum(cost_usd) as spent
+    count() as reqs
+
+<span class="c"># Cost per user 7d</span>
+service:litellm_cost _time:7d user:*
+  | stats by (user) sum(cost_usd) as spent
+
+<span class="c"># Balance provider realtime</span>
+service:provider_cost source:deepseek_api
+  | last(balance_usd)
+
+<span class="c"># Fallback events 24h</span>
+service:litellm_cost _time:24h fallback:true
+  | stats by (model, fallback_to) count()</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Implementation plan -->
+  <section class="card p-5">
+    <div class="h-title mb-3">Kế hoạch triển khai · 2 phase</div>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card2 p-4" style="border-color:#14532d">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="pill lime">Phase A · Quick win</span>
+          <span class="text-xs mut">~2-3 giờ</span>
+        </div>
+        <div class="text-sm font-semibold mb-2">Chỉ dùng nguồn ① LiteLLM logs</div>
+        <ul class="text-xs mut space-y-1 list-disc pl-5">
+          <li>0 code mới · data đã có trong VL từ ngày đầu deploy</li>
+          <li>Thêm Grafana container vào compose (profile <code>dashboard</code>)</li>
+          <li>Import 4 panel: KPI · cost 30d · per-user · fallback events</li>
+          <li>vmalert rule: fallback rate &gt; 20/day, per-user &gt; $2/day</li>
+        </ul>
+        <div class="mt-3 text-xs">
+          <b class="ok">Đủ dùng khi:</b> chỉ cần "ai xài bao nhiêu tuần này" + trend cost
+        </div>
+      </div>
+
+      <div class="card2 p-4" style="border-color:#78350f">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="pill amber">Phase B · Full picture</span>
+          <span class="text-xs mut">~1-2 ngày</span>
+        </div>
+        <div class="text-sm font-semibold mb-2">Thêm nguồn ② provider balance API</div>
+        <ul class="text-xs mut space-y-1 list-disc pl-5">
+          <li>Script <code>infra/scripts/poll-provider-cost.sh</code></li>
+          <li>Tạo <b>admin key</b> riêng cho OpenAI + Anthropic (chmod 0400)</li>
+          <li>Cron 15 phút · emit JSON syslog · Vector tag <code>provider_cost</code></li>
+          <li>Panel "Balance card" cho 3 provider · Gemini vẫn estimate</li>
+          <li>vmalert: DeepSeek balance &lt; $5 · OpenAI daily &gt; $3</li>
+        </ul>
+        <div class="mt-3 text-xs">
+          <b class="warn">Cần thêm:</b> admin API key OpenAI + Anthropic (không phải project key)
+        </div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="h-title mb-2">Provider API endpoints sẽ gọi</div>
+    <table class="k">
+      <thead><tr>
+        <th style="width:18%">Provider</th>
+        <th>Endpoint</th>
+        <th style="width:18%">Auth</th>
+        <th style="width:16%">Trả về</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>DeepSeek</td>
+          <td class="mono text-xs">GET https://api.deepseek.com/user/balance</td>
+          <td class="text-xs mut">Provider key (same)</td>
+          <td class="text-xs">Balance USD, granted, topped_up</td>
+        </tr>
+        <tr>
+          <td>OpenAI</td>
+          <td class="mono text-xs">GET /v1/organization/costs?start_time=…</td>
+          <td class="text-xs warn">Admin key (mới)</td>
+          <td class="text-xs">Cost by day/model</td>
+        </tr>
+        <tr>
+          <td>Anthropic</td>
+          <td class="mono text-xs">GET /v1/organizations/usage_report/messages</td>
+          <td class="text-xs warn">Admin key (mới)</td>
+          <td class="text-xs">Token · cost · cache split</td>
+        </tr>
+        <tr>
+          <td>Gemini AI Studio</td>
+          <td class="mono text-xs err">❌ không có public API</td>
+          <td class="text-xs mut">—</td>
+          <td class="text-xs">Skip · dùng LiteLLM estimate</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Trade-offs -->
+  <section class="card p-5">
+    <div class="h-title mb-3">Điểm cần review trước khi build</div>
+    <div class="grid grid-cols-3 gap-3 text-xs">
+      <div class="rule">
+        <b class="acc">Ưu điểm</b>
+        <ul class="mt-1 list-disc pl-4 space-y-1">
+          <li>Tận dụng VL sẵn có → không stack mới</li>
+          <li>2 nguồn cross-check → detect LiteLLM pricing table lệch</li>
+          <li>Alert wire vào Alertmanager sẵn có</li>
+          <li>Per-user breakdown là USP so với LiteLLM UI enterprise</li>
+        </ul>
+      </div>
+      <div class="rule warn">
+        <b class="warn">Rủi ro / đánh đổi</b>
+        <ul class="mt-1 list-disc pl-4 space-y-1">
+          <li>Cost API delay 15-30 phút</li>
+          <li>Admin key OpenAI/Anthropic = key nhạy cảm mới, cần rotate</li>
+          <li>Gemini là điểm mù — chấp nhận estimate</li>
+          <li>Grafana thêm 1 service → resource overhead</li>
+        </ul>
+      </div>
+      <div class="rule err">
+        <b class="err">Chưa quyết</b>
+        <ul class="mt-1 list-disc pl-4 space-y-1">
+          <li>Grafana vs viết custom Next.js panel trong <code>agent/</code></li>
+          <li>Retention stream cost trong VL bao lâu (30d? 90d?)</li>
+          <li>Có expose dashboard qua Caddy cho ops xem không, hay chỉ SSH tunnel</li>
+          <li>Budget cứng: kill virtual key tự động khi vượt cap?</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cross-link nav -->
+  <nav class="mt-8 p-4 rounded-lg border border-[var(--line)] bg-[#0e0e12]">
+    <div class="text-[10px] uppercase tracking-widest mut mb-2">Xem thêm mockup</div>
+    <div class="flex flex-wrap gap-2 text-xs">
+      <a href="onelog-index.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#0a1a22] transition">🗂 Index</a>
+      <a href="onelog-system-explainer.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#15151c] transition">① System explainer</a>
+      <a href="onelog-services-detail.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-violet-700 hover:bg-[#15151c] transition">② Services detail</a>
+      <a href="onelog-production-deploy.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-lime-700 hover:bg-[#15151c] transition">③ Production deploy</a>
+      <a href="onelog-client-deploy-config.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-amber-700 hover:bg-[#15151c] transition">④ Client deploy · config</a>
+      <a href="onelog-llm-abstraction-workflow.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-violet-700 hover:bg-[#15151c] transition">⑤ LLM abstraction workflow</a>
+      <span class="px-3 py-1.5 rounded border border-cyan-800 bg-cyan-950/40 text-cyan-300">⑥ Cost dashboard (đang xem)</span>
+    </div>
+  </nav>
+
+  <footer class="text-center text-xs mut py-4">
+    OneLog · Cost Dashboard mockup · Number là placeholder cho review · Sacrifice grammar for concision
+  </footer>
+</div>
+
+<script>
+  // ── Trend line chart (30d) ─────────────────────────────
+  const days = Array.from({length:30}, (_,i)=> `${i+1}`);
+  const rand = (base,jit) => Array.from({length:30}, ()=> +(base + (Math.random()-0.5)*jit).toFixed(2));
+  const ctxT = document.getElementById('chartTrend');
+  new Chart(ctxT, {
+    type:'line',
+    data:{
+      labels: days,
+      datasets:[
+        {label:'gemini-flash',  data:rand(0.28,0.18), borderColor:'#c4b5fd', backgroundColor:'#c4b5fd22', tension:.35, fill:true},
+        {label:'claude-sonnet', data:rand(0.42,0.22), borderColor:'#fbbf24', backgroundColor:'#fbbf2422', tension:.35, fill:true},
+        {label:'gpt-4-mini',    data:rand(0.18,0.12), borderColor:'#86efac', backgroundColor:'#86efac22', tension:.35, fill:true},
+        {label:'deepseek',      data:rand(0.09,0.06), borderColor:'#7dd3fc', backgroundColor:'#7dd3fc22', tension:.35, fill:true},
+      ]
+    },
+    options:{
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{mode:'index'}},
+      scales:{
+        x:{ticks:{color:'#6b7280', font:{size:10}}, grid:{color:'#1f1f25'}},
+        y:{ticks:{color:'#6b7280', font:{size:10}, callback:v=>'$'+v}, grid:{color:'#1f1f25'}}
+      },
+      interaction:{intersect:false, mode:'index'}
+    }
+  });
+
+  // ── Donut chart (7d model split) ───────────────────────
+  const ctxD = document.getElementById('chartDonut');
+  new Chart(ctxD, {
+    type:'doughnut',
+    data:{
+      labels:['gemini-flash','claude-sonnet','gpt-4-mini','deepseek'],
+      datasets:[{
+        data:[8.42, 9.15, 3.28, 2.07],
+        backgroundColor:['#c4b5fd','#fbbf24','#86efac','#7dd3fc'],
+        borderColor:'#0e0e12', borderWidth:2
+      }]
+    },
+    options:{
+      maintainAspectRatio:false,
+      cutout:'62%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=> c.label+': $'+c.parsed.toFixed(2)}}
+      }
+    }
+  });
+</script>
+</body>
+</html>

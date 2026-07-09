@@ -192,6 +192,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Re-use existing .env convention (was set up for the decommissioned agent).
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      # Topic ID inside supergroup (0 = General/root). Set when group has Topics enabled.
+      TELEGRAM_ALERT_THREAD_ID: ${TELEGRAM_ALERT_THREAD_ID:-0}
       # Render .StartsAt.Local / .EndsAt.Local as Vietnam time (UTC+7) in template.
       TZ: Asia/Ho_Chi_Minh
     entrypoint: ["/bin/sh"]
@@ -200,6 +202,7 @@ services:
       - |
         sed -e "s|__TELEGRAM_BOT_TOKEN__|$$TELEGRAM_BOT_TOKEN|g" \
             -e "s|__TELEGRAM_CHAT_ID__|$$TELEGRAM_ALERT_CHAT_ID|g" \
+            -e "s|__TELEGRAM_THREAD_ID__|$$TELEGRAM_ALERT_THREAD_ID|g" \
             /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/data
     ports:

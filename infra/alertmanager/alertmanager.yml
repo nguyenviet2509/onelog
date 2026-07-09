@@ -42,6 +42,7 @@ receivers:
     telegram_configs:
       - bot_token: "__TELEGRAM_BOT_TOKEN__"
         chat_id: __TELEGRAM_CHAT_ID__
+        message_thread_id: __TELEGRAM_THREAD_ID__
         parse_mode: HTML
         send_resolved: true
         message: &telegram_message_template |
@@ -63,6 +64,7 @@ receivers:
     telegram_configs:
       - bot_token: "__TELEGRAM_BOT_TOKEN__"
         chat_id: __TELEGRAM_CHAT_ID__
+        message_thread_id: __TELEGRAM_THREAD_ID__
         parse_mode: HTML
         send_resolved: false   # event-style: chỉ FIRING, không gửi RESOLVED
         message: *telegram_message_template

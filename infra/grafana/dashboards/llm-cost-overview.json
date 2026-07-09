@@ -412,7 +412,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost event:litellm_cost _time:7d user_api_key_alias:*\n  | stats by (user_api_key_alias)\n          sum(response_cost) as spent,\n          count() as reqs\n  | sort by (spent) desc",
+          "expr": "service:litellm_cost event:litellm_cost _time:7d user_api_key_alias:*\n  | stats by (user_api_key_alias) sum(response_cost) as spent\n  | sort by (spent) desc",
           "legendFormat": "{{user_api_key_alias}}",
           "queryType": "stats",
           "refId": "A"
@@ -519,7 +519,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:provider_cost provider:deepseek _time:1h\n  | stats by (provider) last(balance_usd) as balance",
+          "expr": "service:provider_cost provider:deepseek _time:1h\n  | stats by (provider) avg(balance_usd) as balance",
           "legendFormat": "balance",
           "queryType": "stats",
           "refId": "A"
@@ -561,7 +561,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:provider_cost provider:openai _time:1h\n  | stats by (provider) last(cost_usd_day) as cost",
+          "expr": "service:provider_cost provider:openai _time:1h\n  | stats by (provider) avg(cost_usd_day) as cost",
           "legendFormat": "daily cost",
           "queryType": "stats",
           "refId": "A"

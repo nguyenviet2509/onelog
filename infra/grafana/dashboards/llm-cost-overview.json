@@ -473,7 +473,6 @@
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
           "expr": "service:litellm_cost event:litellm_cost _time:24h fallback:true\n  | fields _time, model, fallback_model, exception_type\n  | sort by (_time) desc\n  | limit 50",
           "legendFormat": "",
-          "queryType": "stats",
           "refId": "A"
         }
       ]
@@ -520,7 +519,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:provider_cost provider:deepseek _time:1h\n  | fields _time, balance_usd\n  | sort by (_time) desc\n  | limit 1",
+          "expr": "service:provider_cost provider:deepseek _time:1h\n  | stats by (provider) last(balance_usd) as balance",
           "legendFormat": "balance",
           "queryType": "stats",
           "refId": "A"
@@ -562,7 +561,7 @@
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:provider_cost provider:openai _time:1h\n  | fields _time, cost_usd_day\n  | sort by (_time) desc\n  | limit 1",
+          "expr": "service:provider_cost provider:openai _time:1h\n  | stats by (provider) last(cost_usd_day) as cost",
           "legendFormat": "daily cost",
           "queryType": "stats",
           "refId": "A"

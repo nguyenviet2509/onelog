@@ -249,7 +249,7 @@ groups:
         expr: |
           service:provider_cost provider:deepseek
             | stats avg(balance_usd) as b
-            | filter b:>0 AND b:<5
+            | filter b:>0 AND b:<100
         for: 0m
         labels:
           severity: warning

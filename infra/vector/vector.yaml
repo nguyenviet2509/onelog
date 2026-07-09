@@ -149,20 +149,25 @@ transforms:
       }
       if trace != null { .trace = trace }
 
-  # LiteLLM container stdout → tag service:litellm_cost for cost tracking.
-  # LiteLLM stdout → parse JSON cost stream → tag service=litellm_cost.
-  # Input from docker_litellm source (docker_logs, requires socket mount).
-  # LiteLLM json_logs emits mixed lines: some are structured JSON (cost/spend
-  # records), others are plain startup/error text. parse_json fail-safe: keep
-  # event but skip merging when non-JSON line encountered.
+  # LiteLLM container stdout → keep only cost records (event=="litellm_cost").
+  # Container emits 100s of non-cost lines (access log, uvicorn, startup, worker
+  # spawn) — nếu tag hết service=litellm_cost thì `stats sum(response_cost)`
+  # trả NaN vì hầu hết record không có field số. Filter trước → merge sau.
+  filter_litellm_cost:
+    type: filter
+    inputs: [docker_litellm]
+    condition: |
+      raw = string(.message) ?? ""
+      parsed, err = parse_json(raw)
+      err == null && is_object(parsed) && (string(parsed.event) ?? "") == "litellm_cost"
+
   tag_litellm_cost:
     type: remap
-    inputs: [docker_litellm]
+    inputs: [filter_litellm_cost]
     source: |
       raw_msg = string(.message) ?? ""
       parsed, err = parse_json(raw_msg)
       if err == null && is_object(parsed) {
-        # Merge parsed cost/spend fields (response_cost, model, user_api_key_alias, tokens…)
         . = merge(., parsed) ?? .
       }
       .service = "litellm_cost"

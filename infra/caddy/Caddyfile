@@ -145,17 +145,17 @@ http://sqliteui.local {
     }
 }
 
-# Grafana cost dashboard — strict CIDR + Bearer + Grafana login (3 layers).
+# Grafana cost dashboard — strict CIDR + Grafana login (2 layers).
+# Bearer layer removed: browsers can't send Authorization header on navigation
+# without extensions (ModHeader) → poor UX for 5 ops. Grafana's built-in login
+# (password + session cookie + optional 2FA) is sufficient behind CIDR gate.
+#
 # Add to /etc/hosts on admin machines: 192.168.122.53  admin.webui.local
-# ADMIN_STRICT_CIDR: comma-separated CIDR of 1-2 admin machines only (not full LAN).
+# ADMIN_STRICT_CIDR: space-separated CIDR of admin machines only (not full LAN).
 http://admin.webui.local {
     @admin_lan remote_ip {$ADMIN_STRICT_CIDR}
-    @has_token header Authorization "Bearer {$COST_DASHBOARD_TOKEN}"
     handle @admin_lan {
-        handle @has_token {
-            reverse_proxy grafana:3000
-        }
-        respond "Unauthorized — Bearer token required" 401
+        reverse_proxy grafana:3000
     }
     respond "Forbidden — IP not in admin CIDR" 403
 }

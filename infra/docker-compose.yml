@@ -485,13 +485,11 @@ services:
       - "80:80"
       - "443:443"
     # Env passthrough — Caddyfile references {$VAR} which resolves against
-    # container env, not compose env. Fail-fast (`:?`) prevents subtle
-    # security bugs: empty $COST_DASHBOARD_TOKEN → matcher "Bearer " matches
-    # any client sending literal "Bearer " (fail-open).
+    # container env, not compose env. Fail-fast (`:?`) prevents empty CIDR
+    # matching everything.
     environment:
       ADMIN_ALLOW_CIDR: ${ADMIN_ALLOW_CIDR:?ADMIN_ALLOW_CIDR must be set}
       ADMIN_STRICT_CIDR: ${ADMIN_STRICT_CIDR:?ADMIN_STRICT_CIDR must be set for admin subdomain}
-      COST_DASHBOARD_TOKEN: ${COST_DASHBOARD_TOKEN:?COST_DASHBOARD_TOKEN must be set (openssl rand -hex 24)}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/data:/data

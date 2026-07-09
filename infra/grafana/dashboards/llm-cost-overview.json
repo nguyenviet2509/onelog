@@ -99,12 +99,13 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "textMode": "auto"
       },
-      "title": "Cost — this month",
+      "title": "Cost — last 30d",
+      "description": "Tổng cost 30 ngày gần nhất. VictoriaLogs không hỗ trợ _time:month (calendar month), dùng rolling 30d.",
       "type": "stat",
       "targets": [
         {
           "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "service:litellm_cost _time:month\n  | stats sum(response_cost) as total",
+          "expr": "service:litellm_cost _time:30d\n  | stats sum(response_cost) as total",
           "legendFormat": "total",
           "refId": "A"
         }

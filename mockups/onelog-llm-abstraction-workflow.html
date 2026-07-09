@@ -114,10 +114,10 @@
 <!-- ARCHITECTURE DIAGRAM -->
 <section class="card p-5 mb-6">
   <div class="flex items-center justify-between mb-3">
-    <span class="h-title">Architecture · End-state</span>
+    <span class="h-title">Kiến trúc · End-state</span>
     <div class="flex gap-2">
-      <span class="chip on"><span class="dot" style="background:#7dd3fc"></span> new</span>
-      <span class="chip"><span class="dot" style="background:#8a8a96"></span> unchanged</span>
+      <span class="chip on"><span class="dot" style="background:#7dd3fc"></span> mới</span>
+      <span class="chip"><span class="dot" style="background:#8a8a96"></span> không đổi</span>
     </div>
   </div>
   <div class="grid-bg p-4 rounded-xl">
@@ -176,7 +176,7 @@ flowchart LR
 <section class="card p-5 mb-6">
   <div class="flex items-center justify-between mb-3">
     <span class="h-title">Data storage · nơi state của LLM stack sống</span>
-    <span class="pill gray">no dedicated Postgres cho LiteLLM</span>
+    <span class="pill gray">không có Postgres riêng cho LiteLLM</span>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="card2 p-4">
@@ -186,9 +186,9 @@ flowchart LR
       </div>
       <div class="text-[12px] mut mb-2">Bind-mount <code>./data/openwebui:/app/backend/data</code> · file <code>webui.db</code></div>
       <ul class="text-[12px] space-y-1">
-        <li>• User accounts (local table), role, hashed password</li>
-        <li>• Chat history + messages + attachments</li>
-        <li>• Workspace tools config (mcpo endpoints registered)</li>
+        <li>• Tài khoản user (bảng local), role, hashed password</li>
+        <li>• Lịch sử chat + messages + attachments</li>
+        <li>• Cấu hình workspace tools (mcpo endpoints đã đăng ký)</li>
         <li>• Settings, prompts, model presets</li>
       </ul>
       <div class="mt-2 text-[11px] mut">Backup: <code>backup-openwebui.sh</code> · daily 03:00 · age-encrypted tarball → <code>~/onelog/backup/openwebui-*.tgz.age</code></div>
@@ -197,7 +197,7 @@ flowchart LR
     <div class="card2 p-4">
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium">🧭 LiteLLM Proxy · in-memory only</span>
-        <span class="pill amber">no DB backend</span>
+        <span class="pill amber">không có DB backend</span>
       </div>
       <div class="text-[12px] mut mb-2">DB backend tắt (<code>31643ec</code>) · Prisma không honor Postgres <code>search_path</code></div>
       <ul class="text-[12px] space-y-1">
@@ -226,7 +226,7 @@ flowchart LR
     <div class="card2 p-4">
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium">🌉 mcpo bridge · token-only</span>
-        <span class="pill cyan">no persistence</span>
+        <span class="pill cyan">không lưu state</span>
       </div>
       <div class="text-[12px] mut mb-2">Runtime substitutes <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code></div>
       <ul class="text-[12px] space-y-1">
@@ -331,8 +331,8 @@ flowchart LR
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-medium">🛠️ Maintenance script · <code>scripts/openwebui-db-maintenance.sh</code></div>
       <div class="flex gap-2">
-        <span class="pill lime">zero data loss</span>
-        <span class="pill cyan">Python stdlib · no CLI dep</span>
+        <span class="pill lime">không mất dữ liệu</span>
+        <span class="pill cyan">Python stdlib · không cần CLI</span>
       </div>
     </div>
 
@@ -452,14 +452,14 @@ flowchart LR
 <!-- PHASE PROGRESS BOARD -->
 <section class="card p-5 mb-6">
   <div class="flex items-center justify-between mb-3">
-    <span class="h-title">Cook progress · 5 phases</span>
+    <span class="h-title">Tiến độ · 5 phase</span>
     <span class="pill lime">status thực tế 2026-07-02</span>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
     <div class="phase-cell done">
       <div class="flex items-center justify-between mb-2">
         <span class="pill lime">✓ DONE</span>
-        <span class="text-[10px] mut">code + deploy</span>
+        <span class="text-[10px] mut">code + triển khai</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 1</div>
       <div class="text-[11px] mut">Agent LiteLLM adapter · shape adapter Anthropic↔OpenAI · 15/15 tests pass · deployed <code>31f9644</code></div>
@@ -491,10 +491,10 @@ flowchart LR
     <div class="phase-cell" style="border-color:#2a1f06;background:#1a1407">
       <div class="flex items-center justify-between mb-2">
         <span class="pill amber">⏸ PARTIAL</span>
-        <span class="text-[10px] mut">deploy doc done</span>
+        <span class="text-[10px] mut">tài liệu deploy xong</span>
       </div>
       <div class="font-medium text-sm mb-1">Phase 5</div>
-      <div class="text-[11px] mut">Docs deploy runbook đã viết. Còn lại: mcp-setup restructure, user guide, migration cutover.</div>
+      <div class="text-[11px] mut">Docs deploy runbook đã viết. Còn lại: mcp-setup tái cấu trúc, hướng dẫn user, chuyển đổi migration.</div>
     </div>
   </div>
 </section>
@@ -581,12 +581,12 @@ flowchart LR
 
   <div class="card p-5 lg:col-span-2">
     <div class="flex items-center justify-between mb-3">
-      <span class="h-title">Benchmark Matrix · 20 VI queries × 4 providers</span>
-      <span class="pill gray">Phase 4 output · projected</span>
+      <span class="h-title">Benchmark · 20 câu VI × 4 provider</span>
+      <span class="pill gray">Phase 4 output · ước tính</span>
     </div>
     <table class="k">
       <thead>
-        <tr><th>Provider</th><th>Cost / 20q (VND)</th><th>Avg latency</th><th>Tool success</th><th>VI quality</th><th>Verdict</th></tr>
+        <tr><th>Provider</th><th>Chi phí / 20 câu (VND)</th><th>Latency TB</th><th>Tool thành công</th><th>Chất lượng VI</th><th>Kết luận</th></tr>
       </thead>
       <tbody>
         <tr>
@@ -623,17 +623,17 @@ flowchart LR
         </tr>
       </tbody>
     </table>
-    <div class="text-[11px] mut mt-2">* Số liệu illustrative — thực tế đo trong Phase 4. Cost = Google/OpenAI/Anthropic pricing 2025 Q4.</div>
+    <div class="text-[11px] mut mt-2">* Số liệu minh họa — thực tế đo trong Phase 4. Cost = giá Google/OpenAI/Anthropic Q4 2025.</div>
   </div>
 
   <div class="card p-5">
-    <div class="h-title mb-2">Cost saving projection</div>
+    <div class="h-title mb-2">Dự kiến tiết kiệm chi phí</div>
     <div class="text-4xl font-semibold acc">-88%</div>
-    <div class="text-xs warn mb-1">⚠ raw pricing — chưa tính Claude prompt caching</div>
+    <div class="text-xs warn mb-1">⚠ giá thô — chưa tính Claude prompt caching</div>
     <div class="text-xs mut mb-4">Với cache Claude thực tế ~-65% (RT-F7 Phase 4 verify)</div>
     <div class="space-y-3">
       <div>
-        <div class="flex justify-between text-[11px] mb-1"><span>Baseline (Claude)</span><span class="mut">3,150 VND</span></div>
+        <div class="flex justify-between text-[11px] mb-1"><span>Hiện tại (Claude)</span><span class="mut">3,150 VND</span></div>
         <div class="bar"><span style="width:100%"></span></div>
       </div>
       <div>
@@ -642,13 +642,13 @@ flowchart LR
       </div>
     </div>
     <hr class="sep"/>
-    <div class="text-[11px] mut">Ước tính team 5 ops × 500 query/tháng = <b class="fg">1,590,000 VND/tháng saving</b>.</div>
+    <div class="text-[11px] mut">Ước tính team 5 ops × 500 query/tháng = <b class="fg">tiết kiệm 1,590,000 VND/tháng</b>.</div>
   </div>
 </section>
 
 <!-- PROVIDER ROUTING FLOW -->
 <section class="card p-5 mb-6">
-  <div class="h-title mb-3">LiteLLM Routing Flow · Fallback & Retry</div>
+  <div class="h-title mb-3">LiteLLM Routing · Fallback & Retry</div>
   <div class="grid-bg p-4 rounded-xl">
     <pre class="mermaid text-[13px]">
 sequenceDiagram
@@ -676,10 +676,10 @@ sequenceDiagram
 
 <!-- FILE CHANGE SURFACE -->
 <section class="card p-5 mb-6">
-  <div class="h-title mb-3">File change surface · thực tế commit vào master</div>
+  <div class="h-title mb-3">Danh sách file thay đổi · thực tế commit vào master</div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-      <div class="text-[11px] mut mb-2 tracking-wider">MODIFIED</div>
+      <div class="text-[11px] mut mb-2 tracking-wider">ĐÃ SỬA</div>
       <ul class="text-[12px] space-y-1.5">
         <li><code class="acc">agent/pyproject.toml</code> <span class="mut">+ litellm&gt;=1.50</span></li>
         <li><code class="acc">agent/src/agent/config.py</code> <span class="mut">+ llm_model, fallback, prompt_cache toggle</span></li>
@@ -693,7 +693,7 @@ sequenceDiagram
       </ul>
     </div>
     <div>
-      <div class="text-[11px] mut mb-2 tracking-wider">CREATED</div>
+      <div class="text-[11px] mut mb-2 tracking-wider">ĐÃ TẠO MỚI</div>
       <ul class="text-[12px] space-y-1.5">
         <li><code class="ok">infra/litellm/config.yaml</code> <span class="mut">4 model alias · fallback chain · DB disabled</span></li>
         <li><code class="ok">infra/litellm/.env.llm.example</code> <span class="mut">provider keys tách chmod 0400</span></li>
@@ -706,7 +706,7 @@ sequenceDiagram
         <li><code class="ok">infra/scripts/openwebui-db-maintenance.sh</code> <span class="mut">3 mode (check/weekly/monthly) · Python stdlib · ERR trap JSON</span></li>
         <li><code class="ok">.claude/skills/deploy-doc/SKILL.md</code> <span class="mut">skill reuse pattern</span></li>
       </ul>
-      <div class="text-[11px] mut mb-2 mt-4 tracking-wider">DELETED / ABANDONED</div>
+      <div class="text-[11px] mut mb-2 mt-4 tracking-wider">ĐÃ XÓA / BỎ LẠI</div>
       <ul class="text-[12px] space-y-1.5">
         <li><code class="err">infra/litellm/init-schema.sql</code> <span class="mut">Prisma ignore search_path → DB isolation no-op</span></li>
       </ul>
@@ -720,11 +720,11 @@ sequenceDiagram
   <ol class="relative border-l border-[var(--line)] ml-3 space-y-3">
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
-      <div class="text-sm"><b>D-7</b> · Deploy Phase 1-3 prod, admin dry-run</div>
+      <div class="text-sm"><b>D-7</b> · Triển khai Phase 1-3 prod, admin dry-run</div>
     </li>
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
-      <div class="text-sm"><b>D-3</b> · Onboard 1 ops early adopter, thu feedback UX</div>
+      <div class="text-sm"><b>D-3</b> · Onboard 1 ops dùng thử sớm, thu feedback UX</div>
     </li>
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-cyan-900 border border-cyan-400"></span>
@@ -736,11 +736,11 @@ sequenceDiagram
     </li>
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-violet-900 border border-violet-400"></span>
-      <div class="text-sm"><b>D+7</b> · Check usage · target ≥ 4/5 người dùng OpenWebUI · follow-up ai chưa</div>
+      <div class="text-sm"><b>D+7</b> · Kiểm tra mức dùng · mục tiêu ≥ 4/5 người dùng OpenWebUI · follow-up ai chưa</div>
     </li>
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-red-900 border border-red-400"></span>
-      <div class="text-sm"><b>D+14</b> · Revoke MCP bearer tokens Claude-only · lock migration</div>
+      <div class="text-sm"><b>D+14</b> · Thu hồi MCP bearer token dùng Claude-only · khóa migration</div>
     </li>
     <li class="ml-4">
       <span class="absolute -left-[9px] mt-1 w-4 h-4 rounded-full bg-emerald-900 border border-emerald-400"></span>
@@ -757,19 +757,19 @@ sequenceDiagram
       <tr><th>#</th><th>Vấn đề</th><th>Fix</th><th>Commit</th></tr>
     </thead>
     <tbody>
-      <tr><td>1</td><td>LiteLLM stuck 20 phút Prisma migration + schema isolation no-op</td><td>Disable DB backend, dùng stdout JSON log</td><td><code>31643ec</code></td></tr>
-      <tr><td>2</td><td>Virtual key generate báo <code>DB not connected</code></td><td>OpenWebUI reuse LITELLM_MASTER_KEY</td><td><code>e2293f8</code></td></tr>
-      <tr><td>3</td><td>Caddy <code>/webui/*</code> subpath break OpenWebUI static assets</td><td>Dedicated subdomain webui.local + /etc/hosts</td><td><code>6434949</code></td></tr>
+      <tr><td>1</td><td>LiteLLM stuck 20 phút Prisma migration + schema isolation no-op</td><td>Tắt DB backend, dùng stdout JSON log</td><td><code>31643ec</code></td></tr>
+      <tr><td>2</td><td>Virtual key generate báo <code>DB not connected</code></td><td>OpenWebUI dùng lại LITELLM_MASTER_KEY</td><td><code>e2293f8</code></td></tr>
+      <tr><td>3</td><td>Caddy <code>/webui/*</code> subpath phá vỡ static assets của OpenWebUI</td><td>Subdomain riêng webui.local + /etc/hosts</td><td><code>6434949</code></td></tr>
       <tr><td>4</td><td>Compose "service openwebui depends on undefined litellm-proxy"</td><td>litellm-proxy vào cả 2 profiles [llm, chat]</td><td><code>e2293f8</code></td></tr>
-      <tr><td>5</td><td>Bootstrap admin dance gây git conflict mỗi deploy</td><td>Compose ENV always defined, empty=skip. Chỉ động .env</td><td><code>81b3ba5</code></td></tr>
-      <tr><td>6</td><td><code>docker compose exec</code> từ <code>~/onelog</code> báo no configuration file</td><td>Golden rule §0: luôn <code>cd ~/onelog/infra</code></td><td><code>6897b41</code></td></tr>
-      <tr><td>7</td><td>Agent service <code>no such service</code> — bị comment từ mcp-only rollout</td><td>Restore agent service với LiteLLM env vars</td><td><code>373053d</code></td></tr>
+      <tr><td>5</td><td>Bootstrap admin dance gây git conflict mỗi deploy</td><td>Compose ENV luôn định nghĩa, empty=skip. Chỉ động .env</td><td><code>81b3ba5</code></td></tr>
+      <tr><td>6</td><td><code>docker compose exec</code> từ <code>~/onelog</code> báo no configuration file</td><td>Quy tắc vàng §0: luôn <code>cd ~/onelog/infra</code></td><td><code>6897b41</code></td></tr>
+      <tr><td>7</td><td>Agent service <code>no such service</code> — bị comment từ mcp-only rollout</td><td>Khôi phục agent service với LiteLLM env vars</td><td><code>373053d</code></td></tr>
       <tr><td>8</td><td>Git pull báo <code>local changes would be overwritten</code></td><td>Pattern <code>git stash push</code> trước pull</td><td>doc</td></tr>
-      <tr><td>9</td><td>OpenWebUI call <code>grep_knowledge_files</code> thay vì MCP tool</td><td>OpenWebUI KHÔNG native MCP — thêm mcpo bridge (MCP→OpenAPI). Register tools trong Admin → Tools</td><td><code>c74a57f</code></td></tr>
+      <tr><td>9</td><td>OpenWebUI gọi <code>grep_knowledge_files</code> thay vì MCP tool</td><td>OpenWebUI KHÔNG native MCP — thêm mcpo bridge (MCP→OpenAPI). Đăng ký tool trong Admin → Tools</td><td><code>c74a57f</code></td></tr>
       <tr><td>10</td><td>mcpo báo <code>401</code> khi curl endpoint</td><td>Dùng <code>MCPO_API_KEY</code> (public), không nhầm với <code>MCP_TOKEN_OPENWEBUI</code> (internal mcpo→mcp-*)</td><td>doc</td></tr>
-      <tr><td>11</td><td>mcpo crash startup vì config.json không expand env</td><td>Entrypoint <code>sed</code> substitute <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code> trước khi <code>exec mcpo</code></td><td><code>c74a57f</code></td></tr>
+      <tr><td>11</td><td>mcpo crash startup vì config.json không expand env</td><td>Entrypoint <code>sed</code> thay thế <code>__MCP_TOKEN__</code> vào <code>/tmp/config.json</code> trước khi <code>exec mcpo</code></td><td><code>c74a57f</code></td></tr>
       <tr><td>12</td><td><code>docker compose restart litellm-proxy</code> không re-read <code>.env.llm</code></td><td>Phải <code>sudo up -d --force-recreate litellm-proxy</code> khi đổi provider key</td><td>doc</td></tr>
-      <tr><td>13</td><td>Gemini free tier 429 sau ~10 câu chat (MCP tool-use = 2-3 req/query)</td><td>Enable billing tại aistudio.google.com/apikey hoặc đổi default → Claude/GPT</td><td>doc</td></tr>
+      <tr><td>13</td><td>Gemini free tier 429 sau ~10 câu chat (MCP tool-use = 2-3 req/query)</td><td>Bật billing tại aistudio.google.com/apikey hoặc đổi default → Claude/GPT</td><td>doc</td></tr>
       <tr><td>14</td><td><code>sqliteui.local</code> trả 410 "web UI deprecated"</td><td>Thiếu site block trong Caddyfile — thêm <code>http://sqliteui.local { reverse_proxy sqlite-web:8080 }</code></td><td>caddy</td></tr>
       <tr><td>15</td><td>Maintenance script chạy im lặng, exit 0</td><td>Image openwebui không có CLI <code>sqlite3</code> → refactor sang <code>python3 -</code> (stdlib) + ERR trap emit JSON</td><td>script</td></tr>
       <tr><td>16</td><td>Cron log <code>Permission denied /var/log/openwebui-db.log</code></td><td><code>sudo touch + chown vietnt:vietnt</code> file log trước khi cài cron</td><td>doc</td></tr>
@@ -784,7 +784,7 @@ sequenceDiagram
   <div class="h-title mb-3">Trạng thái verify — logserver-01</div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-[13px]">
     <div>
-      <div class="text-[11px] mut mb-2 tracking-wider">✅ VERIFIED</div>
+      <div class="text-[11px] mut mb-2 tracking-wider">✅ ĐÃ XÁC NHẬN</div>
       <ul class="space-y-1.5">
         <li>LiteLLM proxy <code>Up (healthy)</code>, list 4 model alias</li>
         <li>OpenWebUI reachable qua <code>http://webui.local/</code>, admin login OK</li>
@@ -808,10 +808,22 @@ sequenceDiagram
   </div>
 </section>
 
+<nav class="mt-8 p-4 rounded-lg border border-[var(--line)] bg-[#0e0e12]">
+  <div class="text-[10px] uppercase tracking-widest mut mb-2">Xem thêm mockup</div>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <a href="onelog-index.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#0a1a22] transition">🗂 Index</a>
+    <a href="onelog-system-explainer.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#15151c] transition">① System explainer</a>
+    <a href="onelog-services-detail.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-violet-700 hover:bg-[#15151c] transition">② Services detail</a>
+    <a href="onelog-production-deploy.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-lime-700 hover:bg-[#15151c] transition">③ Production deploy</a>
+    <a href="onelog-client-deploy-config.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-amber-700 hover:bg-[#15151c] transition">④ Client deploy · config</a>
+    <span class="px-3 py-1.5 rounded border border-violet-800 bg-violet-950/40 text-violet-300">⑤ LLM abstraction workflow (đang xem)</span>
+  </div>
+</nav>
+
 <footer class="text-[11px] mut text-center py-4 border-t border-[var(--line)]">
-  OneLog · LLM Provider Abstraction preview · Plan
+  OneLog · LLM Provider Abstraction xem trước · Plan
   <a href="../plans/260701-1544-llm-provider-abstraction/plan.md" class="acc">260701-1544-llm-provider-abstraction</a>
-  · Generated for review trước khi /ck:cook
+  · Sinh ra để review trước khi /ck:cook
 </footer>
 
 </div>

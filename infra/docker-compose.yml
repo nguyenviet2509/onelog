@@ -330,8 +330,10 @@ services:
     environment:
       VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
       # v1.9.0 reads MCP_SERVER_MODE (not MCP_TRANSPORT); default stdio crash-loops
-      # under docker. Set sse so the container exposes /sse + /message over HTTP.
-      MCP_SERVER_MODE: sse
+      # under docker. Streamable HTTP at /mcp — SSE mode caused mcpo httpx.ReadTimeout
+      # reconnect loop burning 100% CPU (mcp-vl doesn't emit SSE keepalive → httpx
+      # trips default read timeout ~15min → sse_reader respawn leaks coroutines).
+      MCP_SERVER_MODE: http
       MCP_LISTEN_ADDR: ":8000"
       # Disable heavyweight documentation tool — keeps the surface focused on
       # query/hits/facets/stats for IDE assistants.

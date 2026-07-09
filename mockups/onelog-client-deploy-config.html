@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · Deploy Client Server — Config Map</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--warn:#fbbf24;
+    --ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)} .acc{color:var(--acc)} .ok{color:var(--ok)}
+  .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .h-title{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  pre,code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.err{background:#3a0f0f;color:#f87171}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .cmd{background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;padding:10px 12px;
+       font-family:ui-monospace;font-size:12px;color:#cffafe;white-space:pre-wrap;word-break:break-word}
+  .cmd .p{color:#4c9c8f} .cmd .c{color:#5f5f6b}
+  table.k{width:100%;font-size:12.5px;border-collapse:collapse}
+  table.k th,table.k td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+  table.k td.file{white-space:nowrap;color:#7dd3fc}
+  .lane{position:relative;padding:14px 16px 12px;border-radius:10px;border:1px solid var(--line)}
+  .lane-edge{border-color:#0e7490;background:linear-gradient(180deg,#0a2a35 0%,#0d0d11 100%)}
+  .lane-app{border-color:#7c3aed;background:linear-gradient(180deg,#1f0f3a 0%,#0d0d11 100%)}
+  .lane-data{border-color:#059669;background:linear-gradient(180deg,#0a2a1a 0%,#0d0d11 100%)}
+  .lane-ops{border-color:#d97706;background:linear-gradient(180deg,#2a1808 0%,#0d0d11 100%)}
+  .lane-client{border-color:#4a4a55;background:linear-gradient(180deg,#141419 0%,#0d0d11 100%)}
+  .lane-lbl{position:absolute;top:-10px;left:14px;background:#0a0a0b;padding:0 8px;
+            font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .svc{background:#15151c;border:1px solid #2a2a35;border-radius:8px;padding:9px 11px;
+       text-align:center;display:flex;flex-direction:column;gap:2px;min-height:60px;justify-content:center}
+  .svc.edge{border-color:#0e7490;background:#0a2530}
+  .svc.app{border-color:#7c3aed;background:#1f1332}
+  .svc.data{border-color:#059669;background:#0a2a1a}
+  .svc.ops{border-color:#d97706;background:#2a1808}
+  .svc.client{border-color:#4a4a55;background:#15151c}
+  .svc-name{font-size:12.5px;font-weight:700;color:#f3f4f6;line-height:1.15}
+  .svc-desc{font-size:10px;color:#9ca3af;line-height:1.2}
+  .arr{display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:20px;padding:2px 0}
+  .arr .lbl{font-size:10px;color:#9ca3af;margin:0 8px;background:#0a0a0b;
+            padding:1px 8px;border-radius:4px;border:1px solid var(--line)}
+  .tree{font-family:ui-monospace;font-size:12px;line-height:1.55;color:#cdd2d8;white-space:pre}
+  .tree .d{color:#7dd3fc} .tree .f{color:#e4e4e7}
+  .tree .cm{color:#5f5f6b} .tree .h{color:#fbbf24;font-weight:600}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:14px 0}
+  .kbd{background:#15151a;border:1px solid #2a2a35;border-radius:4px;padding:1px 6px;
+       font-size:11px;font-family:ui-monospace;color:#a5f3fc}
+  .rule{border-left:3px solid var(--acc);padding:6px 10px;background:#0a1a22;border-radius:0 6px 6px 0;font-size:12.5px}
+  .rule.warn{border-color:var(--warn);background:#1a1408}
+  .rule.err{border-color:var(--err);background:#1a0a0a}
+
+  /* ── Layout: main + right TOC ─────────────────────────── */
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:24px;
+          max-width:1360px;margin:0 auto;padding:24px}
+  @media (max-width:1100px){
+    .layout{grid-template-columns:1fr}
+    aside.toc{display:none}
+  }
+  main.content{min-width:0}
+  main.content > *{margin-bottom:24px}
+
+  /* ── Right TOC ────────────────────────────────────────── */
+  aside.toc{position:sticky;top:16px;align-self:start;
+            max-height:calc(100vh - 32px);overflow-y:auto;
+            padding:14px 12px;background:var(--card);
+            border:1px solid var(--line);border-radius:12px}
+  aside.toc::-webkit-scrollbar{width:6px}
+  aside.toc::-webkit-scrollbar-thumb{background:#2a2a35;border-radius:3px}
+  .toc-title{font-size:10px;text-transform:uppercase;letter-spacing:.16em;
+             color:var(--mut);padding:2px 8px;margin-bottom:8px}
+  .toc-group{margin-bottom:12px}
+  .toc-group-hdr{display:flex;align-items:center;gap:6px;
+                 font-size:11px;font-weight:700;letter-spacing:.08em;
+                 text-transform:uppercase;padding:6px 8px;border-radius:6px;
+                 border-left:3px solid transparent}
+  .toc-group.ls .toc-group-hdr{color:#c4b5fd;border-left-color:#7c3aed;background:#1a0f2b}
+  .toc-group.cl .toc-group-hdr{color:#cdd2d8;border-left-color:#4a4a55;background:#15151a}
+  .toc-group.misc .toc-group-hdr{color:#7dd3fc;border-left-color:#0e7490;background:#0a1a22}
+  .toc-group-hdr .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+  .toc-list{list-style:none;padding:4px 0 0 10px;margin:0;
+            border-left:1px dashed #2a2a35;margin-left:10px}
+  .toc-list a{display:block;font-size:12px;color:#a3a3ad;
+              padding:5px 10px;border-radius:5px;
+              text-decoration:none;position:relative;line-height:1.35}
+  .toc-list a:hover{background:#15151c;color:#f3f4f6}
+  .toc-list a.active{background:#0a2530;color:#7dd3fc;font-weight:600}
+  .toc-list a.active::before{content:"";position:absolute;left:-14px;top:50%;
+                             transform:translateY(-50%);width:6px;height:6px;
+                             border-radius:50%;background:#7dd3fc;
+                             box-shadow:0 0 8px #7dd3fc}
+  .toc-group.cl .toc-list a.active{background:#1a1a22;color:#e4e4e7}
+  .toc-group.cl .toc-list a.active::before{background:#cdd2d8;box-shadow:0 0 8px #cdd2d8}
+  html{scroll-behavior:smooth}
+  section[id],div[id]{scroll-margin-top:16px}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="layout">
+<main class="content">
+
+  <!-- Header -->
+  <header class="card p-5">
+    <div class="flex items-baseline justify-between flex-wrap gap-2">
+      <div>
+        <div class="h-title">OneLog Deployment</div>
+        <h1 class="text-2xl font-bold mt-1">Deploy lên Client Server — Bản đồ cấu hình</h1>
+        <p class="mut text-sm mt-1">Cần cấu hình chỗ nào · Thư mục nào · Sửa file nào khi cần chỉnh</p>
+      </div>
+      <div class="flex gap-2">
+        <span class="pill cyan">logserver</span>
+        <span class="pill gray">client hosts</span>
+        <span class="pill lime">docker compose</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2 phía: LogServer + Client -->
+  <section id="overview" class="grid grid-cols-2 gap-4">
+    <div class="card p-5 lane lane-app">
+      <span class="lane-lbl vio">① LOG SERVER (1 node)</span>
+      <p class="text-sm mt-2">Máy chạy toàn bộ stack Docker Compose. Repo clone về <code class="kbd">~/onelog</code>.</p>
+      <ul class="text-xs mut mt-3 space-y-1 list-disc pl-5">
+        <li>Chạy: Vector · VictoriaLogs · Qdrant · Postgres · Redis · NATS</li>
+        <li>App: Agent · Indexer · MCP-VL · MCP-Semantic</li>
+        <li>Chat: LiteLLM · OpenWebUI · mcpo · Caddy · Alertmanager · vmalert</li>
+        <li>Ports mở LAN: <span class="kbd">514/udp</span> <span class="kbd">6514/tcp</span> <span class="kbd">6515/tcp</span> <span class="kbd">80</span> <span class="kbd">443</span></li>
+      </ul>
+    </div>
+    <div class="card p-5 lane lane-client">
+      <span class="lane-lbl" style="color:#9ca3af">② CLIENT SERVERS (N nodes)</span>
+      <p class="text-sm mt-2">Mỗi client chỉ cần <b>rsyslog forward</b> tới log server. Không cần Docker.</p>
+      <ul class="text-xs mut mt-3 space-y-1 list-disc pl-5">
+        <li>1 file duy nhất: <code class="kbd">/etc/rsyslog.d/90-forward-onelog.conf</code></li>
+        <li>Forward <span class="kbd">TCP 6514</span> (RFC5424) — có disk queue khi log server down</li>
+        <li>Setup 1 lệnh: <code class="kbd">setup-rsyslog-client.sh</code></li>
+        <li>Optional: Vector agent (buffer đĩa + TLS-ready) trong <code class="kbd">infra/clients/</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Kiến trúc -->
+  <section id="architecture" class="card p-5">
+    <div class="h-title mb-3">Kiến trúc luồng dữ liệu</div>
+    <div class="grid grid-cols-3 gap-3 items-stretch">
+      <!-- Client -->
+      <div class="lane lane-client">
+        <span class="lane-lbl" style="color:#9ca3af">CLIENTS</span>
+        <div class="grid gap-2 mt-2">
+          <div class="svc client"><div class="svc-name">srv-01</div><div class="svc-desc">rsyslog · 90-forward-onelog.conf</div></div>
+          <div class="svc client"><div class="svc-name">srv-02</div><div class="svc-desc">rsyslog · 90-forward-onelog.conf</div></div>
+          <div class="svc client"><div class="svc-name">srv-N…</div><div class="svc-desc">rsyslog / vector agent</div></div>
+        </div>
+      </div>
+
+      <!-- Middle -->
+      <div class="flex flex-col justify-center">
+        <div class="arr"><span class="lbl">TCP 6514 · RFC5424</span></div>
+        <div class="text-center text-xs mut mt-2">Firewall LAN: whitelist client IP</div>
+        <div class="arr">→</div>
+      </div>
+
+      <!-- Server -->
+      <div class="space-y-2">
+        <div class="lane lane-edge py-3">
+          <span class="lane-lbl edge" style="color:#22d3ee">EDGE</span>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="svc edge"><div class="svc-name">Caddy</div><div class="svc-desc">:80/:443 · IP whitelist</div></div>
+            <div class="svc edge"><div class="svc-name">Vector</div><div class="svc-desc">:514 :6514 :6515</div></div>
+          </div>
+        </div>
+        <div class="lane lane-data py-3">
+          <span class="lane-lbl" style="color:#34d399">DATA</span>
+          <div class="grid grid-cols-3 gap-2 mt-2">
+            <div class="svc data"><div class="svc-name">VictoriaLogs</div><div class="svc-desc">:9428</div></div>
+            <div class="svc data"><div class="svc-name">Qdrant</div><div class="svc-desc">:6333</div></div>
+            <div class="svc data"><div class="svc-name">Postgres</div><div class="svc-desc">:5432</div></div>
+          </div>
+        </div>
+        <div class="lane lane-app py-3">
+          <span class="lane-lbl" style="color:#c4b5fd">APP</span>
+          <div class="grid grid-cols-3 gap-2 mt-2">
+            <div class="svc app"><div class="svc-name">Agent</div><div class="svc-desc">:8080</div></div>
+            <div class="svc app"><div class="svc-name">Indexer</div><div class="svc-desc">NATS→Qdrant</div></div>
+            <div class="svc app"><div class="svc-name">MCP-VL/Sem</div><div class="svc-desc">:8001 :9002</div></div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-2">
+            <div class="svc app"><div class="svc-name">LiteLLM</div><div class="svc-desc">:4000</div></div>
+            <div class="svc app"><div class="svc-name">OpenWebUI</div><div class="svc-desc">:8090</div></div>
+            <div class="svc app"><div class="svc-name">mcpo</div><div class="svc-desc">:8091</div></div>
+          </div>
+        </div>
+        <div class="lane lane-ops py-3">
+          <span class="lane-lbl" style="color:#fbbf24">OPS</span>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="svc ops"><div class="svc-name">vmalert</div><div class="svc-desc">rules.yml</div></div>
+            <div class="svc ops"><div class="svc-name">Alertmanager</div><div class="svc-desc">Telegram</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Log Server deep-dive: files & directories -->
+  <section class="card p-5 lane lane-app">
+    <span class="lane-lbl vio">Trên Log Server — File &amp; thư mục cần quan tâm</span>
+    <div class="mt-3 grid grid-cols-2 gap-6">
+      <!-- Tree -->
+      <div id="ls-tree">
+        <div class="pill vio mb-2">Cây thư mục repo (clone về $HOME)</div>
+        <pre class="tree"><span class="cm"># Clone: git clone &lt;repo&gt; ~/onelog  (KHÔNG /opt)</span>
+<span class="cm"># CWD chạy docker compose: ~/onelog/infra</span>
+
+<span class="d">~/onelog/</span>
+├── <span class="d">infra/</span>                        <span class="cm"># ★★ CWD docker compose</span>
+│   ├── <span class="h">docker-compose.yml</span>          <span class="cm"># ★ service · port · volume · profile</span>
+│   ├── <span class="h">.env</span>                        <span class="cm"># ★★ secrets · LLM · retention</span>
+│   ├── <span class="f">.env.example</span>                <span class="cm"># template</span>
+│   │
+│   ├── <span class="d">caddy/</span>
+│   │   └── <span class="h">Caddyfile</span>               <span class="cm"># domain · TLS · IP whitelist</span>
+│   ├── <span class="d">vector/</span>
+│   │   ├── <span class="h">vector.yaml</span>             <span class="cm"># sources · transforms · sinks</span>
+│   │   └── <span class="f">probe-openwebui-db.sh</span>
+│   ├── <span class="d">litellm/</span>
+│   │   ├── <span class="h">config.yaml</span>             <span class="cm"># model routing · fallback</span>
+│   │   ├── <span class="h">.env.llm</span>                <span class="cm"># ★ provider keys (chmod 0400)</span>
+│   │   └── <span class="d">callbacks/</span>
+│   ├── <span class="d">openwebui/</span>
+│   │   └── <span class="f">mcp-config.json</span>
+│   ├── <span class="d">mcpo/</span>
+│   │   └── <span class="h">config.template.json</span>    <span class="cm"># MCP → OpenAPI bridge</span>
+│   ├── <span class="d">alertmanager/</span>
+│   │   └── <span class="h">alertmanager.yml</span>        <span class="cm"># Telegram route · template</span>
+│   ├── <span class="d">vmalert/</span>
+│   │   └── <span class="h">rules.yml</span>               <span class="cm"># LogsQL alert rules</span>
+│   ├── <span class="d">systemd/</span>
+│   │   └── <span class="f">ragstack.service</span>        <span class="cm"># auto-restart on boot</span>
+│   ├── <span class="d">clients/</span>                  <span class="cm"># template copy sang client</span>
+│   │   ├── <span class="f">rsyslog-forward.conf</span>
+│   │   └── <span class="f">rsyslog-forward-json.conf</span>
+│   ├── <span class="d">scripts/</span>                  <span class="cm"># setup · healthcheck · snapshot</span>
+│   └── <span class="d">data/</span>                     <span class="cm"># ★ volume bind — DỮ LIỆU · KHÔNG xoá</span>
+│       ├── <span class="d">victorialogs/</span> <span class="d">qdrant/</span> <span class="d">postgres/</span>
+│       ├── <span class="d">redis/</span> <span class="d">nats/</span> <span class="d">vector/</span> <span class="d">indexer/</span>
+│       └── <span class="d">openwebui/</span> <span class="d">alertmanager/</span> <span class="d">audit/</span>
+├── <span class="d">agent/</span>          <span class="cm"># FastAPI · build từ Dockerfile</span>
+├── <span class="d">indexer/</span>        <span class="cm"># NATS worker · Drain3 + embed</span>
+├── <span class="d">mcp-semantic/</span>   <span class="cm"># FastMCP + /auth/verify</span>
+├── <span class="d">web/</span>            <span class="cm"># Next.js (decommissioned)</span>
+├── <span class="d">docs/</span>           <span class="cm"># deployment · ops guides</span>
+└── <span class="d">backup/</span>         <span class="cm"># snapshot tar.gz (crontab daily)</span>
+
+<span class="cm"># Host system (ngoài repo)</span>
+<span class="d">/etc/systemd/system/</span>
+└── <span class="f">ragstack.service</span>              <span class="cm"># symlink → infra/systemd/</span>
+<span class="d">/var/lib/docker/</span>                     <span class="cm"># image · container runtime</span></pre>
+      </div>
+
+      <!-- Files table -->
+      <div id="ls-files" class="space-y-3">
+        <div class="pill vio mb-1">Chi tiết từng file</div>
+        <table class="k">
+          <thead><tr>
+            <th style="width:42%">File</th>
+            <th>Vai trò · Khi nào sửa</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="file mono"><b>infra/.env</b></td>
+              <td>
+                <span class="pill cyan">MAIN</span> Secrets · LLM model · retention · Telegram · MCP tokens.<br/>
+                <span class="mut text-xs">Sửa khi: đổi password DB, đổi LLM_MODEL, tăng VL_RETENTION, cấp MCP token.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono"><b>infra/docker-compose.yml</b></td>
+              <td>
+                <span class="pill cyan">MAIN</span> Định nghĩa 15 service · port · volume · profile.<br/>
+                <span class="mut text-xs">Sửa khi: thêm service, đổi port publish, đổi volume bind, đổi depends_on.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/caddy/<b>Caddyfile</b></td>
+              <td>
+                <span class="pill cyan">EDGE</span> Reverse proxy · TLS · IP whitelist LAN.<br/>
+                <span class="mut text-xs">Sửa khi: đổi domain, chuyển tls internal→LE, thêm route, thay CIDR whitelist.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/vector/<b>vector.yaml</b></td>
+              <td>
+                <span class="pill cyan">INGEST</span> Sources syslog/JSON · PII redact · sinks VL+NATS.<br/>
+                <span class="mut text-xs">Sửa khi: thêm source mới, chỉnh redaction regex, đổi routing WARN→NATS.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/litellm/<b>config.yaml</b></td>
+              <td>
+                <span class="pill vio">LLM</span> Model routing 4 providers · fallback chain · budgets.<br/>
+                <span class="mut text-xs">Sửa khi: thêm model, đổi fallback order, chỉnh rate limit.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/litellm/<b>.env.llm</b> <span class="pill err">0400</span></td>
+              <td>
+                <span class="pill vio">LLM</span> Provider API keys (Anthropic/OpenAI/Gemini/DeepSeek).<br/>
+                <span class="mut text-xs">Tách khỏi <code>.env</code> để chỉ litellm-proxy đọc được. Owner: root.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/mcpo/<b>config.template.json</b></td>
+              <td>
+                <span class="pill vio">MCP</span> MCP-to-OpenAPI bridge cho OpenWebUI.<br/>
+                <span class="mut text-xs">Sửa khi: đăng ký thêm MCP server, đổi endpoint upstream.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/alertmanager/<br/><b>alertmanager.yml</b></td>
+              <td>
+                <span class="pill amber">ALERT</span> Route · dedupe · Telegram template.<br/>
+                <span class="mut text-xs">Placeholder <code>__TELEGRAM_BOT_TOKEN__</code> render lúc start. Sửa xong <b>force-recreate</b>.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/vmalert/<b>rules.yml</b></td>
+              <td>
+                <span class="pill amber">ALERT</span> Rule LogsQL stats query · fire tới Alertmanager.<br/>
+                <span class="mut text-xs">Sửa khi: thêm alert (error rate, disk full, latency spike).</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/systemd/<b>ragstack.service</b></td>
+              <td>
+                <span class="pill gray">BOOT</span> Auto-start docker compose khi VM reboot.<br/>
+                <span class="mut text-xs">Cài bằng <code>scripts/install-systemd-unit.sh</code>. Ít khi sửa.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/clients/*.conf</td>
+              <td>
+                <span class="pill gray">TEMPLATE</span> Config để copy sang client server.<br/>
+                <span class="mut text-xs">Không dùng trực tiếp trên logserver — chỉ là kho template + script.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">infra/scripts/*.sh</td>
+              <td>
+                <span class="pill lime">OPS</span> setup · healthcheck · snapshot · restore · resurrect.<br/>
+                <span class="mut text-xs">Chạy trực tiếp, không sửa thường xuyên.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono"><b>infra/data/</b>*</td>
+              <td>
+                <span class="pill lime">DATA</span> Volume bind — chứa VL/Qdrant/Postgres/Redis/NATS.<br/>
+                <span class="mut text-xs"><b>KHÔNG xoá tay</b> khi container chạy. Chỉ restore qua snapshot script.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">agent/ · indexer/ · mcp-semantic/</td>
+              <td>
+                Source code app tự viết. <span class="mut text-xs">Compose build từ Dockerfile. Sửa khi thay đổi logic.</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <!-- Scenarios table -->
+    <div id="ls-scenarios" class="h-title mb-2">Kịch bản chỉnh sửa trên log server</div>
+    <table class="k">
+      <thead><tr>
+        <th style="width:24%">Cần làm</th>
+        <th style="width:32%">Sửa file</th>
+        <th>Nội dung · Reload</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="pill cyan">Secrets</span> Đổi password DB / API keys</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>POSTGRES_PASSWORD</code> · <code>QDRANT_API_KEY</code> · <code>REDIS_PASSWORD</code> · <code>OPENWEBUI_SECRET_KEY</code> → <code class="kbd">up -d --force-recreate</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">LLM</span> Đổi model / provider mặc định</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>LLM_MODEL</code> · <code>LLM_FALLBACK_MODELS</code> · <code>LLM_MOCK</code> → restart agent</td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">LLM</span> Provider API key</td>
+          <td class="file mono">infra/litellm/.env.llm</td>
+          <td><code>ANTHROPIC_API_KEY</code> · <code>OPENAI_API_KEY</code> · <code>GEMINI_API_KEY</code> · <code>DEEPSEEK_API_KEY</code> → restart litellm-proxy</td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">LLM</span> Routing / fallback / rate limit</td>
+          <td class="file mono">infra/litellm/config.yaml</td>
+          <td>block <code>model_list</code> · <code>router_settings</code> → restart litellm-proxy</td>
+        </tr>
+        <tr>
+          <td><span class="pill cyan">Edge</span> Domain / TLS / IP whitelist</td>
+          <td class="file mono">infra/caddy/Caddyfile</td>
+          <td><code>APP_DOMAIN</code>, <code>tls internal|email</code>, <code>@lan</code> CIDR → <code class="kbd">caddy reload</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill cyan">Ingest</span> Source / transform / sink log</td>
+          <td class="file mono">infra/vector/vector.yaml</td>
+          <td><code>sources:</code> · <code>transforms:</code> · <code>sinks:</code> · PII regex → <code class="kbd">kill -s HUP vector</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill lime">Data</span> VictoriaLogs retention</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>VL_RETENTION=7d</code> → <code>30d</code>/<code>90d</code> → restart victorialogs</td>
+        </tr>
+        <tr>
+          <td><span class="pill amber">Alerts</span> Rule LogsQL</td>
+          <td class="file mono">infra/vmalert/rules.yml</td>
+          <td>group + <code>alert:</code> + <code>expr:</code> → restart vmalert</td>
+        </tr>
+        <tr>
+          <td><span class="pill amber">Alerts</span> Route / template Telegram</td>
+          <td class="file mono">infra/alertmanager/alertmanager.yml</td>
+          <td><code>route</code> · <code>receivers</code> · <code>templates</code> → <code class="kbd">up -d --force-recreate alertmanager</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill amber">Alerts</span> Telegram bot / chat id</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>TELEGRAM_BOT_TOKEN</code> · <code>TELEGRAM_ALERT_CHAT_ID</code> → force-recreate alertmanager</td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">MCP</span> Cấp/thu token operator</td>
+          <td class="file mono">infra/.env <span class="mut">+</span> scripts/gen-mcp-tokens.sh</td>
+          <td><code>MCP_BEARER_TOKENS=alice:sk-...</code> → restart mcp-semantic mcp-vl</td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">MCP</span> Endpoint OpenAPI cho OpenWebUI</td>
+          <td class="file mono">infra/mcpo/config.template.json</td>
+          <td><code>mcpServers</code> · header <code>__MCP_TOKEN__</code> → restart mcpo</td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">Chat</span> Admin bootstrap OpenWebUI</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL/_PASSWORD</code> — set 1 lần rồi unset</td>
+        </tr>
+        <tr>
+          <td><span class="pill lime">Compose</span> Thêm service · đổi port</td>
+          <td class="file mono">infra/docker-compose.yml</td>
+          <td>service block · <code>ports:</code> · <code>volumes:</code> · <code>profiles:</code> → <code class="kbd">up -d</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill gray">Boot</span> Auto-restart on reboot</td>
+          <td class="file mono">infra/systemd/ragstack.service</td>
+          <td><code>ExecStart</code>/<code>ExecStop</code> · <code>WorkingDirectory</code> → <code class="kbd">install-systemd-unit.sh</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill gray">Backup</span> Snapshot daily</td>
+          <td class="file mono">scripts/snapshot-daily.sh <span class="mut">+</span> crontab</td>
+          <td>Đích: <code>~/onelog/backup/</code> → <code class="kbd">crontab -e</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr class="sep"/>
+
+    <!-- Verify + Rollback -->
+    <div id="ls-verify" class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="pill lime mb-2">Verify trên log server</div>
+        <div class="cmd"><span class="p">cd</span> ~/onelog/infra
+
+<span class="c"># 1. Stack up?</span>
+docker compose <span class="c">--profile agent --profile mcp \
+  --profile alerts --profile indexer --profile chat</span> ps
+
+<span class="c"># 2. Healthcheck tổng</span>
+bash scripts/healthcheck.sh
+
+<span class="c"># 3. Endpoint chính</span>
+curl -fsS http://localhost:9428/health         <span class="c"># VL</span>
+curl -fsS http://localhost:8080/health         <span class="c"># agent</span>
+docker exec ragstack-postgres pg_isready -U rag
+
+<span class="c"># 4. Systemd</span>
+systemctl status ragstack --no-pager</div>
+      </div>
+      <div>
+        <div class="pill err mb-2">Rollback / cleanup</div>
+        <div class="cmd"><span class="p">cd</span> ~/onelog/infra
+
+<span class="c"># Dừng stack, GIỮ data</span>
+docker compose <span class="c">--profile ...</span> down
+
+<span class="c"># Xoá toàn bộ data (CẨN THẬN)</span>
+docker compose <span class="c">--profile ...</span> down -v
+<span class="p">sudo</span> rm -rf infra/data/{victorialogs,qdrant,postgres,redis}
+
+<span class="c"># Restore từ snapshot</span>
+bash scripts/restore-snapshot.sh \
+  ~/onelog/backup/onelog-YYYYMMDD-HHMM.tar.gz</div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div id="ls-rules" class="grid grid-cols-3 gap-3 text-xs">
+      <div class="rule">
+        <b class="acc">Golden rule #1</b> — <code>docker compose</code> LUÔN chạy từ
+        <code class="kbd">~/onelog/infra</code>. Đứng ở <code>~/onelog</code> báo
+        <code>no configuration file provided</code>.
+      </div>
+      <div class="rule">
+        <b class="acc">Golden rule #2</b> — Services có profile. Luôn kèm flag:
+        <div class="mono text-xs mt-1"><span class="acc">--profile</span> agent · mcp · alerts · indexer · chat · llm · dbtools</div>
+      </div>
+      <div class="rule warn">
+        <b class="warn">Chú ý data</b> — <code>infra/data/</code> chứa toàn bộ dữ liệu.
+        Chỉ backup/restore qua <code>scripts/snapshot-daily.sh</code>. <b>KHÔNG xoá tay</b>.
+      </div>
+      <div class="rule err">
+        <b class="err">Không commit</b> — <code>infra/.env</code>,
+        <code>infra/litellm/.env.llm</code>, <code>infra/data/*</code>, <code>backup/*</code>.
+      </div>
+      <div class="rule">
+        <b class="acc">Apply sau khi sửa</b> — 3 mức:
+        <div class="mono text-xs mt-1">
+          nhẹ: <code>caddy reload</code> / <code>kill -s HUP vector</code><br/>
+          vừa: <code>compose restart &lt;svc&gt;</code><br/>
+          nặng: <code>up -d --force-recreate &lt;svc&gt;</code>
+        </div>
+      </div>
+      <div class="rule">
+        <b class="acc">Sau reboot</b> — systemd <code>ragstack.service</code> tự bring up.
+        Kiểm tra: <code class="kbd">systemctl status ragstack</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- Docker commands vận hành -->
+  <section class="card p-5 lane lane-app">
+    <span class="lane-lbl vio">Docker commands vận hành OneLog</span>
+
+    <div id="ls-docker" class="mt-3 space-y-4">
+      <div class="rule warn text-xs">
+        <b class="warn">Setup 1 lần</b> — paste vào <code>~/.bashrc</code> rồi <code>source</code>.
+        Mọi <code>dc</code> command bên dưới đều assume đã <code>cd ~/onelog/infra</code> + có <code>$P</code>.
+      </div>
+
+      <div class="cmd"><span class="c"># One-time alias</span>
+alias dc='docker compose'
+export P='--profile agent --profile mcp --profile alerts --profile indexer --profile chat --profile llm'
+<span class="p">cd</span> ~/onelog/infra</div>
+
+      <!-- 6 nhóm lệnh THỰC CHIẾN -->
+      <div class="grid grid-cols-2 gap-4">
+
+        <!-- 1. Status + Logs (dùng mỗi ngày) -->
+        <div class="card2 p-3">
+          <div class="pill cyan mb-2">① Status + Logs · dùng nhiều nhất</div>
+          <div class="cmd"><span class="c"># Service nào up / healthy?</span>
+dc $P ps
+
+<span class="c"># CPU/RAM realtime (Ctrl+C thoát)</span>
+docker stats
+
+<span class="c"># Tail log 1 service (theo tên compose)</span>
+dc logs -f --tail=100 <span class="acc">vector</span>
+dc logs -f --tail=100 agent
+dc logs -f --tail=100 indexer
+
+<span class="c"># Lỗi toàn stack 10 phút qua</span>
+dc $P logs --since=10m | grep -iE 'error|panic|fatal'
+
+<span class="c"># Log từ mốc thời gian (khi user báo bug lúc X)</span>
+dc logs --since=30m agent
+dc logs --since=2026-07-09T08:00:00 caddy</div>
+        </div>
+
+        <!-- 2. Apply config change -->
+        <div class="card2 p-3">
+          <div class="pill lime mb-2">② Apply config change · sau khi sửa file</div>
+          <div class="cmd"><span class="c"># Sửa .env → recreate service liên quan</span>
+dc up -d --force-recreate <span class="acc">agent</span>
+dc up -d --force-recreate <span class="acc">litellm-proxy</span>
+
+<span class="c"># Sửa Caddyfile → reload NÓNG (0 downtime)</span>
+dc exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+<span class="c"># Sửa vector.yaml → SIGHUP (0 downtime)</span>
+dc kill -s HUP vector
+
+<span class="c"># Sửa alertmanager.yml (placeholder render → recreate)</span>
+dc up -d --force-recreate alertmanager
+
+<span class="c"># Sửa vmalert/rules.yml</span>
+dc restart vmalert
+
+<span class="c"># Sửa mcpo/config.template.json (token substitute lúc start)</span>
+dc up -d --force-recreate mcpo</div>
+        </div>
+
+        <!-- 3. Restart / Recover service -->
+        <div class="card2 p-3">
+          <div class="pill amber mb-2">③ Restart · Recover khi service kẹt</div>
+          <div class="cmd"><span class="c"># Restart 1 hoặc nhiều service</span>
+dc restart agent
+dc restart mcp-vl mcp-semantic
+
+<span class="c"># Service restart-loop? xem log + status</span>
+dc logs --tail=200 <span class="acc">&lt;svc&gt;</span>
+dc $P ps | grep -v 'Up\|healthy'
+
+<span class="c"># Stop hoàn toàn 1 service</span>
+dc stop openwebui
+
+<span class="c"># Start lại 1 service sau khi stop</span>
+dc start openwebui
+
+<span class="c"># Xem exit code + reason của container chết</span>
+docker ps -a --filter name=ragstack- --format \
+  'table {{.Names}}\t{{.Status}}'</div>
+        </div>
+
+        <!-- 4. Exec vào service query -->
+        <div class="card2 p-3">
+          <div class="pill vio mb-2">④ Exec vào service · query nhanh</div>
+          <div class="cmd"><span class="c"># Postgres psql</span>
+dc exec postgres psql -U rag -d rag
+dc exec postgres pg_isready -U rag
+
+<span class="c"># Redis ping (đúng password từ .env)</span>
+dc exec redis redis-cli -a "$REDIS_PASSWORD" ping
+
+<span class="c"># VictoriaLogs — query LogsQL</span>
+curl -s 'http://localhost:9428/select/logsql/query' \
+  --data-urlencode 'query=service:agent _time:5m' | jq .
+
+<span class="c"># Qdrant — check collection</span>
+curl -s -H "api-key: $QDRANT_API_KEY" \
+  'http://localhost:6333/collections/log_templates' | jq .
+
+<span class="c"># Fire test alert (verify Telegram wire)</span>
+dc exec alertmanager amtool alert add TestAlert \
+  severity=critical service=smoke</div>
+        </div>
+
+        <!-- 5. Deploy · Update -->
+        <div class="card2 p-3">
+          <div class="pill cyan mb-2">⑤ Deploy · Update version mới</div>
+          <div class="cmd"><span class="c"># Deploy image mới (litellm, openwebui, mcp-vl…)</span>
+dc $P pull
+dc $P up -d               <span class="c"># chỉ recreate service có image mới</span>
+
+<span class="c"># Sửa code agent/ hoặc indexer/ → rebuild</span>
+dc up -d --build <span class="acc">agent</span>
+dc up -d --build <span class="acc">indexer</span>
+
+<span class="c"># Rebuild sạch (khi Dockerfile đổi base image)</span>
+dc build --no-cache agent
+dc up -d agent
+
+<span class="c"># Pull mới nhưng chưa apply (staging)</span>
+dc $P pull
+<span class="c"># … kiểm tra image tag trước …</span>
+dc $P up -d</div>
+        </div>
+
+        <!-- 6. Data · Snapshot · Cleanup -->
+        <div class="card2 p-3">
+          <div class="pill lime mb-2">⑥ Data · Snapshot · Cleanup disk</div>
+          <div class="cmd"><span class="c"># Snapshot / restore (script sẵn)</span>
+bash scripts/snapshot-daily.sh
+bash scripts/restore-snapshot.sh \
+  ~/onelog/backup/onelog-YYYYMMDD-HHMM.tar.gz
+
+<span class="c"># Healthcheck tổng</span>
+bash scripts/healthcheck.sh
+
+<span class="c"># Data đang chiếm bao nhiêu?</span>
+du -sh infra/data/*
+docker system df
+
+<span class="c"># Disk đầy → dọn image + build cache unused</span>
+docker system prune -f
+
+<span class="c"># Data 1 service corrupt → reset (KHÔNG undo)</span>
+dc stop qdrant
+<span class="err">sudo rm -rf infra/data/qdrant</span>
+dc up -d qdrant</div>
+        </div>
+
+      </div>
+
+      <hr class="sep"/>
+
+      <!-- Cheat table thực chiến -->
+      <div class="h-title mb-2">Scenario → Lệnh nhanh</div>
+      <table class="k">
+        <thead><tr>
+          <th style="width:34%">Tình huống thực tế</th>
+          <th>Lệnh chạy ngay</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td>User báo <b>agent lag / lỗi</b> → xem log ngay</td>
+            <td class="mono text-xs">dc logs -f --tail=200 agent</td>
+          </tr>
+          <tr>
+            <td>Alert Telegram không tới</td>
+            <td class="mono text-xs">dc logs alertmanager · dc exec alertmanager amtool alert add TestAlert severity=critical</td>
+          </tr>
+          <tr>
+            <td>Client báo log không lên VL</td>
+            <td class="mono text-xs">dc logs -f --tail=100 vector · ss -tnp | grep :6514</td>
+          </tr>
+          <tr>
+            <td>Sửa <code>.env</code> (đổi LLM_MODEL, secrets)</td>
+            <td class="mono text-xs">dc up -d --force-recreate agent   <span class="mut">// hoặc service liên quan</span></td>
+          </tr>
+          <tr>
+            <td>Sửa <code>Caddyfile</code> (đổi whitelist IP)</td>
+            <td class="mono text-xs">dc exec caddy caddy reload --config /etc/caddy/Caddyfile</td>
+          </tr>
+          <tr>
+            <td>Sửa <code>vector.yaml</code></td>
+            <td class="mono text-xs">dc kill -s HUP vector</td>
+          </tr>
+          <tr>
+            <td>Sửa <code>alertmanager.yml</code></td>
+            <td class="mono text-xs">dc up -d --force-recreate alertmanager</td>
+          </tr>
+          <tr>
+            <td>Sửa <code>vmalert/rules.yml</code></td>
+            <td class="mono text-xs">dc restart vmalert</td>
+          </tr>
+          <tr>
+            <td>Push code mới lên <code>agent/</code> hoặc <code>indexer/</code></td>
+            <td class="mono text-xs">git pull &amp;&amp; dc up -d --build agent</td>
+          </tr>
+          <tr>
+            <td>Deploy image mới (litellm, openwebui…)</td>
+            <td class="mono text-xs">dc $P pull &amp;&amp; dc $P up -d</td>
+          </tr>
+          <tr>
+            <td>Service restart-loop</td>
+            <td class="mono text-xs">dc logs --tail=200 &lt;svc&gt; · docker ps -a --filter name=ragstack-&lt;svc&gt;</td>
+          </tr>
+          <tr>
+            <td>CPU/RAM đột biến</td>
+            <td class="mono text-xs">docker stats</td>
+          </tr>
+          <tr>
+            <td>Disk đầy</td>
+            <td class="mono text-xs">docker system df · docker system prune -f · du -sh infra/data/*</td>
+          </tr>
+          <tr>
+            <td>Sau reboot VM stack không lên</td>
+            <td class="mono text-xs">systemctl status ragstack · journalctl -u ragstack -n 100 --no-pager</td>
+          </tr>
+          <tr>
+            <td>Restore từ snapshot</td>
+            <td class="mono text-xs">bash scripts/restore-snapshot.sh ~/onelog/backup/onelog-*.tar.gz</td>
+          </tr>
+          <tr>
+            <td>Reset sạch (mất data · CẨN THẬN)</td>
+            <td class="mono text-xs err">dc $P down -v · sudo rm -rf infra/data/* · dc $P up -d</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="grid grid-cols-3 gap-3 text-xs mt-3">
+        <div class="rule">
+          <b class="acc">3 mức apply config</b>
+          <div class="mt-1 text-xs">
+            <b>Nhẹ</b> (0 downtime) — <code>caddy reload</code>, <code>kill -HUP vector</code><br/>
+            <b>Vừa</b> (~2s) — <code>dc restart &lt;svc&gt;</code><br/>
+            <b>Nặng</b> (~10s) — <code>dc up -d --force-recreate &lt;svc&gt;</code>
+          </div>
+        </div>
+        <div class="rule warn">
+          <b class="warn">Luôn kèm profile</b> — <code>dc ps</code> không có <code>$P</code>
+          sẽ thiếu service. Alias sẵn <code>$P</code> để tránh sai.
+        </div>
+        <div class="rule err">
+          <b class="err">Destructive · KHÔNG undo</b> — <code>down -v</code>,
+          <code>rm -rf infra/data/*</code>, <code>system prune -a</code>.
+          <b>Snapshot trước khi chạy.</b>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Client deep-dive: files & directories -->
+  <section class="card p-5 lane lane-client">
+    <span class="lane-lbl" style="color:#9ca3af">Trên Client Server (srv-N) — File &amp; thư mục cần quan tâm</span>
+
+    <div class="mt-3 grid grid-cols-2 gap-6">
+      <!-- Tree -->
+      <div id="cl-tree">
+        <div class="pill gray mb-2">Cây thư mục tối thiểu</div>
+        <pre class="tree"><span class="cm"># Client KHÔNG cần Docker · KHÔNG clone repo</span>
+<span class="cm"># Chỉ cần rsyslog (đa số distro có sẵn)</span>
+
+<span class="d">/etc/</span>
+├── <span class="d">rsyslog.conf</span>                <span class="cm"># main config (thường không sửa)</span>
+├── <span class="d">rsyslog.d/</span>                  <span class="cm"># ★ drop-in configs</span>
+│   ├── <span class="h">90-forward-onelog.conf</span>   <span class="cm"># ★★ FILE CHÍNH — forward TCP 6514</span>
+│   ├── <span class="f">91-forward-onelog-json.conf</span> <span class="cm"># (opt) JSON ECS-lite TCP 6515</span>
+│   ├── <span class="f">*.bak</span>                    <span class="cm"># config cũ script tự backup</span>
+│   └── <span class="f">50-default.conf</span>          <span class="cm"># local /var/log/* (giữ nguyên)</span>
+├── <span class="d">hosts</span>                        <span class="cm"># (opt) map logserver IP → tên</span>
+├── <span class="d">hostname</span>                     <span class="cm"># tên host — hiện trong VL field `host`</span>
+├── <span class="d">timezone</span>                     <span class="cm"># ★ đồng bộ với logserver (Asia/Saigon)</span>
+├── <span class="d">chrony/chrony.conf</span>           <span class="cm"># ★ NTP — timestamp lệch = trace vỡ</span>
+└── <span class="d">ufw/</span> hoặc <span class="d">iptables/</span>       <span class="cm"># firewall outbound rule</span>
+
+<span class="d">/var/</span>
+├── <span class="d">log/</span>                         <span class="cm"># log gốc client (rsyslog đọc từ đây)</span>
+│   ├── syslog · auth.log · kern.log
+│   └── &lt;app&gt;/                     <span class="cm"># app log dạng file (nếu có)</span>
+└── <span class="d">spool/rsyslog/</span>              <span class="cm"># ★ disk queue khi logserver down</span>
+    └── <span class="f">onelog_fwd.*.qi/.qf</span>       <span class="cm"># queue file (500 MB cap)</span>
+
+<span class="d">/lib/systemd/system/</span>
+└── <span class="f">rsyslog.service</span>             <span class="cm"># unit — enable on boot</span>
+
+<span class="cm"># Nếu chạy Vector agent thay rsyslog (option nâng cao):</span>
+<span class="d">/etc/vector/</span>
+└── <span class="h">vector.yaml</span>                 <span class="cm"># sources file/journald → sink TCP</span>
+<span class="d">/var/lib/vector/</span>                  <span class="cm"># disk buffer</span></pre>
+      </div>
+
+      <!-- Files table -->
+      <div id="cl-files" class="space-y-3">
+        <div class="pill gray mb-1">Chi tiết từng file</div>
+        <table class="k">
+          <thead><tr>
+            <th style="width:38%">File</th>
+            <th>Vai trò · Khi nào sửa</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td class="file mono">/etc/rsyslog.d/<br/><b>90-forward-onelog.conf</b></td>
+              <td>
+                <span class="pill cyan">MAIN</span> Forward tất cả log → logserver TCP 6514.<br/>
+                <span class="mut text-xs">Sửa khi: đổi IP logserver, đổi port, chuyển protocol, chỉnh queue size, đổi template RFC5424.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/rsyslog.d/<br/>91-forward-onelog-json.conf</td>
+              <td>
+                <span class="pill vio">OPT</span> Format JSON ECS-lite qua TCP 6515.<br/>
+                <span class="mut text-xs">Dùng khi client đã có pipeline JSON (ELK/SIEM) và muốn OneLog làm sink phụ.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/rsyslog.conf</td>
+              <td>
+                Main config rsyslog. <span class="mut text-xs">Thường KHÔNG sửa — mọi tuỳ biến đưa vào <code>rsyslog.d/*.conf</code>.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/hostname</td>
+              <td>
+                Tên host xuất hiện ở field <code>host</code> trong VictoriaLogs.<br/>
+                <span class="mut text-xs">Đặt tên gọn, unique (srv-01, srv-02, api-prod-1…).</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/timezone<br/>/etc/chrony/chrony.conf</td>
+              <td>
+                <span class="pill amber">BẮT BUỘC</span> NTP sync trước khi ingest.<br/>
+                <span class="mut text-xs"><code>timedatectl set-timezone Asia/Saigon</code> + <code>systemctl enable --now chrony</code>. Timestamp lệch → trace vỡ, redaction sai.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/hosts</td>
+              <td>
+                <span class="pill gray">OPT</span> Map <code>logserver</code> → IP để config đọc dễ.<br/>
+                <span class="mut text-xs">Sửa khi lab DNS chưa có.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/ufw/ · iptables</td>
+              <td>
+                Firewall outbound. <span class="mut text-xs">Cho phép <b>TCP 6514</b> (hoặc 6515) → logserver IP. Đa số client không chặn outbound, nhưng nên xác nhận.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/var/spool/rsyslog/<br/>onelog_fwd.*</td>
+              <td>
+                <span class="pill lime">AUTO</span> Disk queue rsyslog tự quản lý (max 500 MB).<br/>
+                <span class="mut text-xs">Buffer khi logserver down — resume tự động. KHÔNG xoá tay khi rsyslog đang chạy.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/var/log/*.log</td>
+              <td>
+                Log gốc — rsyslog vẫn ghi local song song với forward.<br/>
+                <span class="mut text-xs">Giữ logrotate mặc định để không đầy disk.</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/systemd/journald.conf</td>
+              <td>
+                <span class="pill gray">OPT</span> Nếu app dùng journald, đảm bảo <code>ForwardToSyslog=yes</code> để rsyslog thấy được.
+              </td>
+            </tr>
+            <tr>
+              <td class="file mono">/etc/vector/vector.yaml</td>
+              <td>
+                <span class="pill vio">OPT-adv</span> Nếu chạy Vector agent thay rsyslog (buffer đĩa + TLS-ready).<br/>
+                <span class="mut text-xs">Template trong repo: <code>infra/clients/</code> (bên logserver).</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <!-- Bảng scenarios -->
+    <div id="cl-scenarios" class="h-title mb-2">Kịch bản chỉnh sửa trên client</div>
+    <table class="k">
+      <thead><tr>
+        <th style="width:28%">Cần làm</th>
+        <th style="width:36%">Sửa file</th>
+        <th>Nội dung · Lệnh reload</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>Đổi IP log server</td>
+          <td class="file mono">/etc/rsyslog.d/90-forward-onelog.conf</td>
+          <td><code>target="&lt;IP mới&gt;"</code> → <code class="kbd">systemctl restart rsyslog</code></td>
+        </tr>
+        <tr>
+          <td>Đổi port (VD chuyển TLS 6514→6515)</td>
+          <td class="file mono">…90-forward-onelog.conf</td>
+          <td><code>port="6515"</code> + nếu TLS thì cấu hình <code>StreamDriver</code></td>
+        </tr>
+        <tr>
+          <td>Tăng disk queue (client log nhiều)</td>
+          <td class="file mono">…90-forward-onelog.conf</td>
+          <td><code>queue.maxDiskSpace="2g"</code> · <code>queue.size="50000"</code></td>
+        </tr>
+        <tr>
+          <td>Chỉ forward log của 1 app</td>
+          <td class="file mono">…90-forward-onelog.conf</td>
+          <td>Thay <code>*.*</code> bằng <code>if $programname == 'myapp' then …</code></td>
+        </tr>
+        <tr>
+          <td>Bỏ forward (rollback)</td>
+          <td class="file mono">…90-forward-onelog.conf</td>
+          <td><code class="kbd">rm</code> file → <code class="kbd">systemctl restart rsyslog</code></td>
+        </tr>
+        <tr>
+          <td>Đổi hostname hiển thị trong VL</td>
+          <td class="file mono">/etc/hostname</td>
+          <td><code>hostnamectl set-hostname &lt;name&gt;</code> → restart rsyslog</td>
+        </tr>
+        <tr>
+          <td>Sync giờ (lệch time zone)</td>
+          <td class="file mono">/etc/chrony/chrony.conf<br/>/etc/timezone</td>
+          <td><code>timedatectl set-timezone Asia/Saigon</code> · <code>systemctl restart chrony</code></td>
+        </tr>
+        <tr>
+          <td>Mở outbound firewall</td>
+          <td class="file mono">ufw / iptables / firewalld</td>
+          <td><code>ufw allow out to &lt;logserver&gt; port 6514 proto tcp</code></td>
+        </tr>
+        <tr>
+          <td>Chuyển sang JSON ECS-lite</td>
+          <td class="file mono">/etc/rsyslog.d/91-forward-onelog-json.conf</td>
+          <td>Copy từ <code>infra/clients/rsyslog-forward-json.conf</code>, replace IP, port 6515</td>
+        </tr>
+        <tr>
+          <td>Xem queue có backlog không</td>
+          <td class="file mono">/var/spool/rsyslog/</td>
+          <td><code class="kbd">ls -lh /var/spool/rsyslog/onelog_fwd.*</code> — nhiều file = logserver đang down</td>
+        </tr>
+        <tr>
+          <td>Debug: log không tới server</td>
+          <td class="file mono">journalctl -u rsyslog</td>
+          <td><code class="kbd">ss -tnp | grep :6514</code> phải ESTAB · <code class="kbd">rsyslogd -N1</code> check syntax</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr class="sep"/>
+
+    <!-- Verify + rollback -->
+    <div id="cl-verify" class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="pill lime mb-2">Verify trên client</div>
+        <div class="cmd"><span class="c"># 1. Rsyslog đang chạy</span>
+systemctl is-active rsyslog
+
+<span class="c"># 2. TCP tới logserver ESTAB</span>
+ss -tnp | grep <span class="acc">:6514</span>
+
+<span class="c"># 3. Config OK</span>
+<span class="p">sudo</span> rsyslogd -N1
+
+<span class="c"># 4. Fire smoke log</span>
+logger -t hello-onelog "from $(hostname)"
+
+<span class="c"># 5. Bên logserver xác nhận</span>
+curl -s 'http://&lt;logserver&gt;:9428/select/logsql/query' \
+  --data-urlencode 'query=hello-onelog' | jq .</div>
+      </div>
+      <div>
+        <div class="pill err mb-2">Rollback / gỡ khỏi client</div>
+        <div class="cmd"><span class="p">sudo</span> rm /etc/rsyslog.d/90-forward-onelog.conf
+<span class="p">sudo</span> systemctl restart rsyslog
+
+<span class="c"># (opt) khôi phục config cũ nếu setup script backup</span>
+<span class="p">sudo</span> ls /etc/rsyslog.d/*.bak
+<span class="p">sudo</span> mv /etc/rsyslog.d/&lt;file&gt;.bak /etc/rsyslog.d/&lt;file&gt;
+
+<span class="c"># Nếu dùng Vector agent</span>
+<span class="p">sudo</span> systemctl disable --now vector
+<span class="p">sudo</span> rm -rf /etc/vector /var/lib/vector</div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div id="cl-rules" class="grid grid-cols-3 gap-3 text-xs">
+      <div class="rule">
+        <b class="acc">TL;DR</b> — Client chỉ cần <b>1 file</b>:
+        <code class="kbd">/etc/rsyslog.d/90-forward-onelog.conf</code>. Mọi thứ khác là bonus/verify.
+      </div>
+      <div class="rule warn">
+        <b class="warn">Prereq bắt buộc</b> — NTP sync (chrony) + timezone khớp logserver. Timestamp lệch = log vô nghĩa.
+      </div>
+      <div class="rule err">
+        <b class="err">Không cần</b> — Docker, Python, systemd unit riêng cho OneLog. Không clone repo về client.
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick deploy timeline -->
+  <section id="deploy" class="card p-5">
+    <div class="h-title mb-3">Quick deploy — thứ tự copy/paste</div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="pill cyan mb-2">LOG SERVER</div>
+        <div class="cmd"><span class="c"># 1. Base + NTP + clone</span>
+sudo apt-get install -y curl git ca-certificates ufw chrony
+git clone &lt;repo&gt; ~/onelog
+
+<span class="c"># 2. One-shot setup (Docker + UFW + hosts)</span>
+<span class="p">sudo</span> INVOKING_USER=$USER \
+     LAN_CIDR=192.168.122.0/24 \
+     bash ~/onelog/infra/scripts/setup-log-server.sh
+
+<span class="c"># 3. Secrets → .env</span>
+<span class="p">cd</span> ~/onelog/infra
+cp .env.example .env
+openssl rand -hex 24    <span class="c"># paste vào POSTGRES_/QDRANT_/REDIS_</span>
+vi .env
+
+<span class="c"># 3b. LLM keys (nếu dùng LiteLLM proxy)</span>
+cp litellm/.env.llm.example litellm/.env.llm
+chmod 0400 litellm/.env.llm
+vi litellm/.env.llm
+
+<span class="c"># 4. Up full stack</span>
+docker compose \
+  --profile agent --profile mcp \
+  --profile alerts --profile indexer \
+  --profile chat --profile llm \
+  up -d
+
+<span class="c"># 5. Systemd autostart</span>
+<span class="p">sudo</span> bash infra/scripts/install-systemd-unit.sh
+
+<span class="c"># 6. Snapshot daily</span>
+crontab -e   <span class="c"># 0 2 * * * scripts/snapshot-daily.sh</span></div>
+      </div>
+      <div>
+        <div class="pill gray mb-2">CLIENT (mỗi host)</div>
+        <div class="cmd"><span class="c"># 1 lệnh duy nhất</span>
+<span class="p">sudo</span> LOG_SERVER_IP=&lt;logserver-ip&gt; \
+     bash /tmp/setup-rsyslog-client.sh
+
+<span class="c"># Verify</span>
+ss -tnp | grep :6514
+logger -t hello "from $(hostname)"
+
+<span class="c"># Trên log server check</span>
+curl -s 'http://localhost:9428/select/logsql/query' \
+  --data-urlencode 'query=hello'</div>
+        <hr class="sep"/>
+        <div class="pill lime mb-2">SMOKE TEST</div>
+        <div class="cmd">bash ~/onelog/infra/scripts/healthcheck.sh
+docker compose ps
+curl -fsS http://localhost:9428/health
+curl -N -X POST http://localhost:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"lỗi connection reset?"}'</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Cheat sheet cuối -->
+  <section id="cheat" class="card p-5">
+    <div class="h-title mb-3">Cheat sheet · lệnh hay dùng</div>
+    <div class="grid grid-cols-3 gap-3 text-xs">
+      <div class="card2 p-3">
+        <div class="acc font-bold mb-2">Status</div>
+        <div class="mono">docker compose ps<br/>docker compose logs -f &lt;svc&gt;<br/>systemctl status ragstack<br/>bash scripts/healthcheck.sh</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="acc font-bold mb-2">Restart chọn lọc</div>
+        <div class="mono">docker compose restart &lt;svc&gt;<br/>docker compose up -d --force-recreate &lt;svc&gt;<br/>docker compose kill -s HUP vector<br/>caddy reload</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="acc font-bold mb-2">Backup / restore</div>
+        <div class="mono">scripts/snapshot-daily.sh<br/>scripts/restore-snapshot.sh &lt;file.tar.gz&gt;<br/>ls -lh ~/onelog/backup/</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="err font-bold mb-2">Rollback / clean</div>
+        <div class="mono">docker compose --profile ... down<br/><span class="err">down -v</span>  # xoá volume<br/>rm -rf infra/data/{vl,qdrant,postgres,redis}</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="warn font-bold mb-2">Troubleshoot nhanh</div>
+        <div class="mono">no config file → cd infra<br/>no such service → thêm --profile<br/>docker.sock denied → newgrp docker<br/>vector Missing env → check vector.yaml</div>
+      </div>
+      <div class="card2 p-3">
+        <div class="vio font-bold mb-2">Docs sâu hơn</div>
+        <div class="mono">docs/deployment-guide.md<br/>docs/deployment-llm-abstraction.md<br/>docs/ops-cheatsheet.md<br/>docs/mcp-setup-guide.md</div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="mt-8 p-4 rounded-lg border border-[var(--line)] bg-[#0e0e12]">
+    <div class="text-[10px] uppercase tracking-widest mut mb-2">Xem thêm mockup</div>
+    <div class="flex flex-wrap gap-2 text-xs">
+      <a href="onelog-index.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#0a1a22] transition">🗂 Index</a>
+      <a href="onelog-system-explainer.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-cyan-700 hover:bg-[#15151c] transition">① System explainer</a>
+      <a href="onelog-services-detail.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-violet-700 hover:bg-[#15151c] transition">② Services detail</a>
+      <a href="onelog-production-deploy.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-lime-700 hover:bg-[#15151c] transition">③ Production deploy</a>
+      <span class="px-3 py-1.5 rounded border border-amber-800 bg-amber-950/40 text-amber-300">④ Client deploy · config (đang xem)</span>
+      <a href="onelog-llm-abstraction-workflow.html" class="px-3 py-1.5 rounded border border-[var(--line)] hover:border-violet-700 hover:bg-[#15151c] transition">⑤ LLM abstraction workflow</a>
+    </div>
+  </nav>
+
+  <footer class="text-center text-xs mut py-4">
+    OneLog · Deploy config map · Sacrifice grammar for concision
+  </footer>
+</main>
+
+<aside class="toc">
+  <div class="toc-title">Mục lục</div>
+
+  <div class="toc-group misc">
+    <div class="toc-group-hdr"><span class="dot"></span>Tổng quan</div>
+    <ul class="toc-list">
+      <li><a href="#overview">Log vs Client (2 phía)</a></li>
+      <li><a href="#architecture">Kiến trúc luồng dữ liệu</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-group ls">
+    <div class="toc-group-hdr"><span class="dot"></span>Log Server</div>
+    <ul class="toc-list">
+      <li><a href="#ls-tree">Cây thư mục repo</a></li>
+      <li><a href="#ls-files">Chi tiết từng file</a></li>
+      <li><a href="#ls-scenarios">Kịch bản chỉnh sửa</a></li>
+      <li><a href="#ls-verify">Verify · Rollback</a></li>
+      <li><a href="#ls-rules">Golden rules</a></li>
+      <li><a href="#ls-docker">Docker commands</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-group cl">
+    <div class="toc-group-hdr"><span class="dot"></span>Client Server</div>
+    <ul class="toc-list">
+      <li><a href="#cl-tree">Cây thư mục tối thiểu</a></li>
+      <li><a href="#cl-files">Chi tiết từng file</a></li>
+      <li><a href="#cl-scenarios">Kịch bản chỉnh sửa</a></li>
+      <li><a href="#cl-verify">Verify · Rollback</a></li>
+      <li><a href="#cl-rules">TL;DR</a></li>
+    </ul>
+  </div>
+
+  <div class="toc-group misc">
+    <div class="toc-group-hdr"><span class="dot"></span>Vận hành</div>
+    <ul class="toc-list">
+      <li><a href="#deploy">Quick deploy timeline</a></li>
+      <li><a href="#cheat">Cheat sheet</a></li>
+    </ul>
+  </div>
+</aside>
+
+</div>
+
+<script>
+  // Scrollspy: highlight TOC link tương ứng section trong viewport
+  (function(){
+    const links = document.querySelectorAll('aside.toc a[href^="#"]');
+    const map = new Map();
+    links.forEach(a => {
+      const id = a.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if(el) map.set(el, a);
+    });
+    if(!map.size) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        const link = map.get(e.target);
+        if(!link) return;
+        if(e.isIntersecting) link.dataset.visible = "1";
+        else delete link.dataset.visible;
+      });
+      // active = first visible link theo thứ tự DOM
+      links.forEach(a => a.classList.remove('active'));
+      const firstVisible = Array.from(links).find(a => a.dataset.visible);
+      if(firstVisible) firstVisible.classList.add('active');
+    }, { rootMargin: "-15% 0px -70% 0px", threshold: 0 });
+    map.forEach((_link, el) => io.observe(el));
+  })();
+</script>
+</body>
+</html>

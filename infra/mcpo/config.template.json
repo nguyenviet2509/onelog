@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "onelog-vl": {
-      "type": "sse",
-      "url": "http://caddy/mcp/vl/sse",
+      "type": "streamable_http",
+      "url": "http://caddy/mcp/vl/mcp",
       "headers": {
         "Authorization": "Bearer __MCP_TOKEN__"
       }

@@ -67,7 +67,7 @@
   <!-- TOC + Hero -->
   <section class="grid grid-cols-[1fr_280px] gap-4 mt-5">
     <div class="card p-6 grid-bg">
-      <div class="h-title">What is OneLog</div>
+      <div class="h-title">OneLog là gì</div>
       <h1 class="text-2xl font-semibold mt-2">Một "log brain" duy nhất cho 5 ops — hỏi tiếng Việt, ra log production kèm citation.</h1>
       <p class="mut mt-3 text-sm leading-relaxed max-w-[780px]">
         OneLog gom log từ tất cả VM về một <b class="acc">VictoriaLogs</b> trung tâm, đồng thời index semantic
@@ -81,23 +81,23 @@
         <span class="chip on">📥 syslog 514/udp · 6514/tcp · 6515/json</span>
         <span class="chip on">🧠 RAG semantic templates</span>
         <span class="chip on">🔐 IP whitelist 192.168.122.0/24</span>
-        <span class="chip on">📑 Audit per tool call</span>
-        <span class="chip on">🪵 Shared investigations across team</span>
+        <span class="chip on">📑 Audit từng tool call</span>
+        <span class="chip on">🪵 Chia sẻ investigation trong team</span>
       </div>
     </div>
     <nav class="card p-4 toc text-sm">
       <div class="h-title mb-2">Mục lục</div>
       <ol class="space-y-1.5">
         <li><a href="#topology">1. Topology 3 VM</a></li>
-        <li><a href="#components">2. Components stack</a></li>
-        <li><a href="#ingest">3. Ingest pipeline</a></li>
-        <li><a href="#query">4. Query pipeline</a></li>
+        <li><a href="#components">2. Danh sách component</a></li>
+        <li><a href="#ingest">3. Pipeline ghi log</a></li>
+        <li><a href="#query">4. Pipeline query</a></li>
         <li><a href="#tools">5. MCP tools</a></li>
-        <li><a href="#workflow">6. Ops workflow</a></li>
-        <li><a href="#data">7. Data model</a></li>
-        <li><a href="#security">8. Security & audit</a></li>
-        <li><a href="#alerting">9. Alerting pipeline</a></li>
-        <li><a href="#runbook">10. Quick runbook</a></li>
+        <li><a href="#workflow">6. Quy trình ops</a></li>
+        <li><a href="#data">7. Mô hình dữ liệu</a></li>
+        <li><a href="#security">8. Bảo mật &amp; audit</a></li>
+        <li><a href="#alerting">9. Pipeline cảnh báo</a></li>
+        <li><a href="#runbook">10. Runbook nhanh</a></li>
       </ol>
     </nav>
   </section>
@@ -106,7 +106,7 @@
   <section id="topology" class="anchor mt-8">
     <div class="flex items-baseline justify-between">
       <h2 class="text-lg font-semibold"><span class="step-num">1</span> &nbsp;Topology — Lab subnet 192.168.122.0/24</h2>
-      <span class="mut text-xs">Source: <code>docs/deployment-guide.md</code></span>
+      <span class="mut text-xs">Nguồn: <code>docs/deployment-guide.md</code></span>
     </div>
     <div class="card p-5 mt-3">
       <div class="mermaid">
@@ -137,11 +137,11 @@ flowchart LR
   P1[("Anthropic · OpenAI<br/>Gemini · DeepSeek")]
   R1 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
   R2 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
-  V -- "redact PII · ES bulk" --> VL
-  V -- "filter WARN+ → logs.warn" --> NA
+  V -- "xóa PII · ES bulk" --> VL
+  V -- "lọc WARN+ → logs.warn" --> NA
   NA --> IDX
   IDX -- "embed + upsert" --> Q
-  IDX -- "template meta · audit" --> PG
+  IDX -- "meta template · audit" --> PG
   CL -- "HTTPS Bearer<br/>/mcp/vl/sse" --> CAD
   CL -- "HTTPS Bearer<br/>/mcp/semantic/sse" --> CAD
   OW -- "HTTPS Host: webui.local" --> CAD
@@ -153,25 +153,25 @@ flowchart LR
   OWU -- "OpenAI-compat" --> LLM
   OWU -. "MCP token OpenWebUI" .-> MSE
   OWU -. "MCP token OpenWebUI" .-> MVL
-  AG -- "LiteLLM SDK direct" --> P1
-  AG -. "internal tools" .-> MSE
+  AG -- "LiteLLM SDK trực tiếp" --> P1
+  AG -. "tool nội bộ" .-> MSE
   LLM --> P1
   MVL -- "LogsQL" --> VL
   MSE -- "vector search" --> Q
-  MSE -- "audit insert" --> PG
+  MSE -- "ghi audit" --> PG
       </div>
       <div class="legend mt-4 text-[11px] mut flex flex-wrap gap-4">
-        <span><i class="pill cyan">cyan</i> &nbsp;precise path (mcp-vl)</span>
-        <span><i class="pill vio">vio</i> &nbsp;semantic path (mcp-semantic)</span>
-        <span><i class="pill lime">lime</i> &nbsp;storage</span>
-        <span><i class="pill amber">amber</i> &nbsp;ingress · decommission marker</span>
+        <span><i class="pill cyan">cyan</i> &nbsp;đường chính xác (mcp-vl)</span>
+        <span><i class="pill vio">vio</i> &nbsp;đường ngữ nghĩa (mcp-semantic)</span>
+        <span><i class="pill lime">lime</i> &nbsp;lưu trữ</span>
+        <span><i class="pill amber">amber</i> &nbsp;ingress · đã gỡ bỏ</span>
       </div>
     </div>
   </section>
 
   <!-- 2. COMPONENTS -->
   <section id="components" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">2</span> &nbsp;Components stack</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">2</span> &nbsp;Danh sách component</h2>
 
     <!-- Update banner: LLM abstraction added -->
     <div class="mt-3 card p-3.5 flex items-start gap-3" style="border-color:#082f3f;background:linear-gradient(180deg,#07171f,#0e0e12)">
@@ -186,7 +186,7 @@ flowchart LR
 
     <!-- Legacy web decommission (still valid) -->
     <div class="mt-2 card p-3 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
-      <span class="pill amber mt-0.5">STILL DECOMMISSIONED</span>
+      <span class="pill amber mt-0.5">VẪN ĐÃ GỠ BỎ</span>
       <div class="text-[12px] leading-relaxed mut">
         Web UI (Next.js :3000) vẫn commented trong <code>docker-compose.yml</code>. Chức năng chat đã thay bằng OpenWebUI (subdomain webui.local). Code <code>web/</code> giữ trên master để resurrect nếu cần. Redis (cache cho web cũ) cũng chưa reactivate.
       </div>
@@ -198,21 +198,21 @@ flowchart LR
           <tr><th>Service</th><th>Cổng</th><th>Vai trò</th><th>Vì sao chọn</th></tr>
         </thead>
         <tbody>
-          <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp · 6515/tcp-json · 8686</td><td>Nhận syslog (UDP/TCP) + JSON ECS-lite (6515), enrich → redact PII → ghi VL (all) + NATS (WARN+ only)</td><td>Single agent thay rsyslog/fluentd; pipeline VRL declarative; TLS = roadmap</td></tr>
-          <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Time-series log storage, LogsQL query, low RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
+          <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp · 6515/tcp-json · 8686</td><td>Nhận syslog (UDP/TCP) + JSON ECS-lite (6515), enrich → redact PII → ghi VL (all) + NATS (WARN+ only)</td><td>Agent đơn thay rsyslog/fluentd; pipeline VRL khai báo; TLS = roadmap</td></tr>
+          <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Lưu trữ log time-series, query LogsQL, ít RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
           <tr><td><span class="pill vio">qdrant</span></td><td>6333 (127.0.0.1)</td><td>Vector DB cho semantic search template log</td><td>Rust, single-binary, payload filter mạnh</td></tr>
           <tr><td><span class="pill gray">postgres</span></td><td>5432</td><td>Audit log (mỗi tool call) + template metadata</td><td>SQL chuẩn cho join/aggregate, grep audit</td></tr>
-          <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>JetStream subject <code>logs.warn</code> (WARN+ events) cho indexer pull-consume</td><td>At-least-once, decouple vector ↔ indexer</td></tr>
-          <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Async, throttle theo cost embedding API</td></tr>
-          <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Official <code>mcp-victorialogs</code> server — expose LogsQL tools (query / hits / stats_query)</td><td>Precise filter path; không cần code riêng</td></tr>
-          <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Fuzzy intent path; Claude tự pick khi câu hỏi mơ hồ</td></tr>
-          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 2 site: <code>app.local</code> (MCP + agent /api + /llm) và <code>webui.local</code> (OpenWebUI dedicated) · IP allowlist · Bearer pass-through</td><td>Subdomain cho OpenWebUI vì static assets root-relative không work qua subpath</td></tr>
+          <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>JetStream subject <code>logs.warn</code> (WARN+ events) cho indexer pull-consume</td><td>Đảm bảo giao nhận ít nhất 1 lần, tách biệt vector ↔ indexer</td></tr>
+          <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Bất đồng bộ, điều tiết theo chi phí embedding API</td></tr>
+          <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Server <code>mcp-victorialogs</code> chính chủ — expose LogsQL tools (query / hits / stats_query)</td><td>Đường tìm kiếm chính xác; không cần tự code</td></tr>
+          <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Đường tìm kiếm theo nghĩa; Claude tự chọn khi câu hỏi mơ hồ</td></tr>
+          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 2 site: <code>app.local</code> (MCP + agent /api + /llm) và <code>webui.local</code> (OpenWebUI dedicated) · IP allowlist · Bearer pass-through</td><td>Subdomain cho OpenWebUI vì static asset dùng đường dẫn tuyệt đối, không work qua subpath</td></tr>
           <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Multi-provider LLM stack (plan 260701-1544 · deployed 2026-07-02) ━━</b></td></tr>
-          <tr><td><span class="pill cyan">agent</span></td><td>8080 (127.0.0.1)</td><td>FastAPI <code>/chat</code> SSE · self-written tool-use loop · LiteLLM SDK direct (không qua proxy) · citation validator</td><td>Restored từ mcp-only decommission; LiteLLM adapter thay Anthropic direct SDK</td></tr>
-          <tr><td><span class="pill cyan">litellm-proxy</span></td><td>4000 (127.0.0.1)</td><td>OpenAI-compat gateway route 4 model alias (gemini-flash/gpt-4-mini/claude-sonnet/deepseek) · fallback chain · empty-response guard callback</td><td>OpenWebUI backend + centralize provider keys + cost log JSON stdout</td></tr>
-          <tr><td><span class="pill vio">openwebui</span></td><td>8090 (127.0.0.1)</td><td>Team chat UI thay Claude Desktop cho ai không muốn cài desktop client · SQLite user DB · MCP native support</td><td>Web UI cho 5 ops · reuse LITELLM_MASTER_KEY (DB backend disabled)</td></tr>
-          <tr><td><span class="pill cyan">vmalert</span></td><td>8880 (127.0.0.1)</td><td>Đánh giá LogsQL stats rule (instant 30s / burst 5m) → push alert sang Alertmanager</td><td>Native <code>type: vlogs</code> support, không cần exporter trung gian</td></tr>
-          <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · group · route fired alerts → Telegram Bot (template HTML)</td><td>Standard, hỗ trợ silence/inhibit khi cần</td></tr>
+          <tr><td><span class="pill cyan">agent</span></td><td>8080 (127.0.0.1)</td><td>FastAPI <code>/chat</code> SSE · vòng lặp tool-use tự viết · LiteLLM SDK direct (không qua proxy) · citation validator</td><td>Phục hồi sau khi decom mcp-only; LiteLLM adapter thay Anthropic direct SDK</td></tr>
+          <tr><td><span class="pill cyan">litellm-proxy</span></td><td>4000 (127.0.0.1)</td><td>Gateway OpenAI-compat, route 4 alias model (gemini-flash/gpt-4-mini/claude-sonnet/deepseek) · fallback chain · callback chặn response rỗng</td><td>Backend OpenWebUI + tập trung provider key + ghi chi phí JSON stdout</td></tr>
+          <tr><td><span class="pill vio">openwebui</span></td><td>8090 (127.0.0.1)</td><td>Giao diện chat team thay Claude Desktop cho ai không muốn cài client · SQLite user DB · hỗ trợ MCP native</td><td>Web UI cho 5 ops · tái dùng LITELLM_MASTER_KEY (DB backend tắt)</td></tr>
+          <tr><td><span class="pill cyan">vmalert</span></td><td>8880 (127.0.0.1)</td><td>Đánh giá LogsQL stats rule (instant 30s / burst 5m) → push alert sang Alertmanager</td><td>Hỗ trợ native <code>type: vlogs</code>, không cần exporter trung gian</td></tr>
+          <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · gom nhóm · route alert → Telegram Bot (template HTML)</td><td>Chuẩn, hỗ trợ silence/inhibit khi cần</td></tr>
           <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
         </tbody>
       </table>
@@ -221,7 +221,7 @@ flowchart LR
 
   <!-- 3. INGEST -->
   <section id="ingest" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">3</span> &nbsp;Ingest pipeline — log đi từ VM tới storage</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">3</span> &nbsp;Pipeline ghi log — từ VM đến lưu trữ</h2>
     <div class="grid grid-cols-[1.4fr_1fr] gap-4 mt-3">
       <div class="card p-5">
         <div class="mermaid">
@@ -251,9 +251,9 @@ sequenceDiagram
         </div>
       </div>
       <div class="card p-5 text-sm leading-relaxed">
-        <div class="h-title">Highlights</div>
+        <div class="h-title">Điểm nổi bật</div>
         <ul class="mt-3 space-y-2.5">
-          <li>• <b>Fan-out tại vector:</b> 1 line log → ghi <span class="pill lime">VictoriaLogs</span> (full, queryable). Chỉ <b>WARN+</b> mới publish lên <span class="pill gray">NATS</span> <code>logs.warn</code> (giảm embed cost).</li>
+          <li>• <b>Fan-out tại vector:</b> 1 line log → ghi <span class="pill lime">VictoriaLogs</span> (full, có thể query). Chỉ <b>WARN+</b> mới publish lên <span class="pill gray">NATS</span> <code>logs.warn</code> (giảm chi phí embedding).</li>
           <li>• <b>PII/secret redaction trước khi lưu:</b> regex VRL replace email, RFC1918 IP, JWT, AWS key, Bearer token, password=... → downstream luôn đọc data sạch.</li>
           <li>• <b>Template extraction (drain3):</b> gom các line giống nhau về 1 "template" (ví dụ <code>Connection refused to &lt;host&gt;:&lt;port&gt;</code>) → giảm 100× lượng embedding.</li>
           <li>• <b>NTP bắt buộc:</b> chronyd 3 VM, lệch &gt;1s sẽ phá trace.</li>
@@ -265,7 +265,7 @@ sequenceDiagram
 
   <!-- 4. QUERY -->
   <section id="query" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">4</span> &nbsp;Query pipeline — từ câu hỏi tiếng Việt tới citation</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">4</span> &nbsp;Pipeline query — từ câu hỏi tiếng Việt tới citation</h2>
     <div class="card p-5 mt-3">
       <div class="mermaid">
 sequenceDiagram
@@ -300,16 +300,16 @@ sequenceDiagram
       </div>
       <div class="grid grid-cols-3 gap-3 mt-5 text-sm">
         <div class="card2 p-4">
-          <div class="h-title">Fuzzy intent</div>
+          <div class="h-title">Câu hỏi mơ hồ</div>
           <p class="mut mt-2">"vì sao", "có vấn đề gì", "bất thường"... → <span class="pill vio">mcp-semantic</span>. Embed → Qdrant top-k.</p>
         </div>
         <div class="card2 p-4">
-          <div class="h-title">Precise filter</div>
+          <div class="h-title">Lọc chính xác</div>
           <p class="mut mt-2">"service=nginx AND status=502 AND _time:1h" → <span class="pill cyan">mcp-vl</span>. LogsQL trực tiếp.</p>
         </div>
         <div class="card2 p-4">
-          <div class="h-title">Citation contract</div>
-          <p class="mut mt-2">Mọi câu trả lời PHẢI có <code class="text-[11px]">[service:host:ts]</code> + <code class="text-[11px]">vmui_url</code>. Không cite = không trust.</p>
+          <div class="h-title">Hợp đồng citation</div>
+          <p class="mut mt-2">Mọi câu trả lời PHẢI có <code class="text-[11px]">[service:host:ts]</code> + <code class="text-[11px]">vmui_url</code>. Không cite = không tin.</p>
         </div>
       </div>
     </div>
@@ -317,19 +317,19 @@ sequenceDiagram
 
   <!-- 5. TOOLS -->
   <section id="tools" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">5</span> &nbsp;MCP tools Claude có thể gọi</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">5</span> &nbsp;Các MCP tool Claude có thể gọi</h2>
     <div class="grid grid-cols-2 gap-4 mt-3">
       <div class="card p-5">
         <div class="flex items-center justify-between">
           <div class="font-semibold">onelog-vl <span class="pill cyan ml-1">precise</span></div>
           <code class="text-[11px] mut">/mcp/vl/sse</code>
         </div>
-        <p class="mut text-[12px] mt-2">Official <code>mcp-victorialogs</code> upstream — không tự code, expose toàn bộ LogsQL tools.</p>
+        <p class="mut text-[12px] mt-2">Server <code>mcp-victorialogs</code> chính chủ — không tự code, expose toàn bộ LogsQL tools.</p>
         <ul class="mt-3 text-sm space-y-2">
-          <li><code class="acc">query(logsql, time_range)</code> — raw LogsQL, trả lines</li>
+          <li><code class="acc">query(logsql, time_range)</code> — LogsQL thô, trả về các dòng log</li>
           <li><code class="acc">hits(filter, top_n)</code> — top N theo field</li>
-          <li><code class="acc">stats_query(group_by, agg)</code> — count/percentile</li>
-          <li><code class="acc">vmui_url(query)</code> — sinh deeplink</li>
+          <li><code class="acc">stats_query(group_by, agg)</code> — đếm/percentile</li>
+          <li><code class="acc">vmui_url(query)</code> — sinh deeplink VMUI</li>
         </ul>
         <pre class="mt-3 card2 p-3 text-[12px] overflow-auto"><span class="mut"># ví dụ</span>
 hits(filter="service:nginx status:5*",
@@ -340,9 +340,9 @@ hits(filter="service:nginx status:5*",
           <div class="font-semibold">onelog-semantic <span class="pill vio ml-1">fuzzy</span></div>
           <code class="text-[11px] mut">/mcp/semantic/sse</code>
         </div>
-        <p class="mut text-[12px] mt-2">FastMCP custom · <b>single tool by design (KISS)</b> · Streamable HTTP transport.</p>
+        <p class="mut text-[12px] mt-2">FastMCP custom · <b>1 tool duy nhất theo thiết kế (KISS)</b> · Streamable HTTP transport.</p>
         <ul class="mt-3 text-sm space-y-2">
-          <li><code class="acc">search_log_templates(query, filters?, top_k?)</code> — embed → Qdrant top-k → trả template + sample line + vmui_url để drill xuống mcp-vl</li>
+          <li><code class="acc">search_log_templates(query, filters?, top_k?)</code> — embed → Qdrant top-k → trả về template + sample line + vmui_url để drill xuống mcp-vl</li>
         </ul>
         <pre class="mt-3 card2 p-3 text-[12px] overflow-auto"><span class="mut"># Claude tự chain:</span>
 1. search_log_templates(
@@ -358,7 +358,7 @@ hits(filter="service:nginx status:5*",
 
   <!-- 6. WORKFLOW -->
   <section id="workflow" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">6</span> &nbsp;Ops workflow — 5 người, 1 bộ nhớ chung</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">6</span> &nbsp;Quy trình ops — 5 người, 1 bộ nhớ chung</h2>
     <div class="card p-5 mt-3">
       <div class="mermaid">
 flowchart TB
@@ -378,16 +378,16 @@ flowchart TB
       </div>
       <div class="mt-5 grid grid-cols-3 gap-3 text-sm">
         <div class="card2 p-4">
-          <div class="h-title">Realtime collab</div>
-          <p class="mut mt-2">Member 1 paste link conversation vào Slack → member 2 click vào reply tiếp.</p>
+          <div class="h-title">Cộng tác realtime</div>
+          <p class="mut mt-2">Thành viên 1 paste link conversation vào Slack → thành viên 2 click vào reply tiếp.</p>
         </div>
         <div class="card2 p-4">
           <div class="h-title">Async</div>
-          <p class="mut mt-2">Mọi conversation tự visible cho 5 ops. Daily standup scan 5 cái gần nhất.</p>
+          <p class="mut mt-2">Mọi conversation tự hiện với 5 ops. Standup hàng ngày quét 5 cái gần nhất.</p>
         </div>
         <div class="card2 p-4">
-          <div class="h-title">Weekly</div>
-          <p class="mut mt-2">Ops trực T6 extract highlight → cập nhật <code>docs/runbooks/*</code>.</p>
+          <div class="h-title">Hàng tuần</div>
+          <p class="mut mt-2">Ops trực T6 trích điểm nổi bật → cập nhật <code>docs/runbooks/*</code>.</p>
         </div>
       </div>
     </div>
@@ -395,7 +395,7 @@ flowchart TB
 
   <!-- 7. DATA MODEL -->
   <section id="data" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">7</span> &nbsp;Data model rút gọn</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">7</span> &nbsp;Mô hình dữ liệu rút gọn</h2>
     <div class="grid grid-cols-3 gap-4 mt-3">
       <div class="card p-5">
         <div class="h-title">VictoriaLogs · "log line"</div>
@@ -441,17 +441,17 @@ payload: {
 
   <!-- 8. SECURITY -->
   <section id="security" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">8</span> &nbsp;Security &amp; audit</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">8</span> &nbsp;Bảo mật &amp; audit</h2>
     <div class="card mt-3 p-2">
       <table class="k">
         <thead><tr><th>Lớp</th><th>Cơ chế</th><th>Lý do</th></tr></thead>
         <tbody>
-          <tr><td>Network</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog 6514 plain TCP (TLS = roadmap)</td><td>Lab subnet trusted, không expose public</td></tr>
-          <tr><td>Data redaction</td><td>Vector VRL strip email · RFC1918 IP · JWT · AWS key · Bearer · password=… trước khi ghi VL</td><td>MCP/indexer/agent luôn đọc data đã sạch</td></tr>
-          <tr><td>Auth</td><td>Bearer token cá nhân <code>sk-mcp-...</code> cấp riêng từng ops</td><td>Audit theo user, revoke khi nghỉ</td></tr>
+          <tr><td>Mạng</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog 6514 plain TCP (TLS = roadmap)</td><td>Lab subnet tin cậy, không expose public</td></tr>
+          <tr><td>Xóa PII</td><td>Vector VRL strip email · RFC1918 IP · JWT · AWS key · Bearer · password=… trước khi ghi VL</td><td>MCP/indexer/agent luôn đọc data đã sạch</td></tr>
+          <tr><td>Xác thực</td><td>Bearer token cá nhân <code>sk-mcp-...</code> cấp riêng từng ops</td><td>Audit theo user, thu hồi khi nghỉ</td></tr>
           <tr><td>TLS</td><td>Caddy <code>tls internal</code> (self-signed)</td><td>Lab; chuyển Let's Encrypt khi public</td></tr>
           <tr><td>Audit</td><td><code>/var/log/onelog-audit/mcp-semantic.log</code> mỗi tool call: user, tool, query, result_size</td><td>Truy vết hành vi, debug rate limit</td></tr>
-          <tr><td>Privacy</td><td>Project Claude Team — không train trên data (per Anthropic ToS)</td><td>Log có thể chứa info nhạy cảm</td></tr>
+          <tr><td>Riêng tư</td><td>Project Claude Team — không train trên data (per Anthropic ToS)</td><td>Log có thể chứa thông tin nhạy cảm</td></tr>
           <tr><td>Secrets</td><td>"Không paste secret vào chat" + lint server-side</td><td>5 ops cùng đọc Project</td></tr>
         </tbody>
       </table>
@@ -461,8 +461,8 @@ payload: {
   <!-- 9. ALERTING -->
   <section id="alerting" class="anchor mt-8">
     <div class="flex items-baseline justify-between">
-      <h2 class="text-lg font-semibold"><span class="step-num">9</span> &nbsp;Alerting pipeline — từ log tới Telegram</h2>
-      <span class="mut text-xs">Source: <code>docs/ops-cheatsheet.md</code> · <code>infra/vmalert/rules.yml</code> · <code>infra/alertmanager/alertmanager.yml</code></span>
+      <h2 class="text-lg font-semibold"><span class="step-num">9</span> &nbsp;Pipeline cảnh báo — từ log tới Telegram</h2>
+      <span class="mut text-xs">Nguồn: <code>docs/ops-cheatsheet.md</code> · <code>infra/vmalert/rules.yml</code> · <code>infra/alertmanager/alertmanager.yml</code></span>
     </div>
 
     <div class="card p-5 mt-3">
@@ -499,10 +499,10 @@ sequenceDiagram
       <div class="card p-5">
         <div class="h-title">Field trong Telegram — đến từ đâu</div>
         <table class="k mt-2">
-          <thead><tr><th>Field</th><th>Nguồn</th><th>Mechanism</th></tr></thead>
+          <thead><tr><th>Field</th><th>Nguồn</th><th>Cơ chế</th></tr></thead>
           <tbody>
             <tr><td><code>alertname</code></td><td>rule</td><td><code>- alert: DiskFullErrors</code> trong rules.yml</td></tr>
-            <tr><td><code>severity</code> · <code>category</code></td><td>rule label</td><td>Hard-code <code>labels:</code> block</td></tr>
+            <tr><td><code>severity</code> · <code>category</code></td><td>rule label</td><td>Hard-code trong block <code>labels:</code></td></tr>
             <tr><td><code>host</code> · <code>host_ip</code></td><td>VictoriaLogs</td><td>vector parse syslog → <code>stats by (host, host_ip)</code> đẩy thành label</td></tr>
             <tr><td><code>sample_msg</code></td><td>VictoriaLogs</td><td><code>row_any(_msg)</code> trong stats — 1 dòng raw đại diện</td></tr>
             <tr><td><code>started</code> · <code>ended</code></td><td>vmalert</td><td><code>.StartsAt</code> / <code>.EndsAt</code> render với <code>.Local</code> → giờ VN <code>+07:00</code></td></tr>
@@ -513,7 +513,7 @@ sequenceDiagram
       </div>
 
       <div class="card p-5">
-        <div class="h-title">Rule groups · routing</div>
+        <div class="h-title">Nhóm rule · routing</div>
         <ul class="mt-3 text-sm space-y-2.5">
           <li>• <b><span class="pill cyan">instant</span> (eval 30s, for=0s):</b> OomKill / DiskFull / NewUserOrSudoer — fire ngay khi 1 sự kiện match.</li>
           <li>• <b><span class="pill vio">burst</span> (eval 5m, for=1m):</b> SSH brute force, MySQL err burst, kernel err... — cần &gt;N event/5m.</li>
@@ -522,7 +522,7 @@ sequenceDiagram
         </ul>
 
         <hr class="sep">
-        <div class="h-title">Gotchas đã gặp</div>
+        <div class="h-title">Lỗi thường gặp</div>
         <ul class="mt-3 text-[12px] space-y-2 mut">
           <li>• <span class="warn">Đổi <code>alertmanager.yml</code>:</span> entrypoint sed render vào <code>/tmp/</code> chỉ tại start → <b>phải <code>--force-recreate</code></b>, reload không pick file mới.</li>
           <li>• <span class="warn">Timestamp UTC:</span> container thiếu tzdata → mount <code>/usr/share/zoneinfo</code> + set <code>TZ=Asia/Ho_Chi_Minh</code>.</li>
@@ -534,10 +534,10 @@ sequenceDiagram
 
   <!-- 10. RUNBOOK -->
   <section id="runbook" class="anchor mt-8">
-    <h2 class="text-lg font-semibold"><span class="step-num">10</span> &nbsp;Quick runbook — onboard 10 phút</h2>
+    <h2 class="text-lg font-semibold"><span class="step-num">10</span> &nbsp;Runbook nhanh — onboard 10 phút</h2>
     <div class="grid grid-cols-2 gap-4 mt-3">
       <div class="card p-5">
-        <div class="h-title">Setup máy ops (1 lần) — chọn 1 trong 2 UX</div>
+        <div class="h-title">Cài đặt máy ops (1 lần) — chọn 1 trong 2 UX</div>
         <div class="mt-3 text-[12px] mut mb-2">Cả 2 UX chạy song song, dùng chung MCP servers.</div>
         <div class="text-sm mb-2"><b class="cyan">A · Claude Desktop</b> (bản gốc)</div>
         <ol class="text-[12px] space-y-1.5 list-decimal pl-5 mb-3">
@@ -561,7 +561,7 @@ sequenceDiagram
           <li>Search keyword trước khi tạo mới (mysql, 502, redis...)</li>
           <li>Đặt câu hỏi → đọc kết quả + bấm <code>vmui_url</code></li>
           <li>Tìm ra root cause → rename <code>[YYYY-MM-DD] svc - symptom</code></li>
-          <li>Tin nhắn cuối: Root cause / Fix / Prevention</li>
+          <li>Tin nhắn cuối: Nguyên nhân gốc / Sửa / Phòng tránh</li>
           <li>Fix lâu dài → <code>docs/runbooks/&lt;svc&gt;.md</code></li>
         </ol>
       </div>
@@ -602,6 +602,18 @@ sequenceDiagram
       </details>
     </div>
   </section>
+
+  <nav class="mt-8 p-4 rounded-lg border border-[#1f1f25] bg-[#0e0e12]">
+    <div class="text-[10px] uppercase tracking-widest mut mb-2">Xem thêm mockup</div>
+    <div class="flex flex-wrap gap-2 text-xs">
+      <a href="onelog-index.html" class="px-3 py-1.5 rounded border border-[#1f1f25] hover:border-cyan-700 hover:bg-[#0a1a22] transition">🗂 Index</a>
+      <span class="px-3 py-1.5 rounded border border-cyan-800 bg-cyan-950/40 text-cyan-300">① System explainer (đang xem)</span>
+      <a href="onelog-services-detail.html" class="px-3 py-1.5 rounded border border-[#1f1f25] hover:border-violet-700 hover:bg-[#15151c] transition">② Services detail</a>
+      <a href="onelog-production-deploy.html" class="px-3 py-1.5 rounded border border-[#1f1f25] hover:border-lime-700 hover:bg-[#15151c] transition">③ Production deploy</a>
+      <a href="onelog-client-deploy-config.html" class="px-3 py-1.5 rounded border border-[#1f1f25] hover:border-amber-700 hover:bg-[#15151c] transition">④ Client deploy · config</a>
+      <a href="onelog-llm-abstraction-workflow.html" class="px-3 py-1.5 rounded border border-[#1f1f25] hover:border-violet-700 hover:bg-[#15151c] transition">⑤ LLM abstraction workflow</a>
+    </div>
+  </nav>
 
   <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
     <span>OneLog · system explainer · 2026-07-02</span>

@@ -425,12 +425,14 @@ groups:
 
       # Probe silent > 20m = Vector container down hoặc host cron chết → mất visibility.
       # Mirror pattern OpenWebUIDbProbeStale.
+      # `for: 5m` chống warmup transient: mỗi probe tick 5m nên baseline count
+      # cần 15-25m post-boot để đạt threshold 3. Real failure vẫn detect < 25m.
       - alert: DiskProbeStale
         expr: |
           (service:logserver-disk-monitor OR service:host-disk-monitor) _time:20m
             | stats by (service) count() as value
             | filter value:<3
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: monitoring

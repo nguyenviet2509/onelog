@@ -7,7 +7,7 @@ name: ragstack
 
 services:
   victorialogs:
-    image: victoriametrics/victoria-logs:latest
+    image: victoriametrics/victoria-logs:${VL_IMAGE_TAG:-latest}
     container_name: ragstack-vl
     restart: unless-stopped
     command:
@@ -28,7 +28,7 @@ services:
       retries: 3
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-latest}
     container_name: ragstack-qdrant
     restart: unless-stopped
     environment:
@@ -149,7 +149,7 @@ services:
   # vmalert — evaluates LogsQL stats queries against VictoriaLogs, fires
   # to Alertmanager. Native VL datasource since vmalert v1.96+.
   vmalert:
-    image: victoriametrics/vmalert:latest
+    image: victoriametrics/vmalert:${VMALERT_IMAGE_TAG:-latest}
     container_name: ragstack-vmalert
     restart: unless-stopped
     profiles: [alerts]
@@ -183,7 +183,7 @@ services:
   # at start) — NOT the bind-mounted source. Any edit to alertmanager.yml
   # requires `up -d --force-recreate alertmanager` to re-run sed.
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:${ALERTMANAGER_IMAGE_TAG:-latest}
     container_name: ragstack-alertmanager
     restart: unless-stopped
     profiles: [alerts]

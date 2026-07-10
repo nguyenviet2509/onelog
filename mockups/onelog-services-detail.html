@@ -114,6 +114,7 @@
     <a href="#agent"><span class="ico">⑬</span><span class="lbl">agent <span class="badge ml-1">new</span></span></a>
     <a href="#litellm-proxy"><span class="ico">⑭</span><span class="lbl">litellm-proxy <span class="badge ml-1">new</span></span></a>
     <a href="#openwebui"><span class="ico">⑮</span><span class="lbl">openwebui <span class="badge ml-1">new</span></span></a>
+    <a href="#grafana"><span class="ico">⑯</span><span class="lbl">grafana <span class="badge ml-1">new</span></span></a>
     <a href="#decom"><span class="ico">—</span><span class="lbl">decommissioned</span></a>
   </nav>
 
@@ -122,20 +123,22 @@
     <div class="card p-5">
       <div class="h-title">Tổng quan stack</div>
       <p class="mt-2 text-sm leading-relaxed mut">
-        Toàn bộ OneLog là <b class="acc">15 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 5 nhóm:
+        Toàn bộ OneLog là <b class="acc">16 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 6 nhóm:
         <span class="pill amber">ingestion</span> nhận log,
         <span class="pill lime">storage</span> lưu trữ,
         <span class="pill cyan">query / mcp</span> phục vụ chat clients,
         <span class="pill vio">alerting</span> opt-in,
-        <span class="pill pink" style="background:#2f0f22;color:#f9a8d4">llm/chat</span> multi-provider LLM (mới 2026-07).
+        <span class="pill pink" style="background:#2f0f22;color:#f9a8d4">llm/chat</span> multi-provider LLM (mới 2026-07),
+        <span class="pill" style="background:#1a2a1a;color:#a3e635">dashboard</span> LLM cost UI (opt-in).
         Hầu hết bind <code>127.0.0.1</code> — chỉ <span class="pill amber">vector :514/6514/6515</span> và <span class="pill amber">caddy :80/:443</span> mở ra LAN.
       </p>
-      <div class="grid grid-cols-5 gap-2 mt-4 text-[11px]">
+      <div class="grid grid-cols-6 gap-2 mt-4 text-[11px]">
         <div class="card2 p-3"><div class="h-title">always-on</div><div class="mt-1 acc">8 services</div><div class="mut text-[10px] mt-0.5">vl · qdrant · pg · vector · nats · mcp-semantic · mcp-vl · caddy</div></div>
         <div class="card2 p-3"><div class="h-title">profile=indexer</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">indexer (Drain3 + embed)</div></div>
         <div class="card2 p-3"><div class="h-title">profile=alerts</div><div class="mt-1 acc">2</div><div class="mut text-[10px] mt-0.5">vmalert + alertmanager</div></div>
         <div class="card2 p-3"><div class="h-title">profile=agent</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">agent :8080 (LiteLLM SDK)</div></div>
         <div class="card2 p-3"><div class="h-title">profile=llm,chat</div><div class="mt-1 acc">2</div><div class="mut text-[10px] mt-0.5">litellm-proxy · openwebui</div></div>
+        <div class="card2 p-3"><div class="h-title">profile=dashboard</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">grafana (LLM cost UI)</div></div>
       </div>
     </div>
   </section>
@@ -844,12 +847,13 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <div class="b"><div class="t">IP allowlist</div><div class="x"><code>@lan remote_ip 192.168.122.0/24</code> — ngoài subnet trả 403 ngay tầng L7. Defense-in-depth với UFW.</div></div>
         <div class="b"><div class="t">tls internal</div><div class="x">Cert tự ký, trust-store nội bộ. Ops thêm cert vào keychain. Production: bỏ → Let's Encrypt.</div></div>
         <div class="b"><div class="t">File tĩnh mockup</div><div class="x">Mount <code>./mockups</code> → <code>/srv/mockups</code> để preview HTML trực tiếp qua <code>http://app.local/mockups/*.html</code>.</div></div>
+        <div class="b"><div class="t">Site <code>admin.webui.local</code></div><div class="x">Reverse proxy tới <span class="pill" style="background:#1a2a1a;color:#a3e635">grafana</span>:3000. Gate riêng bằng <code>ADMIN_STRICT_CIDR</code> (không dùng full LAN). Bearer đã gỡ — dựa vào Grafana login.</div></div>
       </div>
     </div>
     <div class="files">
       <h4>Cấu hình ở đâu</h4>
       <table>
-        <tr><td><code>infra/caddy/Caddyfile</code></td><td>Nguồn sự thật duy nhất — site block <code>app.local</code>, IP allowlist, forward_auth, reverse_proxy routes, file_server cho mockup</td></tr>
+        <tr><td><code>infra/caddy/Caddyfile</code></td><td>Nguồn sự thật duy nhất — 3 site block: <code>app.local</code> (MCP), <code>webui.local</code> (openwebui), <code>admin.webui.local</code> (grafana). IP allowlist, forward_auth, reverse_proxy routes, file_server cho mockup</td></tr>
         <tr><td><code>infra/caddy/data/</code> · <code>infra/caddy/config/</code></td><td>Cert + state Caddy tự sinh (tls internal). KHÔNG commit — đã trong <code>.gitignore</code></td></tr>
         <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>caddy</code>)</span></td><td>Image <code>caddy:2-alpine</code> · port 80/443 (public) · mount Caddyfile + data + config + mockups</td></tr>
       </table>
@@ -1206,6 +1210,66 @@ WEBUI_ADMIN_EMAIL/PASSWORD=${...:-}
       </ul>
     </div>
     <div class="reload">Restart: <code>docker compose --profile chat restart openwebui</code> · Backup: <code>bash infra/scripts/backup-openwebui.sh</code> (age-encrypted)</div>
+  </section>
+
+  <!-- ⑯ GRAFANA -->
+  <section id="grafana" class="anchor mt-4 card p-5" style="border-color:#1a2a1a">
+    <div class="svc-header">
+      <div>
+        <div class="text-lg font-semibold"><span class="num">16</span>grafana <span class="pill" style="background:#1a2a1a;color:#a3e635">dashboard</span> <span class="badge ml-1">profile=dashboard · new 2026-07</span></div>
+        <div class="mut text-xs mt-1">LLM Cost Overview dashboard · datasource VictoriaLogs · truy cập <code>admin.webui.local</code></div>
+      </div>
+      <span class="chip on">image: <code>grafana/grafana-oss:11.4.0</code></span>
+    </div>
+    <hr class="sep"/>
+    <div class="grid-2">
+      <div>
+        <div class="h-title">Ports</div>
+        <table class="k mt-1"><tr><td><code>127.0.0.1:3000</code></td><td>HTTP UI (proxy qua Caddy <code>admin.webui.local</code>)</td></tr></table>
+        <div class="h-title mt-3">Volumes</div>
+        <table class="k mt-1">
+          <tr><td><code>./data/grafana</code></td><td>→ <code>/var/lib/grafana</code> (SQLite users, session)</td></tr>
+          <tr><td><code>./grafana/dashboards</code></td><td>read-only, auto-provisioned</td></tr>
+        </table>
+        <div class="h-title mt-3">Env chính</div>
+<pre class="card2 p-2 mt-1">GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
+GRAFANA_ADMIN_PASSWORD=${...}
+dns: [8.8.8.8, 1.1.1.1]  # plugin install</pre>
+      </div>
+      <div>
+        <div class="h-title">Vai trò</div>
+        <ul class="text-sm mt-1 space-y-1.5 mut">
+          <li>• UI chi phí LLM: cost / provider / user / model theo giờ + tháng</li>
+          <li>• Datasource: <span class="pill lime">victorialogs</span> qua plugin <code>victoriametrics-logs-datasource</code> (LogsQL <code>| stats</code>)</li>
+          <li>• Dashboard provisioned từ file JSON — không cần import tay</li>
+          <li>• Login = Grafana built-in (user/pass + session cookie)</li>
+        </ul>
+        <div class="h-title mt-3">Truy cập</div>
+        <div class="text-[12px] mut">Trình duyệt <code>http://admin.webui.local/</code> (thêm hosts <code>192.168.122.53  admin.webui.local</code> · phải nằm trong <code>ADMIN_STRICT_CIDR</code>)</div>
+      </div>
+    </div>
+    <div class="role">
+      <h4>Tác dụng chi tiết</h4>
+      <ul>
+        <li><b>Giải quyết:</b> ops cần nhìn nhanh chi phí LLM (DeepSeek balance, Gemini/Claude token count, cost per user) mà không cần chạy LogsQL query tay. Trước đó chỉ có alert lúc vượt ngưỡng — thiếu "xem trend" cho leadership review.</li>
+        <li><b>Vì sao Grafana OSS thay vì tự viết:</b> plugin <code>victoriametrics-logs-datasource</code> đọc LogsQL trực tiếp — không cần ETL sang Prometheus / Postgres. Dashboard-as-code (JSON) + provisioning file → dựng lại 1 lệnh, không click UI.</li>
+        <li><b>2 lớp bảo mật:</b> (1) Caddy giới hạn <code>ADMIN_STRICT_CIDR</code> — chỉ máy admin (không phải full LAN) reach được; (2) Grafana login (password + session cookie, có thể bật 2FA). Bearer layer đã gỡ (13d7781) vì browser không gửi Authorization header khi navigate.</li>
+        <li><b>Opt-in profile:</b> không chạy mặc định. <code>docker compose --profile dashboard up -d grafana</code> khi cần. Tiết kiệm RAM cho log server nhỏ.</li>
+      </ul>
+    </div>
+    <div class="files">
+      <h4>Cấu hình ở đâu</h4>
+      <table>
+        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>grafana</code>)</span></td><td>Image · profile <code>[dashboard]</code> · DNS public (8.8.8.8/1.1.1.1) cho plugin install · env <code>GF_INSTALL_PLUGINS</code></td></tr>
+        <tr><td><code>infra/grafana/grafana.ini</code></td><td><code>root_url</code>, admin user/pass qua env, anonymous off, signup off</td></tr>
+        <tr><td><code>infra/grafana/provisioning/datasources/victorialogs.yml</code></td><td>Datasource VL trỏ <code>http://victorialogs:9428</code>, plugin <code>victoriametrics-logs-datasource</code></td></tr>
+        <tr><td><code>infra/grafana/provisioning/dashboards/dashboards.yml</code></td><td>Auto-load JSON từ <code>/etc/grafana/dashboards</code></td></tr>
+        <tr><td><code>infra/grafana/dashboards/llm-cost-overview.json</code></td><td>Dashboard chính: cost per provider/user/model, DeepSeek balance, request counts</td></tr>
+        <tr><td><code>infra/caddy/Caddyfile</code> <span class="mut">(site <code>admin.webui.local</code>)</span></td><td>Reverse proxy <code>grafana:3000</code>, gate CIDR <code>{$ADMIN_STRICT_CIDR}</code></td></tr>
+        <tr><td><code>.env</code> <span class="mut">(repo root)</span></td><td><code>GRAFANA_ADMIN_PASSWORD</code>, <code>ADMIN_STRICT_CIDR</code></td></tr>
+      </table>
+      <div class="reload">Bring up: <code>docker compose --profile dashboard up -d grafana</code> · Reload provisioning: <code>docker compose restart grafana</code> · Health: <code>curl http://localhost:3000/api/health</code></div>
+    </div>
   </section>
 
   <!-- DECOMMISSIONED -->

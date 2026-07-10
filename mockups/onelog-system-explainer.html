@@ -59,7 +59,7 @@
       </div>
     </div>
     <div class="flex items-center gap-2 text-xs">
-      <span class="chip"><span class="dot" style="background:var(--ok)"></span> v2026.07 · Multi-provider LLM</span>
+      <span class="chip"><span class="dot" style="background:var(--ok)"></span> v2026.07 · Multi-provider LLM + Cost dashboard</span>
       <span class="chip on">5 ops · agent SSE + OpenWebUI + Claude Desktop</span>
     </div>
   </header>
@@ -129,11 +129,13 @@ flowchart LR
     AG["agent :8080<br/>(LiteLLM SDK)<br/>NEW 2026-07"]
     LLM["litellm-proxy :4000<br/>(4 model alias)<br/>NEW 2026-07"]
     OWU["openwebui :8090<br/>(webui.local)<br/>NEW 2026-07"]
-    CAD["Caddy 80/443<br/>app.local + webui.local<br/>IP allowlist + Bearer"]
+    CAD["Caddy 80/443<br/>app.local + webui.local + admin.webui.local<br/>IP allowlist + Bearer"]
+    GF["grafana :3000<br/>(admin.webui.local)<br/>LLM cost UI · profile=dashboard<br/>NEW 2026-07"]
     DECOM["web Next.js :3000<br/>(decommissioned)"]
   end
   CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
   OW["Browser<br/>(webui.local)"]
+  ADM["Admin browser<br/>(admin.webui.local)<br/>ADMIN_STRICT_CIDR"]
   P1[("Anthropic · OpenAI<br/>Gemini · DeepSeek")]
   R1 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
   R2 -- "syslog UDP 514 / TCP 6514<br/>or JSON 6515" --> V
@@ -159,6 +161,9 @@ flowchart LR
   MVL -- "LogsQL" --> VL
   MSE -- "vector search" --> Q
   MSE -- "ghi audit" --> PG
+  ADM -- "HTTPS Host: admin.webui.local" --> CAD
+  CAD --> GF
+  GF -- "LogsQL cost query" --> VL
       </div>
       <div class="legend mt-4 text-[11px] mut flex flex-wrap gap-4">
         <span><i class="pill cyan">cyan</i> &nbsp;đường chính xác (mcp-vl)</span>
@@ -206,13 +211,15 @@ flowchart LR
           <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Bất đồng bộ, điều tiết theo chi phí embedding API</td></tr>
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Server <code>mcp-victorialogs</code> chính chủ — expose LogsQL tools (query / hits / stats_query)</td><td>Đường tìm kiếm chính xác; không cần tự code</td></tr>
           <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Đường tìm kiếm theo nghĩa; Claude tự chọn khi câu hỏi mơ hồ</td></tr>
-          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 2 site: <code>app.local</code> (MCP + agent /api + /llm) và <code>webui.local</code> (OpenWebUI dedicated) · IP allowlist · Bearer pass-through</td><td>Subdomain cho OpenWebUI vì static asset dùng đường dẫn tuyệt đối, không work qua subpath</td></tr>
+          <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 3 site: <code>app.local</code> (MCP + agent /api + /llm), <code>webui.local</code> (OpenWebUI dedicated), <code>admin.webui.local</code> (Grafana admin) · IP allowlist · Bearer pass-through · <code>ADMIN_STRICT_CIDR</code> riêng cho admin</td><td>Subdomain cho OpenWebUI vì static asset dùng đường dẫn tuyệt đối; admin site tách CIDR chặt hơn</td></tr>
           <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Multi-provider LLM stack (plan 260701-1544 · deployed 2026-07-02) ━━</b></td></tr>
           <tr><td><span class="pill cyan">agent</span></td><td>8080 (127.0.0.1)</td><td>FastAPI <code>/chat</code> SSE · vòng lặp tool-use tự viết · LiteLLM SDK direct (không qua proxy) · citation validator</td><td>Phục hồi sau khi decom mcp-only; LiteLLM adapter thay Anthropic direct SDK</td></tr>
           <tr><td><span class="pill cyan">litellm-proxy</span></td><td>4000 (127.0.0.1)</td><td>Gateway OpenAI-compat, route 4 alias model (gemini-flash/gpt-4-mini/claude-sonnet/deepseek) · fallback chain · callback chặn response rỗng</td><td>Backend OpenWebUI + tập trung provider key + ghi chi phí JSON stdout</td></tr>
           <tr><td><span class="pill vio">openwebui</span></td><td>8090 (127.0.0.1)</td><td>Giao diện chat team thay Claude Desktop cho ai không muốn cài client · SQLite user DB · hỗ trợ MCP native</td><td>Web UI cho 5 ops · tái dùng LITELLM_MASTER_KEY (DB backend tắt)</td></tr>
           <tr><td><span class="pill cyan">vmalert</span></td><td>8880 (127.0.0.1)</td><td>Đánh giá LogsQL stats rule (instant 30s / burst 5m) → push alert sang Alertmanager</td><td>Hỗ trợ native <code>type: vlogs</code>, không cần exporter trung gian</td></tr>
-          <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · gom nhóm · route alert → Telegram Bot (template HTML)</td><td>Chuẩn, hỗ trợ silence/inhibit khi cần</td></tr>
+          <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · gom nhóm · route alert → Telegram Bot (template HTML) · split topic Issue/Quota alert</td><td>Chuẩn, hỗ trợ silence/inhibit khi cần</td></tr>
+          <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Dashboard (opt-in profile=dashboard · deployed 2026-07) ━━</b></td></tr>
+          <tr><td><span class="pill" style="background:#1a2a1a;color:#a3e635">grafana</span></td><td>3000 (127.0.0.1)</td><td>Grafana OSS 11.4 · dashboard LLM cost (per provider/user/model, DeepSeek balance) · datasource VictoriaLogs qua plugin <code>victoriametrics-logs-datasource</code> · access <code>admin.webui.local</code></td><td>Dashboard-as-code (JSON provisioned), plugin đọc LogsQL trực tiếp — không cần ETL sang Prometheus</td></tr>
           <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
         </tbody>
       </table>
@@ -447,6 +454,7 @@ payload: {
         <thead><tr><th>Lớp</th><th>Cơ chế</th><th>Lý do</th></tr></thead>
         <tbody>
           <tr><td>Mạng</td><td>Caddy IP allowlist <code>192.168.122.0/24</code> · syslog 6514 plain TCP (TLS = roadmap)</td><td>Lab subnet tin cậy, không expose public</td></tr>
+          <tr><td>Admin site</td><td><code>admin.webui.local</code> gate riêng <code>ADMIN_STRICT_CIDR</code> (subset LAN) + Grafana login (session cookie)</td><td>2 lớp: CIDR chặt hơn LAN + built-in auth. Bearer đã gỡ vì browser không gửi Authorization khi navigate</td></tr>
           <tr><td>Xóa PII</td><td>Vector VRL strip email · RFC1918 IP · JWT · AWS key · Bearer · password=… trước khi ghi VL</td><td>MCP/indexer/agent luôn đọc data đã sạch</td></tr>
           <tr><td>Xác thực</td><td>Bearer token cá nhân <code>sk-mcp-...</code> cấp riêng từng ops</td><td>Audit theo user, thu hồi khi nghỉ</td></tr>
           <tr><td>TLS</td><td>Caddy <code>tls internal</code> (self-signed)</td><td>Lab; chuyển Let's Encrypt khi public</td></tr>
@@ -616,7 +624,7 @@ sequenceDiagram
   </nav>
 
   <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
-    <span>OneLog · system explainer · 2026-07-02</span>
+    <span>OneLog · system explainer · 2026-07-10</span>
     <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/deployment-llm-abstraction.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code></span>
   </footer>
 </div>

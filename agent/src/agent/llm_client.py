@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import litellm
@@ -268,7 +269,9 @@ def _mock_response(messages: list[dict[str, Any]]) -> dict[str, Any]:
             "stop_reason": "tool_use",
         }
 
-    citation = _citation_from_tool_result(messages) or "mock-service:srv-01:2026-06-23T04:00:00Z"
+    citation = _citation_from_tool_result(messages) or (
+        f"mock-service:srv-01:{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    )
     return {
         "content": [
             {

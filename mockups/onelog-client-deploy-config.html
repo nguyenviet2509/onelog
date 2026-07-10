@@ -281,8 +281,8 @@
             <tr>
               <td class="file mono"><b>infra/.env</b></td>
               <td>
-                <span class="pill cyan">MAIN</span> Secrets · LLM model · retention · Telegram · MCP tokens.<br/>
-                <span class="mut text-xs">Sửa khi: đổi password DB, đổi LLM_MODEL, tăng VL_RETENTION, cấp MCP token.</span>
+                <span class="pill cyan">MAIN</span> Secrets · LLM model · retention · Telegram · MCP tokens · image tags.<br/>
+                <span class="mut text-xs">Sửa khi: đổi password DB, đổi LLM_MODEL, tăng VL_RETENTION, cấp MCP token, pin image tag prod.</span>
               </td>
             </tr>
             <tr>
@@ -502,6 +502,16 @@
           <td><span class="pill lime">Compose</span> Thêm service · đổi port</td>
           <td class="file mono">infra/docker-compose.yml</td>
           <td>service block · <code>ports:</code> · <code>volumes:</code> · <code>profiles:</code> → <code class="kbd">up -d</code></td>
+        </tr>
+        <tr>
+          <td><span class="pill lime">Compose</span> Pin image tag (prod)</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>VL_IMAGE_TAG</code> · <code>QDRANT_IMAGE_TAG</code> · <code>VMALERT_IMAGE_TAG</code> · <code>ALERTMANAGER_IMAGE_TAG</code> → <code class="kbd">up -d --force-recreate</code> · <span class="mut text-xs">default <code>latest</code>, prod set <code>vX.Y.Z</code></span></td>
+        </tr>
+        <tr>
+          <td><span class="pill vio">Indexer</span> Embed key required</td>
+          <td class="file mono">infra/.env</td>
+          <td><code>OPENAI_API_KEY</code> bắt buộc khi <code>EMBED_MOCK=false</code> — indexer <b>fail-fast</b> tại boot nếu thiếu → set key hoặc <code>EMBED_MOCK=true</code> cho offline/CI</td>
         </tr>
         <tr>
           <td><span class="pill gray">Boot</span> Auto-restart on reboot</td>
@@ -828,6 +838,26 @@ dc up -d qdrant</div>
                 <tr>
                   <td class="mono text-xs"><code>ADMIN_ALLOW_CIDR</code>, <code>APP_DOMAIN</code></td>
                   <td class="mono text-xs">caddy <span class="mut">(hoặc reload nóng nếu chỉ Caddyfile)</span></td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>VL_IMAGE_TAG</code></td>
+                  <td class="mono text-xs">victorialogs</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>QDRANT_IMAGE_TAG</code></td>
+                  <td class="mono text-xs">qdrant</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>VMALERT_IMAGE_TAG</code></td>
+                  <td class="mono text-xs">vmalert</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>ALERTMANAGER_IMAGE_TAG</code></td>
+                  <td class="mono text-xs">alertmanager</td>
+                </tr>
+                <tr>
+                  <td class="mono text-xs"><code>OPENAI_API_KEY</code> <span class="mut">(indexer)</span></td>
+                  <td class="mono text-xs">indexer · mcp-semantic · agent <span class="mut">— indexer fail-fast nếu <code>EMBED_MOCK=false</code></span></td>
                 </tr>
                 <tr class="border-t border-[#78350f]">
                   <td class="mono text-xs"><b>.env.llm</b> — provider keys</td>

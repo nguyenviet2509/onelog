@@ -81,6 +81,8 @@ services:
       # vì Vector interpolate `$var` trong config strings (kể cả heredoc |) sẽ
       # đụng biến shell → Missing environment variable panic.
       - ./vector/probe-openwebui-db.sh:/etc/vector/probe-openwebui-db.sh:ro
+      # Probe script cho exec source `logserver_disk_size` (data disk).
+      - ./vector/probe-logserver-disk.sh:/etc/vector/probe-logserver-disk.sh:ro
       - ./data/vector:/var/lib/vector
       # Read-only mount cho exec source poll size (openwebui SQLite).
       # KHÔNG copy dữ liệu, chỉ `stat` file để emit metric event.
@@ -89,6 +91,10 @@ services:
       # type) để đọc stdout LiteLLM container. LiteLLM dùng logging driver
       # json-file (không phải syslog), nên phải qua Docker API để lấy log.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # NARROW bind cho df probe data disk. KHÔNG bind rootfs (bảo vệ secrets
+      # khỏi Vector container — combined với docker.sock = takeover primitive).
+      # rslave để thấy nested mount khi /opt/ragstack/data là separate FS.
+      - /opt/ragstack/data:/host/data:ro,rslave
     depends_on:
       - victorialogs
       - nats

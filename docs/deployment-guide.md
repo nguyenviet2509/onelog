@@ -244,6 +244,55 @@ docker exec ragstack-alertmanager amtool alert add TestAlert \
 - [ ] Restore dry-run: `bash infra/scripts/restore-snapshot.sh <archive>` → stack up lại
 - [ ] Reboot logserver → `systemctl status ragstack` healthy
 
+### Verify Docker log rotate (post plan 260710-1432 phase 01)
+
+```bash
+# Daemon config
+cat /etc/docker/daemon.json | jq '.["log-opts"]'
+# Expect: {"max-size": "10m", "max-file": "3"}
+
+# Per-container applied
+for c in $(docker compose ps -q); do
+  docker inspect --format '{{.Name}} → {{.HostConfig.LogConfig.Config}}' $c
+done
+# Expect: mọi container có max-size:10m (litellm override max-file:5 vẫn OK)
+```
+
+Nếu container chưa có config (chạy trước khi apply daemon.json), recreate:
+`docker compose up -d --force-recreate <service>`
+
+### Verify disk alerts (post plan 260710-1432 phase 02)
+
+```bash
+# vmalert loaded 5 rules disk-alerts
+curl -s http://127.0.0.1:8880/api/v1/rules | \
+  jq '.data.groups[] | select(.name=="disk-alerts") | .rules[] | {alert, state}'
+# Expect: DiskDataHighWarn/Crit, DiskRootHighWarn/Crit, DiskProbeStale — state=inactive baseline
+
+# Probe emit
+curl -s "http://127.0.0.1:9428/select/logsql/query" \
+  --data-urlencode 'query=service:logserver-disk-monitor _time:10m | limit 3' | jq .
+curl -s "http://127.0.0.1:9428/select/logsql/query" \
+  --data-urlencode 'query=service:host-disk-monitor _time:10m | limit 3' | jq .
+# Cả 2 phải return ≥ 1 event với used_pct numeric.
+
+# Host cron cài đặt
+crontab -l | grep onelog-probe-host-disk
+# Expect: */5 * * * * ... /usr/local/bin/onelog-probe-host-disk.sh
+```
+
+Force-test (primary — không đụng disk):
+
+```bash
+# Tạm hạ threshold DiskDataHighWarn → wait 20 phút → verify Telegram receive
+sed -i.bak 's/filter value:>75/filter value:>1/' infra/vmalert/rules.yml
+docker compose --profile alerts restart vmalert
+# Chờ 20 phút, verify Telegram Issue alert topic nhận DiskDataHighWarn.
+# Restore:
+mv infra/vmalert/rules.yml.bak infra/vmalert/rules.yml
+docker compose --profile alerts restart vmalert
+```
+
 ---
 
 ## Troubleshooting

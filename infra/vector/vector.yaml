@@ -48,6 +48,17 @@ sources:
       - /bin/sh
       - /etc/vector/probe-openwebui-db.sh
 
+  # Data disk probe — poll df /opt/ragstack/data (via bind /host/data) mỗi 5m.
+  # Bind mount narrow, KHÔNG expose rootfs. Compose khai báo bind + rslave.
+  logserver_disk_size:
+    type: exec
+    mode: scheduled
+    scheduled:
+      exec_interval_secs: 300
+    command:
+      - /bin/sh
+      - /etc/vector/probe-logserver-disk.sh
+
   # Docker container stdout — chỉ nhắm LiteLLM để lấy json_logs cost stream.
   # Requires `/var/run/docker.sock` mounted read-only on vector container.
   # LiteLLM emits structured JSON per request when `json_logs: true` in
@@ -235,6 +246,26 @@ transforms:
         .parse_error = string(err) ?? "unknown"
       }
 
+  # Parse JSON output từ probe-logserver-disk.sh + force source_stream marker.
+  # Anti-injection: vmalert rule filter theo source_stream:vector-exec-probe →
+  # attacker log từ container khác không thể forge tag này (transform hard-set).
+  logserver_disk_parse:
+    type: remap
+    inputs: [logserver_disk_size]
+    source: |
+      raw = string(.message) ?? ""
+      parsed, err = parse_json(raw)
+      if err == null && is_object(parsed) {
+        . = object!(parsed)
+      } else {
+        ._msg = raw
+        .service = "logserver-disk-monitor"
+        .host = "logserver"
+        .parse_error = string(err) ?? "unknown"
+      }
+      # Force source_stream — không cho phép event upstream forge field này.
+      .source_stream = "vector-exec-probe"
+
   redact:
     # PII/secret redaction BEFORE log lands in VictoriaLogs
     # Anything downstream (MCP tools, indexer, agent) reads safe data.
@@ -310,7 +341,7 @@ sinks:
     #                       other services pass through with their original .service)
     # openwebui_db_parse = SQLite probe metrics (no PII, exec source)
     # tag_provider_cost  = provider balance/cost JSON from poll-provider-cost.sh cron
-    inputs: [tag_litellm_cost, openwebui_db_parse, tag_provider_cost]
+    inputs: [tag_litellm_cost, openwebui_db_parse, tag_provider_cost, logserver_disk_parse]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

@@ -347,3 +347,94 @@ groups:
       #   annotations:
       #     summary: "Anthropic cache hit {{ $value }}% < 40% — kiểm tra prompt caching header"
       #     description: "Cache hit thấp = token wasted. Verify cache_control header trong LiteLLM system prompt config."
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DISK CAPACITY — 5 rules: warning@75 + critical@88 cho / và /opt/ragstack/data,
+  # cộng DiskProbeStale detect probe silent.
+  #
+  # LogsQL notes (khớp precedent llm_cost + openwebui-db):
+  #   - Explicit `_time:15m` filter (vmalert vlogs không inject window — commit d55a6d6).
+  #   - `max(used_pct)` aggregate (precedent openwebui-db-capacity dùng max()).
+  #   - `filter value:>N` word syntax (khớp llm_cost group).
+  #   - `source_stream:` filter chống log injection từ container khác.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: disk-alerts
+    type: vlogs
+    interval: 5m
+    rules:
+      # Data disk /opt/ragstack/data — warning 75%, notify sớm cho ops proactive.
+      - alert: DiskDataHighWarn
+        expr: |
+          service:logserver-disk-monitor source_stream:vector-exec-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>75
+        for: 15m
+        labels:
+          severity: warning
+          category: capacity
+          component: data-disk
+        annotations:
+          summary: "Data disk {{ $labels.mount }} > 75% used"
+          description: "/opt/ragstack/data đang {{ $value }}% used. Kiểm tra VL retention hoặc backup archive size. Trigger tune VL_RETENTION nếu > 80%."
+
+      # Data disk critical 88% — page immediately, không đợi for:
+      - alert: DiskDataHighCrit
+        expr: |
+          service:logserver-disk-monitor source_stream:vector-exec-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>88
+        for: 0s
+        labels:
+          severity: critical
+          category: capacity
+          component: data-disk
+        annotations:
+          summary: "Data disk {{ $labels.mount }} > 88% CRITICAL"
+          description: "/opt/ragstack/data đang {{ $value }}% — sắp vỡ. Giảm VL_RETENTION, xóa backup cũ, hoặc thêm ổ ngay."
+
+      # Root partition / — warning 75%. Fed bởi host cron probe-host-disk-root.sh.
+      - alert: DiskRootHighWarn
+        expr: |
+          service:host-disk-monitor source_stream:host-cron-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>75
+        for: 15m
+        labels:
+          severity: warning
+          category: capacity
+          component: root-partition
+        annotations:
+          summary: "Root partition {{ $labels.mount }} > 75% used"
+          description: "/ (98GB OS) đang {{ $value }}% used. Nguyên nhân thường: docker container log unbounded, apt cache, /tmp. Chạy `du -sh /var/lib/docker/containers/*/ | sort -h | tail`."
+
+      # Root critical 88% — immediate page. Docker daemon socket có thể fail nếu / đầy.
+      - alert: DiskRootHighCrit
+        expr: |
+          service:host-disk-monitor source_stream:host-cron-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>88
+        for: 0s
+        labels:
+          severity: critical
+          category: capacity
+          component: root-partition
+        annotations:
+          summary: "Root partition {{ $labels.mount }} > 88% CRITICAL"
+          description: "/ đang {{ $value }}% — sắp vỡ. Docker socket có thể fail. Xóa apt cache, docker log, /tmp ngay."
+
+      # Probe silent > 20m = Vector container down hoặc host cron chết → mất visibility.
+      # Mirror pattern OpenWebUIDbProbeStale.
+      - alert: DiskProbeStale
+        expr: |
+          (service:logserver-disk-monitor OR service:host-disk-monitor) _time:20m
+            | stats by (service) count() as value
+            | filter value:<3
+        for: 1m
+        labels:
+          severity: warning
+          category: monitoring
+          component: disk-probe
+        annotations:
+          summary: "Disk probe {{ $labels.service }} stale (< 3 events / 20m)"
+          description: "Probe {{ $labels.service }} không emit đủ. Vector container down (data probe) hoặc host cron chết (root probe). Restart hoặc verify crontab."

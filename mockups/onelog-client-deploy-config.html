@@ -28,10 +28,12 @@
   .cmd{background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;padding:10px 12px;
        font-family:ui-monospace;font-size:12px;color:#cffafe;white-space:pre-wrap;word-break:break-word}
   .cmd .p{color:#4c9c8f} .cmd .c{color:#5f5f6b}
-  table.k{width:100%;font-size:12.5px;border-collapse:collapse}
-  table.k th,table.k td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k{width:100%;font-size:12.5px;border-collapse:collapse;table-layout:fixed}
+  table.k th,table.k td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
   table.k th{color:var(--mut);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
-  table.k td.file{white-space:nowrap;color:#7dd3fc}
+  /* File paths get color highlight but must wrap on narrow columns; nowrap caused
+     inner tables to overflow the 2-col grid inside .card sections. */
+  table.k td.file{color:#7dd3fc;word-break:break-all}
   .lane{position:relative;padding:14px 16px 12px;border-radius:10px;border:1px solid var(--line)}
   .lane-edge{border-color:#0e7490;background:linear-gradient(180deg,#0a2a35 0%,#0d0d11 100%)}
   .lane-app{border-color:#7c3aed;background:linear-gradient(180deg,#1f0f3a 0%,#0d0d11 100%)}
@@ -52,7 +54,9 @@
   .arr{display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:20px;padding:2px 0}
   .arr .lbl{font-size:10px;color:#9ca3af;margin:0 8px;background:#0a0a0b;
             padding:1px 8px;border-radius:4px;border:1px solid var(--line)}
-  .tree{font-family:ui-monospace;font-size:12px;line-height:1.55;color:#cdd2d8;white-space:pre}
+  .tree{font-family:ui-monospace;font-size:12px;line-height:1.55;color:#cdd2d8;white-space:pre;overflow-x:auto;max-width:100%}
+  /* Grid children default min-width:auto — force 0 so <pre> can shrink inside a 2-col grid instead of pushing sibling out of frame. */
+  .grid > *{min-width:0}
   .tree .d{color:#7dd3fc} .tree .f{color:#e4e4e7}
   .tree .cm{color:#5f5f6b} .tree .h{color:#fbbf24;font-weight:600}
   hr.sep{border:0;border-top:1px dashed #1f1f25;margin:14px 0}
@@ -209,6 +213,228 @@
             <div class="svc ops"><div class="svc-name">Alertmanager</div><div class="svc-desc">Telegram</div></div>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Log Server VPS hardware specs (production reference) -->
+  <section class="card p-5 lane lane-app" id="ls-hardware">
+    <span class="lane-lbl vio">Log Server — Cấu hình VPS production</span>
+    <div class="mt-3 grid grid-cols-3 gap-4">
+
+      <!-- CPU -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">CPU</div>
+        <div class="text-xl font-bold acc">8 vCPU</div>
+        <div class="text-xs mut mt-1">Intel(R) Xeon(R) E5-2690 v4 @ 2.60GHz</div>
+        <div class="text-xs mut">NUMA node0 CPU(s): 0–7</div>
+      </div>
+
+      <!-- RAM -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">RAM</div>
+        <div class="text-xl font-bold acc">31 GiB</div>
+        <div class="text-xs mut mt-1">Swap 4.0 GiB · used ~5 GiB · buff/cache ~26 GiB</div>
+        <div class="text-xs mut">Đủ headroom cho VL memory allowedBytes + Qdrant</div>
+      </div>
+
+      <!-- Disk -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">Disk</div>
+        <div class="text-xl font-bold acc">~1.1 TB tổng</div>
+        <div class="text-xs mut mt-1">
+          <code>/</code> (sda3) 98 GB · 29% used<br/>
+          <code>/opt/ragstack/data</code> (sda4) 905 GB · 1% used
+        </div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="grid grid-cols-2 gap-6">
+      <div>
+        <div class="h-title mb-2">Layout ổ đĩa</div>
+        <table class="k">
+          <thead><tr><th style="width:34%">Mount</th><th style="width:20%">Size</th><th>Vai trò</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">/</td>
+              <td class="mono">98 GB</td>
+              <td>OS + repo (<code>~/onelog</code>) + docker image cache. Giữ &lt; 70% used.</td>
+            </tr>
+            <tr>
+              <td class="mono">/opt/ragstack/data</td>
+              <td class="mono">905 GB</td>
+              <td><span class="pill lime">DATA</span> Symlink <code>infra/data → /opt/ragstack/data</code>. VictoriaLogs · Qdrant · Postgres · NATS · OpenWebUI · backup. <b>KHÔNG xoá.</b></td>
+            </tr>
+            <tr>
+              <td class="mono">Swap</td>
+              <td class="mono">4 GB</td>
+              <td>Backup RAM (không dùng thường).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <div class="h-title mb-2">Capacity planning (@ 5–10 client servers)</div>
+        <table class="k">
+          <thead><tr><th style="width:34%">Component</th><th style="width:24%">Est. usage</th><th>Ghi chú</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>VictoriaLogs (retention 7d)</td>
+              <td class="mono">~20-40 GB</td>
+              <td>Scale tuyến tính với <code>VL_RETENTION</code> · 30d ≈ 4×</td>
+            </tr>
+            <tr>
+              <td>Qdrant (log templates)</td>
+              <td class="mono">~1-5 GB</td>
+              <td>1536-dim embedding · Drain3 dedupe mạnh</td>
+            </tr>
+            <tr>
+              <td>Postgres + OpenWebUI SQLite</td>
+              <td class="mono">~500 MB</td>
+              <td>Metadata + chat history</td>
+            </tr>
+            <tr>
+              <td>NATS JetStream</td>
+              <td class="mono">~2-10 GB</td>
+              <td>Buffer WARN+ trước indexer</td>
+            </tr>
+            <tr>
+              <td>Backup (crontab daily × 90d)</td>
+              <td class="mono">~100-200 GB</td>
+              <td><code>~/onelog/backup/onelog-YYYYMMDD-HHMM.tar.gz</code></td>
+            </tr>
+            <tr>
+              <td class="mono"><b>Tổng</b></td>
+              <td class="mono"><b>~150-250 GB</b></td>
+              <td>Còn ~650 GB headroom / 905 GB</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="grid grid-cols-3 gap-3 text-xs">
+      <div class="rule">
+        <b class="acc">Verify VPS</b> — chạy lại lệnh khi lên VPS mới:<br/>
+        <code class="kbd">nproc</code> · <code class="kbd">free -h</code> · <code class="kbd">df -h --total</code>
+      </div>
+      <div class="rule warn">
+        <b class="warn">Data path lệch chuẩn</b> — repo default là <code>infra/data/</code>, prod ở <code>/opt/ragstack/data</code>. Đảm bảo <b>symlink</b> hoặc <b>bind-mount</b> đã tạo trước khi <code>docker compose up</code>, nếu không container sẽ ghi vào <code>/</code> (98 GB, đầy nhanh).
+      </div>
+      <div class="rule">
+        <b class="acc">Khi nào scale up</b> — <code>/opt/ragstack/data</code> &gt; 70% used, hoặc tăng retention &gt; 30d, hoặc &gt; 20 client servers → thêm ổ 1TB SSD, mount thêm hoặc mở rộng LVM.
+      </div>
+    </div>
+  </section>
+
+  <!-- Log Server rotation strategy (plan 260710-1432) -->
+  <section class="card p-5 lane lane-app" id="ls-rotation">
+    <span class="lane-lbl vio">Log Server — Rotation &amp; disk safety strategy</span>
+
+    <div class="mt-3 grid grid-cols-2 gap-4">
+      <!-- Card 1: 4 tầng rotation -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">4 tầng rotation hiện tại</div>
+        <table class="k">
+          <thead><tr><th style="width:32%">Tầng</th><th style="width:32%">Cơ chế</th><th>Config / vị trí</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>VictoriaLogs</td>
+              <td>ZSTD auto-prune</td>
+              <td><code>VL_RETENTION=7d</code> trong <code>.env</code></td>
+            </tr>
+            <tr>
+              <td>NATS JetStream</td>
+              <td>max_age 3d</td>
+              <td><code>indexer/nats_consumer.py:51</code> hardcode</td>
+            </tr>
+            <tr>
+              <td>Docker container log</td>
+              <td>json-file 10m × 3</td>
+              <td><code>/etc/docker/daemon.json</code> host</td>
+            </tr>
+            <tr>
+              <td>Backup snapshot</td>
+              <td>KEEP_DAYS=7</td>
+              <td><code>scripts/snapshot-daily.sh</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Card 2: Disk alert thresholds -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">Disk alert thresholds (vmalert group <code>disk-alerts</code>)</div>
+        <table class="k">
+          <thead><tr><th>Rule</th><th>Mount</th><th>Threshold</th><th>Severity</th></tr></thead>
+          <tbody>
+            <tr><td>DiskDataHighWarn</td><td class="mono">/opt/ragstack/data</td><td>&gt;75%</td><td><span class="pill amber">warning</span></td></tr>
+            <tr><td>DiskDataHighCrit</td><td class="mono">/opt/ragstack/data</td><td>&gt;88%</td><td><span class="pill err">critical</span></td></tr>
+            <tr><td>DiskRootHighWarn</td><td class="mono">/</td><td>&gt;75%</td><td><span class="pill amber">warning</span></td></tr>
+            <tr><td>DiskRootHighCrit</td><td class="mono">/</td><td>&gt;88%</td><td><span class="pill err">critical</span></td></tr>
+            <tr><td>DiskProbeStale</td><td>any</td><td>&lt;3 event/20m</td><td><span class="pill amber">warning</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="grid grid-cols-2 gap-4">
+      <!-- Card 3: Deferred fixes + triggers -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">Deferred fixes — trigger để unlock</div>
+        <table class="k">
+          <thead><tr><th>Fix</th><th>Trigger</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="pill vio">B</span> NATS max_bytes</td>
+              <td class="mono text-xs"><code>nats stream info LOGS</code> messages &gt; 5M hoặc bytes &gt; 20 GB</td>
+            </tr>
+            <tr>
+              <td><span class="pill vio">C</span> VL retention dynamic</td>
+              <td class="mono text-xs"><code>vl_data_size_bytes/vl_data_max_bytes &gt; 0.8</code> fire</td>
+            </tr>
+            <tr>
+              <td><span class="pill vio">D</span> Backup tách VL</td>
+              <td class="mono text-xs">Archive &gt; 300 GB / snapshot</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Card 4: Scale reference -->
+      <div class="card2 p-4">
+        <div class="h-title mb-2">Scale reference (VL ZSTD 10-40× compression)</div>
+        <table class="k">
+          <thead><tr><th>Clients</th><th>Raw/day</th><th>7d stored</th><th>30d stored</th></tr></thead>
+          <tbody>
+            <tr><td>10</td><td>2 GB</td><td>560 MB</td><td>2.4 GB</td></tr>
+            <tr><td>100</td><td>20 GB</td><td>5.6 GB</td><td>24 GB</td></tr>
+            <tr><td>500</td><td>100 GB</td><td>28 GB</td><td>120 GB</td></tr>
+            <tr><td>1000</td><td>200 GB</td><td>56 GB</td><td>240 GB</td></tr>
+          </tbody>
+        </table>
+        <div class="text-xs mut mt-2">905 GB <code>/opt/ragstack/data</code> đủ cho 1000 clients @ 30d retention.</div>
+      </div>
+    </div>
+
+    <hr class="sep"/>
+
+    <div class="grid grid-cols-3 gap-3 text-xs">
+      <div class="rule">
+        <b class="acc">Probe topology</b> — 2 nguồn: Vector <code>exec</code> probe data disk (bind <code>/opt/ragstack/data:/host/data:ro,rslave</code>) + host cron probe <code>/</code> curl VL trực tiếp. <b>KHÔNG</b> bind rootfs (bảo mật).
+      </div>
+      <div class="rule warn">
+        <b class="warn">Anti-injection</b> — Vector transform hard-set <code>source_stream:vector-exec-probe</code>. LogsQL rule filter theo cả <code>service:</code> AND <code>source_stream:</code> → attacker container log không thể forge event suppress alert.
+      </div>
+      <div class="rule">
+        <b class="acc">Alert latency</b> — Critical (<code>for:0s</code>) 5-10 phút. Warning (<code>for:15m</code>) 15-25 phút. Probe cadence 5m + vmalert eval 5m + Alertmanager group_wait 30s.
       </div>
     </div>
   </section>
@@ -1399,6 +1625,8 @@ curl -N -X POST http://localhost:8080/chat \
   <div class="toc-group ls">
     <div class="toc-group-hdr"><span class="dot"></span>Log Server</div>
     <ul class="toc-list">
+      <li><a href="#ls-hardware">Cấu hình VPS</a></li>
+      <li><a href="#ls-rotation">Rotation strategy</a></li>
       <li><a href="#ls-tree">Cây thư mục repo</a></li>
       <li><a href="#ls-files">Chi tiết từng file</a></li>
       <li><a href="#ls-scenarios">Kịch bản chỉnh sửa</a></li>

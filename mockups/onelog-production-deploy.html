@@ -528,6 +528,22 @@
     </div>
   </div>
 
+  <!-- STEP 4b — Docker log rotate (plan 260710-1432 phase 01) -->
+  <div class="step">
+    <div class="step-num" style="background:#0c2a12;border-color:#059669;color:#86efac">4b</div>
+    <div class="step-body">
+      <div class="step-title"><span class="pill lime">SAFETY</span> Setup Docker log rotate (host daemon.json)</div>
+      <div class="step-desc">BẮT BUỘC trước step 10 (compose up). Docker default json-file không có rotation → container spam stdout = <code>/</code> partition (98GB) đầy. Config 1 lần → 14 container tự rotate. Xem <code>plans/260710-1432-logserver-rotation-a-plus-e/phase-01-docker-log-rotate.md</code>.</div>
+      <div class="cmd"><span class="comment"># Config daemon.json (nếu chưa có)</span>
+<span class="prompt">$</span> sudo tee /etc/docker/daemon.json &gt; /dev/null &lt;&lt;'EOF'
+{"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}
+EOF
+
+<span class="comment"># Validate + restart docker daemon</span>
+<span class="prompt">$</span> sudo dockerd --validate --config-file /etc/docker/daemon.json &amp;&amp; sudo systemctl restart docker</div>
+    </div>
+  </div>
+
   <!-- STEP 5 -->
   <div class="step">
     <div class="step-num">5</div>
@@ -579,7 +595,14 @@
 #   TELEGRAM_BOT_TOKEN=&lt;bot&gt;             (nếu dùng alert)
 #   TELEGRAM_ALERT_CHAT_ID=-1001234567
 #   TELEGRAM_MOCK=true                   → false
-#   VL_RETENTION=7d                      → 30d (prod giữ log lâu hơn)</span></div>
+#   VL_RETENTION=7d                      → 30d (prod giữ log lâu hơn)
+#
+# Prod hardening — image tag pinning (Wave 1 2026-07-10):
+#   VL_IMAGE_TAG=latest                  → v0.42.0 (hoặc version đang chạy)
+#   QDRANT_IMAGE_TAG=latest              → v1.11.0
+#   VMALERT_IMAGE_TAG=latest             → v1.101.0
+#   ALERTMANAGER_IMAGE_TAG=latest        → v0.27.0
+#   Discover current: docker inspect &lt;container&gt; | grep Image</span></div>
     </div>
   </div>
 
@@ -667,6 +690,19 @@ URL 2: http://mcpo:8080/onelog-semantic  Auth: Bearer &lt;MCPO_API_KEY&gt;</div>
       <div class="cmd"><span class="prompt">$</span> sudo bash ~/onelog/infra/scripts/install-systemd-unit.sh && echo "COMPOSE_PROFILES=agent,indexer,alerts,llm,chat" | sudo tee /etc/onelog-ragstack.env && sudo systemctl restart ragstack && sudo systemctl status ragstack --no-pager | head -10</div>
     </div>
   </div>
+
+  <!-- STEP 15b — Host cron probe root partition (plan 260710-1432 phase 02) -->
+  <div class="step">
+    <div class="step-num" style="background:#0c2a12;border-color:#059669;color:#86efac">15b</div>
+    <div class="step-body">
+      <div class="step-title"><span class="pill lime">SAFETY</span> Install host cron cho probe root partition</div>
+      <div class="step-desc">Vector container probe <code>/opt/ragstack/data</code> qua bind mount narrow (đã có trong compose). <code>/</code> partition (98GB) monitor bằng host cron riêng — không bind rootfs vào Vector (chống combined-với-docker.sock takeover). Cron emit JSON straight vào VL. vmalert group <code>disk-alerts</code> pickup.</div>
+      <div class="cmd"><span class="prompt">$</span> sudo cp ~/onelog/infra/scripts/probe-host-disk-root.sh /usr/local/bin/onelog-probe-host-disk.sh &amp;&amp; sudo chmod +x /usr/local/bin/onelog-probe-host-disk.sh
+<span class="prompt">$</span> (crontab -l 2&gt;/dev/null; echo "*/5 * * * * VL_ENDPOINT=http://127.0.0.1:9428/insert/jsonline /usr/local/bin/onelog-probe-host-disk.sh &gt;&gt; /var/log/onelog-host-probe.log 2&gt;&amp;1") | crontab -
+<span class="prompt">$</span> sudo touch /var/log/onelog-host-probe.log &amp;&amp; sudo chown $USER /var/log/onelog-host-probe.log
+<span class="prompt">$</span> crontab -l | grep onelog-probe-host-disk</div>
+    </div>
+  </div>
 </section>
 
 <!-- CADDY HTTPS PRODUCTION -->
@@ -737,6 +773,23 @@ A     chat.onelog.company.com     → &lt;LOGSERVER_IP&gt;
       <div class="text-[11px] mut mb-2 tracking-wider">💬 OPENWEBUI · syslog client (từ srv-01)</div>
       <div class="cmd"><span class="comment"># Test log forward từ client — chạy trên srv-01 (lab: 192.168.122.52)</span>
 <span class="prompt">$</span> logger -n &lt;LOGSERVER_IP&gt; -P 514 -T "test from $(hostname) $(date -Is)" && sleep 3 && curl -sG http://&lt;LOGSERVER_IP&gt;:9428/select/logsql/query --data-urlencode 'query=_msg:"test from" | limit 1'</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">🔄 DOCKER LOG ROTATE (step 4b)</div>
+      <div class="cmd"><span class="comment"># Verify daemon.json applied + per-container config</span>
+<span class="prompt">$</span> cat /etc/docker/daemon.json | jq '.["log-opts"]'
+<span class="prompt">$</span> for c in $(docker compose ps -q); do docker inspect --format '{{.Name}} → {{.HostConfig.LogConfig.Config}}' $c; done</div>
+      <div class="text-[11px] mut mt-2">Kỳ vọng: mọi container có <code>max-size:10m max-file:3</code> (litellm override <code>max-file:5</code> OK).</div>
+    </div>
+    <div>
+      <div class="text-[11px] mut mb-2 tracking-wider">💾 DISK ALERTS (step 15b + repo)</div>
+      <div class="cmd"><span class="comment"># 5 rules disk-alerts loaded + baseline inactive</span>
+<span class="prompt">$</span> curl -s http://127.0.0.1:8880/api/v1/rules | jq '.data.groups[] | select(.name=="disk-alerts") | .rules[] | {name, state}'
+
+<span class="comment"># Cả 2 probe emit (chờ 6 phút sau install)</span>
+<span class="prompt">$</span> curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=service:logserver-disk-monitor _time:10m | limit 3'
+<span class="prompt">$</span> curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=service:host-disk-monitor _time:10m | limit 3'</div>
+      <div class="text-[11px] mut mt-2">Kỳ vọng: 5 rules state=<code>inactive</code>, cả 2 probe return event có <code>used_pct</code>.</div>
     </div>
   </div>
 

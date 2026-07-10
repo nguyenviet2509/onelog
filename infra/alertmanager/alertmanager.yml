@@ -16,14 +16,15 @@ global:
 
 route:
   receiver: telegram-trend          # default: burst/trend rules → send RESOLVED
+                                    # → Client-Server topic (thread từ TELEGRAM_ALERT_THREAD_ID)
   group_by: ["alertname", "host"]
   group_wait: 10s
   group_interval: 5m
   repeat_interval: 15m
   routes:
     # LLM cost rules (team=llm-cost): cost/balance alerts, cooldown 30m to
-    # avoid billing-spike spam. Routes to telegram-llm-cost (Quota alert topic)
-    # so ops sees when balance recovers after top-up.
+    # avoid billing-spike spam. Routes to Log-Server topic (thread từ
+    # TELEGRAM_ALERT_THREAD_ID_LLM_COST) so ops sees when balance recovers.
     - matchers:
         - team="llm-cost"
       receiver: telegram-llm-cost
@@ -31,8 +32,20 @@ route:
       group_interval: 5m
       repeat_interval: 30m
 
+    # Log-Server self-monitoring: disk-alerts group (plan 260710-1432) — data
+    # disk, root partition, probe-stale. Route sang cùng Log-Server topic
+    # (dùng chung receiver telegram-llm-cost = TELEGRAM_ALERT_THREAD_ID_LLM_COST).
+    # Match theo `component:` label — chỉ disk-alerts group set field này.
+    - matchers:
+        - component=~"data-disk|root-partition|disk-probe"
+      receiver: telegram-llm-cost
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 30m
+
     # Event-style rules (OomKillEvent, DiskFullErrors, NewUserOrSudoer):
     # event đã xảy ra rồi, RESOLVED chỉ nói "không có thêm trong 5m" → noise.
+    # → Client-Server topic (client fleet syslog).
     - matchers:
         - notify_style="event"
       receiver: telegram-event

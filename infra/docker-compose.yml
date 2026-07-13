@@ -39,21 +39,26 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: ragstack-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: rag
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 30s
+  # postgres: DECOMMISSIONED 2026-07-13. Legacy Next.js web + old agent used
+  # this for chat conversations + audit_log. Both services decom 2026-06-24;
+  # LiteLLM DB backend disabled (Prisma search_path issue). Runtime verified
+  # zero connections + last write 2026-06-23 → data dumped to backups/.
+  # Resurrect: uncomment + restore dump. Data dir moved to data/postgres.legacy/.
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: ragstack-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: rag
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   ports:
+  #     - "127.0.0.1:5432:5432"
+  #   volumes:
+  #     - ./data/postgres:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+  #     interval: 30s
 
   redis:
     image: redis:7-alpine

@@ -122,7 +122,7 @@ flowchart LR
     VL[("VictoriaLogs<br/>:9428")]
     IDX["indexer<br/>(NATS consumer)"]
     Q[("Qdrant<br/>:6333")]
-    PG[("Postgres<br/>:5432 · audit/meta")]
+    AUD[/"Audit JSON Lines<br/>/var/log/onelog-audit/"/]
     NA[["NATS<br/>:4222"]]
     MVL["mcp-vl<br/>(official mcp-victorialogs)"]
     MSE["mcp-semantic<br/>(FastMCP · search_log_templates)"]
@@ -143,7 +143,6 @@ flowchart LR
   V -- "lọc WARN+ → logs.warn" --> NA
   NA --> IDX
   IDX -- "embed + upsert" --> Q
-  IDX -- "meta template · audit" --> PG
   CL -- "HTTPS Bearer<br/>/mcp/vl/sse" --> CAD
   CL -- "HTTPS Bearer<br/>/mcp/semantic/sse" --> CAD
   OW -- "HTTPS Host: webui.local" --> CAD
@@ -160,7 +159,7 @@ flowchart LR
   LLM --> P1
   MVL -- "LogsQL" --> VL
   MSE -- "vector search" --> Q
-  MSE -- "ghi audit" --> PG
+  MSE -- "append audit" --> AUD
   ADM -- "HTTPS Host: admin.webui.local" --> CAD
   CAD --> GF
   GF -- "LogsQL cost query" --> VL
@@ -206,9 +205,9 @@ flowchart LR
           <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp · 6515/tcp-json · 8686</td><td>Nhận syslog (UDP/TCP) + JSON ECS-lite (6515), enrich → redact PII → ghi VL (all) + NATS (WARN+ only)</td><td>Agent đơn thay rsyslog/fluentd; pipeline VRL khai báo; TLS = roadmap</td></tr>
           <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Lưu trữ log time-series, query LogsQL, ít RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
           <tr><td><span class="pill vio">qdrant</span></td><td>6333 (127.0.0.1)</td><td>Vector DB cho semantic search template log</td><td>Rust, single-binary, payload filter mạnh</td></tr>
-          <tr><td><span class="pill gray">postgres</span></td><td>5432</td><td>Audit log (mỗi tool call) + template metadata</td><td>SQL chuẩn cho join/aggregate, grep audit</td></tr>
+          <tr><td><s><span class="pill gray">postgres</span></s></td><td><s>5432</s></td><td colspan="2" class="mut">Decommissioned 2026-07-13. Legacy Next.js web + old agent. Không service nào ghi từ 2026-06-24. Audit trail giờ = JSON Lines file (mcp-semantic). Compose block commented, data dumped.</td></tr>
           <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>JetStream subject <code>logs.warn</code> (WARN+ events) cho indexer pull-consume</td><td>Đảm bảo giao nhận ít nhất 1 lần, tách biệt vector ↔ indexer</td></tr>
-          <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant + PG</td><td>Bất đồng bộ, điều tiết theo chi phí embedding API</td></tr>
+          <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant</td><td>Bất đồng bộ, điều tiết theo chi phí embedding API</td></tr>
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Server <code>mcp-victorialogs</code> chính chủ — expose LogsQL tools (query / hits / stats_query)</td><td>Đường tìm kiếm chính xác; không cần tự code</td></tr>
           <tr><td><span class="pill vio">mcp-semantic</span></td><td>SSE (qua Caddy)</td><td>FastMCP server tự build, <b>single tool</b> <code>search_log_templates</code> (KISS)</td><td>Đường tìm kiếm theo nghĩa; Claude tự chọn khi câu hỏi mơ hồ</td></tr>
           <tr><td><span class="pill amber">caddy</span></td><td>80 · 443</td><td>Reverse proxy 3 site: <code>app.local</code> (MCP + agent /api + /llm), <code>webui.local</code> (OpenWebUI dedicated), <code>admin.webui.local</code> (Grafana admin) · IP allowlist · Bearer pass-through · <code>ADMIN_STRICT_CIDR</code> riêng cho admin</td><td>Subdomain cho OpenWebUI vì static asset dùng đường dẫn tuyệt đối; admin site tách CIDR chặt hơn</td></tr>
@@ -241,7 +240,6 @@ sequenceDiagram
   participant N as NATS
   participant I as indexer
   participant Q as Qdrant
-  participant P as Postgres
   App->>Rs: stdout / /var/log/*
   Rs->>V: syslog UDP 514 / TCP 6514 / JSON 6515
   V->>V: enrich (service,host,severity) → redact PII/secrets
@@ -285,7 +283,7 @@ sequenceDiagram
   participant MVL as mcp-vl
   participant Q as Qdrant
   participant VL as VictoriaLogs
-  participant P as Postgres
+  participant AU as Audit JSONL
   U->>CD: "mysql có lỗi gì 1 giờ qua không?"
   CD->>CD: LLM classify intent → fuzzy
   CD->>MR: tool_call search_log_templates(q,...)
@@ -294,7 +292,7 @@ sequenceDiagram
   MSE->>MSE: embed(q) via OpenAI/local
   MSE->>Q: vector search top-k + payload filter
   Q-->>MSE: template hits + scores
-  MSE->>P: audit insert (user,tool,query,size)
+  MSE->>AU: append audit line (user,tool,query,size)
   MSE-->>CD: hits + vmui_url per template
   CD->>CD: cần raw line? → tool_call vl
   CD->>MR: tool_call query(logsql="service:mysql _time:1h error")
@@ -428,20 +426,20 @@ payload: {
 }</pre>
       </div>
       <div class="card p-5">
-        <div class="h-title">Postgres · "audit per MCP call"</div>
-<pre class="mt-3 card2 p-3 text-[12px] overflow-auto">CREATE TABLE audit_call (
-  id          BIGSERIAL PRIMARY KEY,
-  ts          TIMESTAMPTZ DEFAULT now(),
-  user_fp     TEXT,        -- token fingerprint
-  tool        TEXT,        -- search_log_templates / query
-  query       TEXT,
-  filters     JSONB,
-  result_size INT,
-  latency_ms  INT
-);
--- grep audit: ai gọi tool gì lúc nào.
--- Template meta ở payload Qdrant
--- (không duplicate trong PG).</pre>
+        <div class="h-title">JSON Lines · "audit per MCP call"</div>
+<pre class="mt-3 card2 p-3 text-[12px] overflow-auto">// /var/log/onelog-audit/mcp-semantic.log
+{
+  "ts": "2026-07-13T09:15:22+07:00",
+  "user_fp": "sha1:a3f2...",
+  "tool": "search_log_templates",
+  "query": "mysql pool exhausted",
+  "filters": {"service":"mysql"},
+  "result_size": 5,
+  "latency_ms": 87
+}
+// Append-only · rotate by host logrotate.
+// Postgres decom 2026-07-13 (audit_log
+// table unused since 2026-06-24).</pre>
       </div>
     </div>
   </section>

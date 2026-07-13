@@ -60,16 +60,20 @@ services:
   #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
   #     interval: 30s
 
-  redis:
-    image: redis:7-alpine
-    container_name: ragstack-redis
-    restart: unless-stopped
-    profiles: [agent]   # only start when agent stack is needed (Phase 03+)
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "128mb"]
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - ./data/redis:/data
+  # redis: DECOMMISSIONED 2026-07-13. Was intended for agent alert dedup +
+  # multi-replica session state, but agent uses in-memory TTL dedup
+  # (agent/src/agent/alert_dedupe.py). Runtime verified: DBSIZE=0, 0 clients.
+  # Resurrect if multi-replica agent needed (see docs/ha-roadmap.md).
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: ragstack-redis
+  #   restart: unless-stopped
+  #   profiles: [agent]
+  #   command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "128mb"]
+  #   ports:
+  #     - "127.0.0.1:6379:6379"
+  #   volumes:
+  #     - ./data/redis:/data
 
   vector:
     image: timberio/vector:0.40.0-alpine

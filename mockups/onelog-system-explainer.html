@@ -219,7 +219,8 @@ flowchart LR
           <tr><td><span class="pill cyan">alertmanager</span></td><td>9093 (127.0.0.1)</td><td>Dedupe · gom nhóm · route alert → Telegram Bot (template HTML) · split topic Issue/Quota alert</td><td>Chuẩn, hỗ trợ silence/inhibit khi cần</td></tr>
           <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Dashboard (opt-in profile=dashboard · deployed 2026-07) ━━</b></td></tr>
           <tr><td><span class="pill" style="background:#1a2a1a;color:#a3e635">grafana</span></td><td>3000 (127.0.0.1)</td><td>Grafana OSS 11.4 · dashboard LLM cost (per provider/user/model, DeepSeek balance) · datasource VictoriaLogs qua plugin <code>victoriametrics-logs-datasource</code> · access <code>admin.webui.local</code></td><td>Dashboard-as-code (JSON provisioned), plugin đọc LogsQL trực tiếp — không cần ETL sang Prometheus</td></tr>
-          <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
+          <tr><td><span class="pill" style="background:#1a2a1a;color:#a3e635">sqlite-web</span></td><td>8085 (127.0.0.1)</td><td>Read-only browser cho OpenWebUI SQLite (<code>webui.db</code>) — grep chat khi support user</td><td>Debug UI nhẹ, không cần cài client; localhost only</td></tr>
+          <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache (2026-07-13, DBSIZE=0)</s> · <s>postgres (2026-07-13, legacy Next.js data only)</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
         </tbody>
       </table>
     </div>

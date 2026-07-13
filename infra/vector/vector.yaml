@@ -337,11 +337,12 @@ transforms:
 sinks:
   victorialogs:
     type: elasticsearch
-    # tag_litellm_cost   = all PII-redacted syslog/rsyslog events (LiteLLM retagged;
-    #                       other services pass through with their original .service)
+    # redact             = all PII-redacted syslog/rsyslog events (srv-01/02 mock-* + real services)
+    # tag_litellm_cost   = LiteLLM proxy cost records only (retagged .service=litellm_cost)
     # openwebui_db_parse = SQLite probe metrics (no PII, exec source)
     # tag_provider_cost  = provider balance/cost JSON from poll-provider-cost.sh cron
-    inputs: [tag_litellm_cost, openwebui_db_parse, tag_provider_cost, logserver_disk_parse]
+    # logserver_disk_parse = disk usage probe from vector exec source
+    inputs: [redact, tag_litellm_cost, openwebui_db_parse, tag_provider_cost, logserver_disk_parse]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

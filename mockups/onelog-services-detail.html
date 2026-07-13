@@ -902,10 +902,15 @@ MCP_DISABLED_TOOLS=documentation</pre>
         <div class="b"><div class="t">Tinh chỉnh ngưỡng</div><div class="x">Quan sát baseline 1 tuần → set <code>filter value:&gt;N</code> với <code>N = 2 × p95</code>. Tránh cảnh báo nhầm khi traffic spike bình thường.</div></div>
       </div>
 
-      <h4 class="mt-4">Rules hiện tại (12 rule, 2 group)</h4>
+      <h4 class="mt-4">Rules hiện tại (31 rule, 7 group)</h4>
       <table class="k mt-1 text-[12px]">
-        <tr><td class="mut" style="width:30%">log-alerts-instant (3 rule)</td><td><code>OomKillEvent</code> (kern oom-killer · severity=critical · category=capacity) · <code>DiskFullErrors</code> (ENOSPC · critical · capacity) · <code>NewUserOrSudoer</code> (auth useradd/usermod · warning · audit)</td></tr>
-        <tr><td class="mut">log-alerts-burst (9 rule)</td><td><code>SshBruteForce</code> per-host &gt;20/5m · <code>SshFailMultiHostSameIp</code> per-attacker &gt;10/5m (<i>extract <code>from &lt;attacker_ip&gt; port</code></i>) · <code>MysqlErrorBurst</code> &gt;30/5m · <code>AuditLoginFailures</code> &gt;10/5m · <code>NginxServerErrors</code> &gt;100/5m · <code>KernelErrorBurst</code> kern err &gt;5/5m · <code>SudoEscalation</code> &gt;10/5m · <code>SystemdServiceFailed</code> &gt;2/5m · <code>DbConnectionRefused</code> &gt;5/5m</td></tr>
+        <tr><td class="mut" style="width:30%">log-alerts-instant (4 rule)</td><td><code>OomKillEvent</code> (critical) · <code>DiskFullErrors</code> (critical) · <code>NewUserOrSudoer</code> (warning · audit) · <code>LsphpSegfault</code> &gt;0/1m (critical · event) — plan 260713-1520 Phase 1a</td></tr>
+        <tr><td class="mut">log-alerts-burst (11 rule)</td><td><code>SshBruteForce</code> per-host &gt;20/5m · <code>SshFailMultiHostSameIp</code> per-attacker &gt;10/5m · <code>MysqlErrorBurst</code> &gt;30/5m · <code>AuditLoginFailures</code> &gt;10/5m · <code>WebServerErrorBurst</code> (litespeed/nginx) &gt;100/5m · <code>KernelErrorBurst</code> &gt;5/5m · <code>SudoEscalation</code> &gt;10/5m · <code>SystemdServiceFailed</code> &gt;2/5m · <code>DbConnectionRefused</code> &gt;5/5m · <code>FileDescriptorExhaustion</code> &gt;3/5m · <code>PhpFpmWorkerExhaustion</code> &gt;0/5m</td></tr>
+        <tr><td class="mut">log-pipeline-selfcheck (1 rule)</td><td><code>VictoriaLogsSelfError</code> VL err &gt;10/2m (critical) — plan 260713-1520 Phase 1a. HostLogSilent + DockerRestart defer P2.</td></tr>
+        <tr><td class="mut">openwebui-db-capacity (4 rule)</td><td>OpenWebUIDbSizeHint/Warning/Critical + ProbeStale</td></tr>
+        <tr><td class="mut">llm_cost (5 rule)</td><td>DeepSeekBalanceLow, OpenAIDailyCostHigh, AnthropicMonthlyNearCap, FallbackRateHigh, UserDailyBudgetExceeded</td></tr>
+        <tr><td class="mut">disk-alerts (5 rule)</td><td>DiskDataHigh Warn/Crit · DiskRootHigh Warn/Crit · DiskProbeStale</td></tr>
+        <tr><td class="mut">semantic-pipeline (1 rule)</td><td><code>WarnEventsStale</code> 0 WARN+ / 30m</td></tr>
       </table>
     </div>
     <div class="files">

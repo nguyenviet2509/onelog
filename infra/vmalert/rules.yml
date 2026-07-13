@@ -67,6 +67,24 @@ groups:
           summary: "User/sudoer change on {{ $labels.host }}"
           description: "useradd/usermod/group-change event on {{ $labels.host }} — verify intentional"
 
+      # lsphp segfault — 1 event = PHP extension bug / OPcache corruption.
+      # Plan 260713-1520 Phase 1a. Instant group (30s eval) + notify_style=event
+      # để tránh RESOLVED noise ("không thêm segfault trong 5m" ≠ "đã fix").
+      - alert: LsphpSegfault
+        expr: |
+          (_msg:"segfault" OR _msg:"segmentation fault") (service:lsphp OR service:litespeed OR _msg:"lsphp") _time:1m
+            | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
+            | filter value:>0
+        for: 0s
+        labels:
+          severity: critical
+          category: availability
+          component: lsphp
+          notify_style: event
+        annotations:
+          summary: "lsphp segfault trên {{ $labels.host }} ({{ $value }})"
+          description: "PHP extension bug hoặc OPcache corruption. journalctl -xe / core dump."
+
   # ─────────────────────────────────────────────────────────────────────────
   # BURST — 5m window, threshold >N to confirm pattern
   # ─────────────────────────────────────────────────────────────────────────
@@ -75,8 +93,9 @@ groups:
     interval: 5m
     rules:
       # Per-host SSH brute force. Per-attacker version below catches cross-host.
+      # Matcher OR mock+real (plan 260713-1520 phase 06) — cover cả staging + prod.
       - alert: SshBruteForce
-        expr: 'service:mock-sshd "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
+        expr: '(service:sshd OR service:ssh OR service:mock-sshd) "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
         for: 1m
         labels:
           severity: warning
@@ -85,8 +104,9 @@ groups:
           summary: "SSH brute force suspected on {{ $labels.host }}"
           description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
 
+      # Matcher OR mock+real (plan 260713-1520 phase 06).
       - alert: MysqlErrorBurst
-        expr: 'service:mock-mysql severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
+        expr: '(service:mysqld OR service:mysql OR service:mock-mysql) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
         for: 1m
         labels:
           severity: warning
@@ -105,15 +125,17 @@ groups:
           summary: "Audit login failures on {{ $labels.host }}"
           description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
 
-      - alert: NginxServerErrors
-        expr: 'service:mock-nginx severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
+      # Renamed từ NginxServerErrors (plan 260713-1520 phase 06) vì prod dùng
+      # OpenLitespeed. Matcher OR mock+real cover cả nginx + OLS.
+      - alert: WebServerErrorBurst
+        expr: '(service:litespeed OR service:openlitespeed OR service:nginx OR service:mock-nginx) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
         for: 1m
         labels:
           severity: warning
           category: app
         annotations:
-          summary: "Nginx 5xx burst on {{ $labels.host }}"
-          description: "{{ $value }} nginx err events in last 5m on {{ $labels.host }}"
+          summary: "Web server 5xx burst on {{ $labels.host }}"
+          description: "{{ $value }} web err events in last 5m on {{ $labels.host }} — check OLS/nginx error log"
 
       # 1 attacker IP fail SSH across cluster = coordinated brute force.
       # Pattern: "Failed password for <user> from <attacker_ip> port ..."
@@ -173,6 +195,38 @@ groups:
         annotations:
           summary: "Repeated DB connection refused on {{ $labels.host }}"
           description: "{{ $value }} DB conn-refused events in 5m on {{ $labels.host }} — check DB liveness + network"
+
+      # ────────── Plan 260713-1520 Phase 1a — web stack + FD selfcheck ──────────
+      # NOTE: `_time:5m` explicit — vmalert vlogs không inject window (commit d55a6d6).
+
+      # File descriptor exhaustion: EMFILE / ulimit chạm. Generic pattern.
+      - alert: FileDescriptorExhaustion
+        expr: |
+          (_msg:"Too many open files" OR _msg:"EMFILE" OR _msg:"open file descriptor limit") _time:5m
+            | stats by (host, host_ip, service) count() as value, row_any(_msg) as sample_msg
+            | filter value:>3
+        for: 1m
+        labels:
+          severity: warning
+          category: capacity
+        annotations:
+          summary: "FD exhaustion {{ $labels.service }} @ {{ $labels.host }}"
+          description: "Nâng ulimit -n hoặc systemd LimitNOFILE. Check /proc/<pid>/limits."
+
+      # php-fpm worker pool exhaustion — php-fpm log format (allow variant wording).
+      - alert: PhpFpmWorkerExhaustion
+        expr: |
+          (_msg:"server reached pm.max_children" OR _msg:"reached pm.max_children") _time:5m
+            | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
+            | filter value:>0
+        for: 1m
+        labels:
+          severity: warning
+          category: capacity
+          component: php-fpm
+        annotations:
+          summary: "php-fpm worker exhaustion trên {{ $labels.host }}"
+          description: "Pool đầy → user-facing latency spike. Nâng pm.max_children hoặc thêm pool."
 
   # ─────────────────────────────────────────────────────────────────────────
   # OPENWEBUI SQLITE — capacity trending, event source = vector exec probe
@@ -440,6 +494,32 @@ groups:
         annotations:
           summary: "Disk probe {{ $labels.service }} stale (< 3 events / 20m)"
           description: "Probe {{ $labels.service }} không emit đủ. Vector container down (data probe) hoặc host cron chết (root probe). Restart hoặc verify crontab."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # LOG PIPELINE SELFCHECK — detect silent failures của chính pipeline.
+  # Plan 260713-1520 Phase 1a. HostLogSilent + DockerRestartLoop defer P2
+  # (cần extend Vector: Prometheus metrics + docker daemon scrape).
+  # Chicken-egg caveat: nếu VL sập hoàn toàn thì rule không eval được.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: log-pipeline-selfcheck
+    type: vlogs
+    interval: 5m
+    rules:
+      # VictoriaLogs self-error burst. Threshold >10/2m conservative — hạ 5 sau
+      # baseline (Phase 05 tune). Explicit _time:5m per convention.
+      - alert: VictoriaLogsSelfError
+        expr: |
+          service:victorialogs severity:(err OR error OR fatal) _time:5m
+            | stats by (host) count() as value, row_any(_msg) as sample_msg
+            | filter value:>10
+        for: 2m
+        labels:
+          severity: critical
+          category: monitoring
+          component: victorialogs
+        annotations:
+          summary: "VictoriaLogs err burst trên {{ $labels.host }} ({{ $value }}/2m)"
+          description: "VL container báo err. Check disk / ingest lag: docker logs ragstack-victorialogs | tail -100"
 
   # ─────────────────────────────────────────────────────────────────────────
   # SEMANTIC PIPELINE INPUT — mock-logs.service trên srv-01/srv-02 phải bơm

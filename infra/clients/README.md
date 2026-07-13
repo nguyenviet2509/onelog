@@ -65,6 +65,25 @@ PoC stage = **plain TCP, no auth**. Network protection is mandatory:
 `mock-logs.py` + `mock-logs.service` generate synthetic syslog (UDP 514) for
 local stack smoke tests. Not for production clients.
 
+**Deploy on client (srv-01/srv-02):**
+```bash
+# Copy binary + unit
+sudo cp mock-logs.py /usr/local/bin/mock-logs.py
+sudo chmod +x /usr/local/bin/mock-logs.py
+sudo cp mock-logs.service /etc/systemd/system/mock-logs.service
+
+# Enable + start (both required — enable-only won't run until reboot)
+sudo systemctl daemon-reload
+sudo systemctl enable --now mock-logs.service
+systemctl is-active mock-logs.service    # must show "active"
+```
+
+> ⚠️ **Regression trap (2026-07-10 → 2026-07-13)**: mock-logs stopped
+> silently for 3 days → 0 WARN+ events → semantic RAG (Qdrant template
+> indexing) stale. Vmalert rule `WarnEventsStale` now detects this in
+> 30m. But prevent it: after every deploy, verify with
+> `systemctl is-active mock-logs.service` on both clients.
+
 ## Troubleshooting
 
 | Symptom | Fix |

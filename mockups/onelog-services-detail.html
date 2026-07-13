@@ -953,10 +953,12 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
   group_by: [alertname, host]
   group_wait: 10s
   group_interval: 5m
-  repeat_interval: 15m
+  repeat_interval: 2h        # warning default (giảm noise)
   routes:
-    - matchers: [notify_style="event"]
-      receiver: telegram-event</pre>
+    - matchers: [team="llm-cost"]                            → telegram-llm-cost (30m)
+    - matchers: [component=~"data-disk|root-partition|..."]  → telegram-llm-cost (30m)
+    - matchers: [notify_style="event"]                       → telegram-event
+    - matchers: [severity="critical"]                        → telegram-trend (30m)</pre>
         <div class="h-title mt-3">Receiver (2)</div>
         <ul class="text-sm mt-1 space-y-1 mut">
           <li>• <code>telegram-trend</code> — <b>send_resolved: true</b> (burst rules cần biết khi anomaly hết)</li>
@@ -974,7 +976,7 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
       </ul>
       <div class="grid4">
         <div class="b"><div class="t">Tách route</div><div class="x">Rule event (Oom/DiskFull/NewSudoer) bỏ qua RESOLVED — vì "không có thêm trong 5m" KHÔNG đồng nghĩa "đã fix".</div></div>
-        <div class="b"><div class="t">Group + repeat</div><div class="x"><code>group_wait=10s</code> chờ gom alert burst · <code>repeat_interval=15m</code> resend nếu vẫn firing · <code>resolve_timeout=5m</code>.</div></div>
+        <div class="b"><div class="t">Group + repeat</div><div class="x"><code>group_wait=10s</code> chờ gom alert burst · <code>repeat_interval=2h</code> (warning) / <code>30m</code> (critical + llm-cost/disk) resend nếu vẫn firing · <code>resolve_timeout=5m</code>.</div></div>
         <div class="b"><div class="t">Template Telegram</div><div class="x">HTML parse_mode · 🔥 FIRING / ✅ RESOLVED header · mỗi alert: 🔴/⚠️/ℹ️ severity · highlight <code>attacker_ip</code> · gợi ý VMUI query <code>host:{{host}}</code>.</div></div>
         <div class="b"><div class="t">Giao diện Silence</div><div class="x"><code>:9093</code> giao diện tạo silence theo matcher. Maintenance click vài lần xong.</div></div>
       </div>

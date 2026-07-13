@@ -10,6 +10,8 @@
 3. Services có profile — luôn kèm flag: `--profile agent`, `--profile mcp`, `--profile alerts`, `--profile indexer`.
 4. NTP sync bắt buộc trước khi ingest — timestamp lệch = trace vỡ.
 5. Sau khi `usermod -aG docker` phải **re-login** hoặc `newgrp docker` mới dùng compose không cần sudo.
+6. **KHÔNG hotfix trực tiếp trên server**. Edit vào repo local → commit → push → pull → apply. Session 2026-07-13 phát hiện 4 file drift do vi phạm rule này → suýt mất khi deploy lại. Nếu buộc phải hotfix (incident, chưa kịp PR): `git diff` chụp lại, mở issue commit về sau, KHÔNG để drift > 24h.
+7. **KHÔNG commit secrets/dumps**. `.gitignore` đã cover `backups/`, `*.sql`, `*.env.bak`, `.env.bak-*`. Nếu cần archive DB dump / env backup → upload offsite (S3/1Password), không git.
 
 ---
 

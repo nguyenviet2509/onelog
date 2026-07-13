@@ -4,8 +4,20 @@ infra/.env
 infra/litellm/.env.llm
 infra/litellm/.env.cost
 
-# Backups
+# Backups & dumps — chứa data user / hashed passwords / secrets snapshot.
+# 2026-07-13: postgres-legacy-*.sql (28KB) dumped vào backups/ khi decom PG.
+# KHÔNG commit — nếu cần archive, upload offsite (S3/1Password/keepass).
 backup/
+backups/
+*.sql
+*.dump
+
+# Env backup files — luôn coi là chứa secrets. Ops backup .env trước rollout
+# (VD .env.bak-20260702-0919 từ llm-abstraction rollout). Không commit.
+*.env.bak
+.env.bak-*
+.env.smoke.bak
+.env.*.bak
 
 # Python
 __pycache__/

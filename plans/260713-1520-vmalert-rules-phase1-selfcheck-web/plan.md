@@ -1,9 +1,11 @@
 ---
 name: vmalert-rules-phase1-selfcheck-web
-status: in-progress
+status: deployed-monitoring
 created: 2026-07-13
 updated: 2026-07-13
 owner: trihd@inet.vn
+deployedAt: 2026-07-13T16:30:00+07:00
+deployCommit: e8a7c5d
 blockedBy: []
 blocks: []
 relatedReports:
@@ -64,10 +66,10 @@ Vá silent-failure gap trong prod log-server observability. **Scope điều ch�
 
 | # | Phase | Status | Effort |
 |---|---|---|---|
-| 01 | Verify service labels + Vector sources | pending | 20m |
-| 06 | **Fix 4 mock-only rules** — extend matcher OR real service | pending | 20m |
-| 02 | Add **4 rules** Phase 1a + dry-run validation | pending | 25m |
-| 03 | Deploy + reload vmalert (dry-run pre-check) | pending | 15m |
+| 01 | Verify service labels + Vector sources | partial (skipped auditd) | 20m |
+| 06 | **Fix 3/4 mock rules** — SshBrute, MysqlBurst, WebServerErrorBurst extended (AuditLogin deferred P2) | ✅ done | 20m |
+| 02 | Add 4 rules Phase 1a + dry-run validation | ✅ done | 25m |
+| 03 | Deploy + reload vmalert (dry-run pre-check) | ✅ done 2026-07-13 16:30 | 15m |
 | 04 | Fake-log inject tests (all 4 rules) | pending | 30m |
 | 05 | 24h staging observation + tune | pending | ongoing |
 | — | **Phase 1b defer:** WebServer4xxFlood + HostLogSilent + DockerRestart | deferred | - |

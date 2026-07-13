@@ -80,6 +80,10 @@ Comment ở dòng 340-341 sai/misleading: nói `tag_litellm_cost = all PII-redac
 
 **Fix**: Add `redact` vào inputs list. Verify sau restart Vector: `host:srv-* _time:5m = 646 events` (distribution info=434, warning=130, err=70).
 
+**Regression commit xác định**: `0317390 fix(vector): read LiteLLM stdout via docker_logs source`. Refactor đổi `tag_litellm_cost.inputs: [redact] → [docker_litellm]` — dụng ý fix LiteLLM cost source nhưng đồng thời **cắt đường syslog → VL** vì không add `redact` vào VL sink inputs riêng. Bug tồn tại từ đó (commit trước `1d51a53 feat(ops): disk rotation strategy`, ước lượng 2026-07-02 khi llm-abstraction rollout).
+
+Ghi chú thêm: commit `274e309 .` (chỉ dấu chấm) xuất hiện trong log — auto-commit hook lộn xộn (giống case `ceb7a0f .` session này). Có thể là commit khác cùng góp phần regression, hoặc chỉ noise.
+
 ## Backlog còn lại
 
 1. 🔴 **Agent audit regression** — `/chat` SSE không ghi audit ở đâu (env chỉ có VL_URL, QDRANT_COLLECTION, LOG_LEVEL). Cần plan Option A: agent → JSON Lines → Vector → VL

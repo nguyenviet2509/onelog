@@ -22,8 +22,10 @@ command -v logger >/dev/null 2>&1 || { echo "[poll-provider-cost] ERROR: logger 
 # ---------------------------------------------------------------------------
 # Load credentials
 # ---------------------------------------------------------------------------
-# Default path: run as root cron with absolute path to avoid $HOME ambiguity.
-ENV_FILE="${ENV_FILE:-/root/onelog/infra/litellm/.env.cost}"
+# Portable default: derive from script location (infra/scripts/ → infra/litellm/).
+# Override via ENV_FILE env var if cron env sets HOME differently or path moves.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/../litellm/.env.cost}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "[poll-provider-cost] ERROR: env file not found: $ENV_FILE" >&2

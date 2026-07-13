@@ -153,6 +153,10 @@ http://sqliteui.local {
 # Add to /etc/hosts on admin machines: 192.168.122.53  admin.webui.local
 # ADMIN_STRICT_CIDR: space-separated CIDR of admin machines only (not full LAN).
 http://admin.webui.local {
+    log {
+        output stdout
+        format console
+    }
     @admin_lan remote_ip {$ADMIN_STRICT_CIDR}
     handle @admin_lan {
         reverse_proxy grafana:3000

@@ -440,3 +440,33 @@ groups:
         annotations:
           summary: "Disk probe {{ $labels.service }} stale (< 3 events / 20m)"
           description: "Probe {{ $labels.service }} không emit đủ. Vector container down (data probe) hoặc host cron chết (root probe). Restart hoặc verify crontab."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SEMANTIC PIPELINE INPUT — mock-logs.service trên srv-01/srv-02 phải bơm
+  # WARN+ liên tục để (a) sanity-test Vector→NATS→indexer→Qdrant chain,
+  # (b) validate vmalert rule (SSH brute, mysql err, audit fail) còn hoạt động.
+  #
+  # Lịch sử 2026-07-10 → 2026-07-13: mock-logs stopped trên clients → 0 WARN+
+  # trong VL 3 ngày → Vector NATS sink idle → Qdrant không index template mới
+  # → mcp-semantic trả kết quả cũ. Silent regression (không rule nào bắn).
+  #
+  # Rule: 0 WARN+ trong 30m → alert. Nếu prod system thật sự healthy zero,
+  # đổi threshold hoặc dùng canary explicit (topic riêng).
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: semantic-pipeline
+    type: vlogs
+    interval: 5m
+    rules:
+      - alert: WarnEventsStale
+        expr: |
+          severity:(warning OR warn OR err OR error OR crit OR alert OR emerg) _time:30m
+            | stats count() as value
+            | filter value:<1
+        for: 5m
+        labels:
+          severity: warning
+          category: monitoring
+          component: semantic-pipeline
+        annotations:
+          summary: "0 WARN+ events / 30m — semantic RAG pipeline có thể stale"
+          description: "Không có event severity WARN+ nào trong 30m. Nguyên nhân thường: mock-logs.service trên srv-01/srv-02 stopped, hoặc severity parsing broken ở Vector VRL. Verify: `ssh srv-01 systemctl status mock-logs`. Impact: Qdrant không index template mới → mcp-semantic serve kết quả cũ."

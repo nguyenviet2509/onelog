@@ -118,13 +118,17 @@ echo "docker daemon OK"
 ```bash
 sudo systemctl start ragstack   # ExecStart = docker compose up -d (default profile only)
 
-# Recreate với FULL profile list để container mới nhận config log rotate
+# Recreate với FULL profile list để container mới nhận config log rotate.
+# SUDO cần thiết: compose parse toàn stack — litellm-proxy dùng
+# env_file `.env.llm` chmod 0400 root → không sudo = permission denied.
 cd ~/onelog/infra
-docker compose --profile agent --profile indexer --profile alerts \
+sudo docker compose --profile agent --profile indexer --profile alerts \
   --profile llm --profile chat --profile dashboard up -d --force-recreate
 ```
 
-⚠️ Note discrepancy: `ragstack.service ExecStart` chỉ chạy default profile. Muốn full stack post-restart, ops phải chạy `up -d --profile ... --force-recreate` explicit. Có kế hoạch reconcile systemd unit sau (out of scope phase này).
+⚠️ Note discrepancy: `ragstack.service ExecStart` chỉ chạy default profile. Muốn full stack post-restart, ops phải chạy `sudo docker compose --profile ... up -d --force-recreate` explicit. Có kế hoạch reconcile systemd unit sau (out of scope phase này).
+
+⚠️ Sqlite-web (profile `[dbtools]`) không recreate vì không trong profile list default → giữ log-config cũ (unbounded). Nếu ops enable dbtools sau này, chạy `sudo docker compose --profile dbtools up -d --force-recreate sqlite-web` để apply rotate.
 
 ### 6. Verify từng container có log config đúng
 
@@ -140,7 +144,7 @@ Kỳ vọng: **mọi container** show `map[max-file:3 max-size:10m]` (trừ 3 se
 
 Nếu container nào thiếu config → do `--force-recreate` không apply → recreate riêng:
 ```bash
-docker compose up -d --force-recreate <service>
+sudo docker compose up -d --force-recreate <service>
 ```
 
 ## Todo list
@@ -173,7 +177,7 @@ sudo systemctl restart docker
 sudo systemctl start ragstack
 
 cd ~/onelog/infra
-docker compose --profile agent --profile indexer --profile alerts \
+sudo docker compose --profile agent --profile indexer --profile alerts \
   --profile llm --profile chat --profile dashboard up -d --force-recreate
 
 # Verify state matches pre-plan

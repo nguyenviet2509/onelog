@@ -48,7 +48,9 @@ KHÔNG bind full `/` vì cùng lúc với existing `docker.sock` mount = contain
 
 - `max(used_pct)` thay `last()` (precedent `rules.yml:187` dùng `max`).
 - Explicit `_time:15m` filter (commit d55a6d6 chứng minh vmalert vlogs KHÔNG inject window).
-- `filter value > 75` không phải `filter value:>75` (math filter, không phải word filter).
+- `filter value:>75` WORD syntax (khớp precedent llm_cost + openwebui-db). Math `filter value > 75` **KHÔNG parse** trong LogsQL VL đang chạy — test-runtime FAIL.
+- LogsQL không hỗ trợ negative threshold (`filter value:>-1`) — luôn dùng threshold dương.
+- Space-separated implicit AND giữa `service:X source_stream:Y` — không dùng explicit `AND` keyword.
 
 ### 3. Alert tier — 2 severity level
 
@@ -89,7 +91,7 @@ Exclude 02:00-02:30 window (snapshot cron).
 
 - **A**: `docker inspect <container> --format '{{.HostConfig.LogConfig.Config}}'` return `max-size:10m max-file:3` cho mọi container.
 - **E**: `curl 'http://127.0.0.1:8880/api/v1/rules' | jq` list 5 rules disk-alerts với state hợp lệ (inactive baseline hoặc firing khi test).
-- Force test (lower threshold): tạm hạ `filter value > 75` xuống `filter value > 1` → wait 20m → Telegram nhận → khôi phục threshold → alert resolve.
+- Force test (lower threshold): tạm hạ DiskRootHighWarn `filter value:>75` → `filter value:>10` + `for:15m` → `for:0s` (root=29% baseline sẽ fire trong 5-10 phút). DiskDataHighWarn không dùng để test được (data disk baseline 0% → không > 1).
 - 3 tháng post-deploy: không có disk full surprise, alert fire ≥ 1 lần khi VL retention đạt 75% baseline.
 
 ## Risk assessment (post red-team)
@@ -180,12 +182,43 @@ done
 - **Answer:** Stop ragstack.service trước, restart docker, start lại (Recommended)
 - **Impact:** Phase 1 — sequence `stop ragstack → restart docker → start ragstack`. Pre-flight check `pgrep -f snapshot-daily` empty. Exclude 02:00-02:30 window.
 
+## Post-plan additions (2026-07-10 → 2026-07-13)
+
+Ba thay đổi bổ sung SAU khi plan v1 completed — capture ở đây để không lạc:
+
+### 1. Alertmanager route disk-alerts → Log-Server topic (commit `5627162`)
+
+`disk-alerts` group ban đầu rơi vào default receiver `telegram-trend` → Client-Server topic. Ops đã tạo Telegram topic dedicated "Log-Server" (thread 15) → cần route đúng.
+
+**Change**: thêm matcher vào `infra/alertmanager/alertmanager.yml`:
+```yaml
+- matchers:
+    - component=~"data-disk|root-partition|disk-probe"
+  receiver: telegram-llm-cost   # → TELEGRAM_ALERT_THREAD_ID_LLM_COST (Log-Server thread)
+```
+Rely trên label `component:` đã set trong 5 rule disk-alerts.
+
+### 2. Telegram topic remapping (ops-side .env)
+
+| Env var | Trước | Sau (Log-Server topic strategy) |
+|---|---|---|
+| `TELEGRAM_ALERT_THREAD_ID` | Issue alert topic | **Client-Server** thread (id 6) — fleet syslog: OOM, ssh brute, crashloop |
+| `TELEGRAM_ALERT_THREAD_ID_LLM_COST` | Quota alert topic | **Log-Server** thread (id 15) — LLM cost + disk-alerts self-monitoring |
+
+⚠️ Env var name `TELEGRAM_ALERT_THREAD_ID_LLM_COST` giờ misleading — dùng chung cho LLM cost + Log-Server disk alerts. Rename semantic (`_LOGSERVER`) là optional cleanup (Wave C — chưa execute).
+
+### 3. DiskProbeStale for: 1m → 5m (commit `db5a6f1`)
+
+Fix warmup transient: Vector exec probe tick 5m nên count trong 20m window mất 15-25m post-boot để đạt threshold 3. `for:1m` gây false-alarm Telegram lần first-deploy. Bump `for:5m` → cần 5 evaluations liên tiếp match (~25m) mới fire → warmup handled.
+
 ## Next steps
 
-1. `/ck:cook --auto` execute plan sau khi validation applied.
-2. Ops chạy phase 01 trên logserver-01 (SSH, ngoài giờ cao điểm, không 02:00-02:30).
-3. Phase 02, 03 edit trong repo → PR → sync → apply.
-4. 24h post-deploy → force test (lower threshold) → verify Telegram → mark plan `completed`.
+1. ✅ `/ck:cook --auto` execute plan — DONE 2026-07-10.
+2. ✅ Phase 01 (host daemon.json + systemd sequence) applied trên logserver-01 — DONE.
+3. ✅ Phase 02 (probes + vmalert rules) + Phase 03 (docs sync) shipped repo + applied host — DONE.
+4. ✅ Alertmanager routing + Telegram topic remapping applied — DONE (post-plan).
+5. ✅ Force-test PASS: DiskRootHighWarn → Telegram Log-Server thread 15 nhận FIRING + RESOLVED.
+6. ⏳ Monitor 24h baseline curve, mark plan `completed` khi ổn.
 
 ## Unresolved
 

@@ -237,65 +237,90 @@ Thành:
 ```yaml
   # ─────────────────────────────────────────────────────────────────────────
   # DISK CAPACITY — 5 rules × 2 tier + probe-stale.
-  # LogsQL notes:
+  # LogsQL notes (khớp precedent llm_cost + openwebui-db):
   #   - Explicit _time:15m filter (vmalert vlogs KHÔNG inject window, commit d55a6d6).
-  #   - Precedent uses max() aggregate (rules.yml:187) — last() not verified in this VL version.
-  #   - filter uses math syntax `value > N`, không phải word `value:>N`.
-  #   - source_stream: filter chống log injection từ container khác.
+  #   - `max(used_pct)` aggregate (precedent openwebui-db-capacity dùng max()).
+  #   - `filter value:>N` WORD syntax — precedent llm_cost + openwebui-db. Math
+  #     `value > N` KHÔNG parse trong LogsQL VL đang chạy (test-runtime FAIL).
+  #   - `source_stream:` filter chống log injection từ container khác.
+  #   - Implicit AND giữa `service:X source_stream:Y` (space-separated), không
+  #     dùng explicit `AND` keyword.
+  #   - `component:` label BẮT BUỘC — Alertmanager route (5627162) matcher
+  #     `component=~"data-disk|root-partition|disk-probe"` → Log-Server topic.
   # ─────────────────────────────────────────────────────────────────────────
   - name: disk-alerts
     type: vlogs
     interval: 5m
     rules:
       - alert: DiskDataHighWarn
-        expr: 'service:logserver-disk-monitor AND source_stream:vector-exec-probe _time:15m | stats by (mount) max(used_pct) as value | filter value > 75'
+        expr: |
+          service:logserver-disk-monitor source_stream:vector-exec-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>75
         for: 15m
         labels:
           severity: warning
           category: capacity
+          component: data-disk
         annotations:
           summary: "Data disk {{ $labels.mount }} > 75% used"
           description: "/opt/ragstack/data đang {{ $value }}% used. Kiểm tra VL retention hoặc backup archive."
 
       - alert: DiskDataHighCrit
-        expr: 'service:logserver-disk-monitor AND source_stream:vector-exec-probe _time:15m | stats by (mount) max(used_pct) as value | filter value > 88'
+        expr: |
+          service:logserver-disk-monitor source_stream:vector-exec-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>88
         for: 0s
         labels:
           severity: critical
           category: capacity
+          component: data-disk
         annotations:
           summary: "Data disk {{ $labels.mount }} > 88% CRITICAL"
           description: "/opt/ragstack/data đang {{ $value }}% — page immediately. Giảm VL_RETENTION hoặc thêm ổ."
 
       - alert: DiskRootHighWarn
-        expr: 'service:host-disk-monitor AND source_stream:host-cron-probe _time:15m | stats by (mount) max(used_pct) as value | filter value > 75'
+        expr: |
+          service:host-disk-monitor source_stream:host-cron-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>75
         for: 15m
         labels:
           severity: warning
           category: capacity
+          component: root-partition
         annotations:
           summary: "Root partition {{ $labels.mount }} > 75% used"
           description: "/ (98GB OS) đang {{ $value }}%. Nguyên nhân: docker log flood, apt cache, /tmp."
 
       - alert: DiskRootHighCrit
-        expr: 'service:host-disk-monitor AND source_stream:host-cron-probe _time:15m | stats by (mount) max(used_pct) as value | filter value > 88'
+        expr: |
+          service:host-disk-monitor source_stream:host-cron-probe _time:15m
+            | stats by (mount) max(used_pct) as value
+            | filter value:>88
         for: 0s
         labels:
           severity: critical
           category: capacity
+          component: root-partition
         annotations:
           summary: "Root partition {{ $labels.mount }} > 88% CRITICAL"
           description: "/ đang {{ $value }}% — sắp vỡ. `du -sh /var/lib/docker/containers/*/ | sort -h | tail`."
 
       - alert: DiskProbeStale
-        expr: 'service:logserver-disk-monitor OR service:host-disk-monitor _time:20m | stats by (service) count() as value | filter value < 3'
-        for: 1m
+        expr: |
+          (service:logserver-disk-monitor OR service:host-disk-monitor) _time:20m
+            | stats by (service) count() as value
+            | filter value:<3
+        for: 5m
         labels:
           severity: warning
           category: monitoring
+          component: disk-probe
         annotations:
           summary: "Disk probe {{ $labels.service }} stale (< 3 events in 20m)"
-          description: "Probe {{ $labels.service }} silent — Vector container down hoặc host cron chết. Alert visibility mất."
+          description: "Probe {{ $labels.service }} silent — Vector container down hoặc host cron chết. `for:5m` chống warmup transient (baseline count cần 15-25m post-boot đạt threshold 3)."
 ```
 
 ### 6. Validate config trước reload
@@ -321,12 +346,15 @@ grep -qi 'error' /tmp/vmalert-dryrun.log && { echo "vmalert rule validation FAIL
 ### 7. Apply Vector + vmalert
 
 ```bash
-# Recreate vector (cần bind mount mới)
-docker compose up -d --force-recreate vector
+# Recreate vector (cần bind mount mới).
+# SUDO cần thiết: compose parse toàn stack — litellm service dùng env_file
+# `.env.llm` chmod 0400 root → không sudo = permission denied ngay cả khi
+# chỉ target service vector.
+sudo docker compose up -d --force-recreate vector
 # ~5-10s downtime UDP syslog (acknowledged, không phải SIGHUP thật sự).
 
 # vmalert reload rules
-docker compose --profile alerts restart vmalert
+sudo docker compose --profile alerts restart vmalert
 
 # Verify container up
 docker compose ps vector vmalert   # State=running
@@ -348,13 +376,13 @@ crontab -l | grep onelog-probe-host-disk
 ### 9. Verify probe emit (5-6 phút sau)
 
 ```bash
-# Vector probe (data disk)
-curl -s "http://127.0.0.1:9428/select/logsql/query" \
-  --data-urlencode 'query=service:logserver-disk-monitor AND source_stream:vector-exec-probe _time:10m | limit 5' | jq .
+# Vector probe (data disk) — implicit AND (space-separated), không dùng `AND` keyword.
+curl -sG "http://127.0.0.1:9428/select/logsql/query" \
+  --data-urlencode 'query=service:logserver-disk-monitor source_stream:vector-exec-probe _time:10m | limit 5' | jq .
 
 # Host cron probe (root)
-curl -s "http://127.0.0.1:9428/select/logsql/query" \
-  --data-urlencode 'query=service:host-disk-monitor AND source_stream:host-cron-probe _time:10m | limit 5' | jq .
+curl -sG "http://127.0.0.1:9428/select/logsql/query" \
+  --data-urlencode 'query=service:host-disk-monitor source_stream:host-cron-probe _time:10m | limit 5' | jq .
 
 # Kỳ vọng cả 2: ≥ 1 event với used_pct numeric.
 ```
@@ -363,35 +391,67 @@ curl -s "http://127.0.0.1:9428/select/logsql/query" \
 
 ```bash
 curl -s http://127.0.0.1:8880/api/v1/rules | \
-  jq '.data.groups[] | select(.name=="disk-alerts") | .rules[] | {alert, state}'
-# Kỳ vọng: 5 rules, state=inactive (baseline không vượt threshold)
+  jq '.data.groups[] | select(.name=="disk-alerts") | .rules[] | {name, state, health}'
+# Kỳ vọng: 5 rules, state=inactive, health=ok (baseline không vượt threshold).
+# Field `name` không phải `alert` (vmalert API convention).
 ```
 
 ### 11. Force-test alert (primary: lower threshold — RECOMMENDED)
 
+⚠️ **Baseline behavior**: Data disk `/opt/ragstack/data` mới deploy ≈ **0% used** →
+`DiskDataHighWarn` (filter `>1`) **KHÔNG match** (0 không > 1). Test qua
+`DiskRootHighWarn` (root partition thường ~29% baseline) safer:
+
 ```bash
-# Backup rules.yml current
+# Backup rules.yml current (dùng cp, KHÔNG mv — mất backup không restore được)
 cp infra/vmalert/rules.yml infra/vmalert/rules.yml.pretest
 
-# Tạm hạ threshold DiskDataHighWarn xuống > 1 để trigger từ baseline
-sed -i.bak 's/filter value > 75/filter value > 1/' infra/vmalert/rules.yml
-# LƯU Ý: chỉ 1 rule đầu. Verify diff nhỏ:
+# Tạm hạ threshold DiskRootHighWarn xuống >10 (root=29% baseline sẽ fire ngay).
+# Bump for:15m → for:0s để fire trong 5-10 phút thay vì chờ 20 phút.
+python3 <<'PY'
+import re
+p = 'infra/vmalert/rules.yml'
+s = open(p).read()
+s = re.sub(
+    r'(- alert: DiskRootHighWarn.*?)filter value:>75\n(\s+)for: 15m',
+    r'\1filter value:>10\n\2for: 0s',
+    s, flags=re.DOTALL
+)
+open(p, 'w').write(s)
+PY
+
+# Verify diff nhỏ (2 lines changed)
 diff infra/vmalert/rules.yml.pretest infra/vmalert/rules.yml
 
-docker compose --profile alerts restart vmalert
-# Chờ 20 phút (15m for + 5m interval)
-# Verify Telegram nhận DiskDataHighWarn
+sudo docker compose --profile alerts restart vmalert
+sleep 60
 
-# Restore
+# Verify state=firing
+curl -s http://127.0.0.1:8880/api/v1/rules | \
+  jq '.data.groups[] | select(.name=="disk-alerts") | .rules[] | select(.name=="DiskRootHighWarn") | {name, state, health}'
+
+# Verify alert route đúng receiver
+curl -s http://127.0.0.1:9093/api/v2/alerts | \
+  jq '[.[] | {alertname:.labels.alertname, component:.labels.component, receivers:[.receivers[].name]}]'
+# Expect: alertname=DiskRootHighWarn, component=root-partition, receivers=[telegram-llm-cost]
+
+# Verify Telegram Log-Server topic (thread từ TELEGRAM_ALERT_THREAD_ID_LLM_COST)
+# nhận 🔥 FIRING — DiskRootHighWarn
+
+# RESTORE (dùng cp giữ pretest cho lần sau)
 cp infra/vmalert/rules.yml.pretest infra/vmalert/rules.yml
-rm infra/vmalert/rules.yml.bak
-docker compose --profile alerts restart vmalert
-# Chờ 5 phút → alert resolve
+sudo docker compose --profile alerts restart vmalert
+# Chờ 2-5 phút → thread nhận ✅ RESOLVED (send_resolved:true)
 ```
+
+**LogsQL syntax constraint (test-runtime learned)**:
+- `filter value:>N` word syntax ONLY. Math `filter value > N` không parse.
+- `filter value:>-N` negative KHÔNG parse. Threshold dev/prod luôn dương.
+- `stats max()` cast string→numeric OK (VL stores JSON số dưới dạng string).
 
 **Fallback nếu muốn test physical disk fill** (chỉ khi lower-threshold không được):
 ```bash
-# CHỈ trên staging hoặc ngoài giờ, KHÔNG 200 GB — dùng 5 GB đủ để đo pipeline
+# CHỈ trên staging, KHÔNG 200 GB — dùng 5 GB đủ để đo pipeline
 sudo fallocate -l 5G /opt/ragstack/data/_alert_test.bin
 # Ngay lập tức set timer cleanup để tránh quên:
 sudo nohup sh -c 'sleep 1800 && rm -f /opt/ragstack/data/_alert_test.bin' &
@@ -439,11 +499,11 @@ rm -f infra/vector/probe-logserver-disk.sh infra/scripts/probe-host-disk-root.sh
 sudo crontab -l | grep -v 'onelog-probe-host-disk' | sudo crontab -
 sudo rm -f /usr/local/bin/onelog-probe-host-disk.sh /var/log/onelog-host-probe.log
 
-# Recreate services
+# Recreate services (sudo — .env.llm chmod 0400 root)
 cd ~/onelog/infra
-docker compose --profile agent --profile indexer --profile alerts \
+sudo docker compose --profile agent --profile indexer --profile alerts \
   --profile llm --profile chat --profile dashboard up -d --force-recreate vector
-docker compose --profile alerts restart vmalert
+sudo docker compose --profile alerts restart vmalert
 
 # Verify group disk-alerts đã removed
 curl -s http://127.0.0.1:8880/api/v1/rules | jq '.data.groups[] | .name' | grep -q disk-alerts && \

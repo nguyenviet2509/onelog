@@ -138,6 +138,7 @@ services:
     build: ../mcp-semantic
     container_name: ragstack-mcp-semantic
     restart: unless-stopped
+    profiles: [mcp]   # opt-in: docker compose --profile mcp up -d
     environment:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY}
@@ -354,6 +355,7 @@ services:
     image: ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0
     container_name: ragstack-mcp-vl
     restart: unless-stopped
+    profiles: [mcp]   # opt-in: docker compose --profile mcp up -d
     environment:
       VL_INSTANCE_ENTRYPOINT: http://victorialogs:9428
       # v1.9.0 reads MCP_SERVER_MODE (not MCP_TRANSPORT); default stdio crash-loops

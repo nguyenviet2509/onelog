@@ -93,9 +93,11 @@ groups:
     interval: 5m
     rules:
       # Per-host SSH brute force. Per-attacker version below catches cross-host.
-      # Matcher OR mock+real (plan 260713-1520 phase 06) — cover cả staging + prod.
+      # Prod-only matcher (rollback plan 260713-1520 phase 06 mock inclusion —
+      # mock baseline > threshold gây fire vĩnh viễn; mock alive verify qua
+      # WarnEventsStale rule ở semantic-pipeline group).
       - alert: SshBruteForce
-        expr: '(service:sshd OR service:ssh OR service:mock-sshd) "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
+        expr: '(service:sshd OR service:ssh) "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
         for: 1m
         labels:
           severity: warning
@@ -104,9 +106,10 @@ groups:
           summary: "SSH brute force suspected on {{ $labels.host }}"
           description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
 
-      # Matcher OR mock+real (plan 260713-1520 phase 06).
+      # Prod-only matcher (mock excluded — baseline ~60 err/5m > threshold 30
+      # gây fire vĩnh viễn trên srv-01/02).
       - alert: MysqlErrorBurst
-        expr: '(service:mysqld OR service:mysql OR service:mock-mysql) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
+        expr: '(service:mysqld OR service:mysql) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
         for: 1m
         labels:
           severity: warning
@@ -115,8 +118,10 @@ groups:
           summary: "MySQL error burst on {{ $labels.host }}"
           description: "{{ $value }} mysql err events in last 5m on {{ $labels.host }}"
 
+      # Prod matcher: auditd tag (Linux auditd → syslog). Mock-audit loại vì
+      # baseline > threshold.
       - alert: AuditLoginFailures
-        expr: 'service:mock-audit "res=failed" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
+        expr: '(service:auditd OR service:audit) "res=failed" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 1m
         labels:
           severity: warning
@@ -126,9 +131,9 @@ groups:
           description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
 
       # Renamed từ NginxServerErrors (plan 260713-1520 phase 06) vì prod dùng
-      # OpenLitespeed. Matcher OR mock+real cover cả nginx + OLS.
+      # OpenLitespeed. Prod-only matcher (mock-nginx loại — anti fire vĩnh viễn).
       - alert: WebServerErrorBurst
-        expr: '(service:litespeed OR service:openlitespeed OR service:nginx OR service:mock-nginx) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
+        expr: '(service:litespeed OR service:openlitespeed OR service:nginx) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
         for: 1m
         labels:
           severity: warning
@@ -139,9 +144,9 @@ groups:
 
       # 1 attacker IP fail SSH across cluster = coordinated brute force.
       # Pattern: "Failed password for <user> from <attacker_ip> port ..."
-      # facility:auth dropped — match by service (sshd/mock-sshd) instead.
+      # Prod-only matcher (mock-sshd loại — anti fire vĩnh viễn).
       - alert: SshFailMultiHostSameIp
-        expr: '(service:sshd OR service:mock-sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
+        expr: '(service:sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 1m
         labels:
           severity: critical

@@ -3,10 +3,11 @@ name: chat-conversations-kb-search
 title: Chat Conversations → Team KB (OpenWebUI integration)
 slug: chat-conversations-kb-search
 date: 2026-07-16
-status: pending
+status: phase-1-completed
 owner: trihd@inet.vn
 mode: --fast
 pivotedAt: 2026-07-16T15:54:00+07:00
+phase1CompletedAt: 2026-07-16T16:15:00+07:00
 pivotReason: |
   Original brainstorm assumed custom Next.js web was primary chat UI.
   Reality: team uses OpenWebUI exclusively (port 8090). Custom web never deployed.
@@ -47,7 +48,7 @@ Phase 1 gốc build sai data source — assume custom web chat, thực tế team
 
 | # | Phase | Status | Effort | File |
 |---|-------|--------|--------|------|
-| 1 | KB creation từ OpenWebUI (Function + summarize API + review page) | pending | ~1.5 tuần | [phase-01-kb-creation-from-openwebui.md](phase-01-kb-creation-from-openwebui.md) |
+| 1 | KB creation từ OpenWebUI (Function + summarize API + review page) | ✅ completed 2026-07-16 16:15 (build pass, review 8.5/10 APPROVED_WITH_MINOR — 5 major fixed) | ~1.5 tuần | [phase-01-kb-creation-from-openwebui.md](phase-01-kb-creation-from-openwebui.md) |
 | 2 | `/kb` browse tab (search, filter, edit, upvote/verify) | pending | ~1 tuần | [phase-02-kb-browse-tab.md](phase-02-kb-browse-tab.md) |
 
 ## Deferred

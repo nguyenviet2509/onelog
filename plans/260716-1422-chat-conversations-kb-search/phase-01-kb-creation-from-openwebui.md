@@ -243,7 +243,7 @@ KB_WEB_PUBLIC_URL=http://localhost:3000  # base URL cho review link trả về O
 | OpenWebUI messages structure không có tool_call structure | Prompt handle text-only chat; flag draft với `evidence_quality=low` nếu thiếu grounding data |
 | Rate limit bypass qua nhiều tài khoản | Add global daily cap qua env; alert nếu vượt |
 | Function load fail (Python syntax lỗi) | Test locally trước, dùng `openwebui functions test` CLI nếu có |
-| kb_drafts table grow không kiểm soát | Cron cleanup `DELETE FROM kb_drafts WHERE expires_at < NOW()` mỗi giờ (thêm pg cron hoặc `/api/kb/cleanup` gọi qua systemd timer) |
+| kb_drafts table grow không kiểm soát | Opportunistic GC runs fire-and-forget on every /api/kb/summarize. Full coverage: schedule external cron hourly → `curl -s -X POST http://web:3000/api/kb/internal/cleanup-drafts -H "x-internal-token: $INTERNAL_CRON_TOKEN"`. Token configured via INTERNAL_CRON_TOKEN env (see .env.example). |
 | Web service startup order — cần openwebui reachable | Không blocking; API check tại request-time; log rõ nếu OPENWEBUI_URL unreachable |
 
 ## Security Considerations

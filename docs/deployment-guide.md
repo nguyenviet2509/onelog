@@ -93,6 +93,8 @@ sudo systemctl status ragstack --no-pager
 
 Nếu deploy thêm LLM abstraction (LiteLLM + OpenWebUI), xem [deployment-llm-abstraction.md](deployment-llm-abstraction.md).
 
+Nếu deploy KB Phase 1 (OpenWebUI integration), xem [system-architecture.md](system-architecture.md) và section "KB Phase 1 env vars" dưới đây.
+
 ## Optional · Cost dashboard
 
 Dashboard xem cost/quota realtime cho 4 LLM provider (Anthropic, OpenAI, DeepSeek, Gemini). Deploy sau khi stack chính OK · Phase A tốn ~5 phút · Phase B thêm 15 phút khi có admin key.
@@ -136,6 +138,60 @@ CADDY_TLS=internal
 MCP_BEARER_TOKENS=
 MCP_ALLOW_ANON=false
 VMUI_BASE_URL=http://app.local
+```
+
+---
+
+## KB Phase 1 env vars
+
+OpenWebUI integration (optional, profile: `kb`).
+
+Deploy web service:
+```bash
+docker compose --profile kb up -d web
+```
+
+Add to `.env`:
+```env
+# OpenWebUI API — backfill + verify chat ownership
+OPENWEBUI_URL=http://openwebui:8000
+OPENWEBUI_ADMIN_API_KEY=<admin-key>
+
+# KB Draft management
+KB_DRAFT_TTL_MINUTES=30                   # draft expiry
+KB_RATE_LIMIT_PER_USER_DAY=20             # summarize + entry cap
+
+# KB Web service config
+KB_WEB_PUBLIC_URL=https://kb.example.com  # for review URL in Function
+INTERNAL_CRON_TOKEN=<paste-random-hex>    # cleanup auth (32+ bytes)
+
+# LLM summarize (picks first available)
+DEEPSEEK_API_KEY=sk-...
+OPENAI_API_KEY=sk-...
+KB_LLM_MOCK=true                          # false for real LLM calls
+
+# Embedding (Phase 1 uses defaults)
+EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBED_MOCK=false
+
+# Qdrant KB collection
+KB_QDRANT_COLLECTION=kb_entries
+KB_DEDUP_THRESHOLD=0.85                   # semantic similarity (0–1)
+KB_SNAP_THRESHOLD=0.90                    # taxonomy snapshot threshold (optional)
+```
+
+**Backfill:** If migrating existing OpenWebUI chats into KB, run:
+```bash
+docker exec web node scripts/kb-backfill.js
+```
+(One-time; backfills chat context, creates kb_entries without drafts.)
+
+**Cleanup cron:** Draft TTL is enforced at read-time; for periodic cleanup, schedule externally:
+```bash
+# systemd timer example
+(crontab -l 2>/dev/null; \
+ echo "*/5 * * * * curl -X POST http://localhost:3000/api/kb/internal/cleanup-drafts -H 'x-internal-token: $KB_INTERNAL_CRON_TOKEN'") \
+ | crontab -
 ```
 
 ---

@@ -121,6 +121,27 @@ LLM_MOCK=true                    # false khi có key thật
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 
+# Knowledge Base (KB) — Phase 1 shipped 2026-07-16
+# LLM summarize (Mark Resolved button → KB entry)
+DEEPSEEK_API_KEY=sk-deepseek-...
+KB_SUMMARIZE_MODEL=deepseek-chat          # hoặc claude-haiku-4-5 if abstraction ship
+KB_LLM_MOCK=false                         # true để skip LLM calls, return mock draft (dev)
+
+# Embeddings (KB + logs semantic search)
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+EMBED_MODEL=text-embedding-3-small        # 1536 dims, matches Qdrant config
+
+# Qdrant vector store
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=<paste>
+KB_QDRANT_COLLECTION=kb_resolved          # new KB collection (sep from log_templates)
+
+# KB thresholds (tunable via env, do not hardcode)
+KB_DEDUP_THRESHOLD=0.9                    # semantic dedup at insert: cosine >0.9 → merge prompt
+KB_SNAP_THRESHOLD=0.85                    # taxonomy snap: fuzzy+semantic ≥0.85 → snap to existing
+KB_BACKFILL_RPM=5                         # optional: conversations per minute during backfill
+
 # Telegram (optional, alerts phase)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALERT_CHAT_ID=

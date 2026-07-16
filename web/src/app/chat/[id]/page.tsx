@@ -5,6 +5,7 @@ import { ChatView, type Message } from "@/components/chat/chat-view";
 import { ensureBootstrap } from "@/db/bootstrap";
 import { getDb, schema } from "@/db/client";
 import { getCurrentUser } from "@/lib/auth-stub";
+import { MarkResolvedButton } from "./mark-resolved-button";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function ChatByIdPage({ params }: { params: { id: string } 
   const db = getDb();
 
   const [conv] = await db
-    .select({ id: schema.conversations.id })
+    .select({ id: schema.conversations.id, title: schema.conversations.title })
     .from(schema.conversations)
     .where(
       and(
@@ -42,6 +43,17 @@ export default async function ChatByIdPage({ params }: { params: { id: string } 
   }));
 
   return (
-    <ChatView initialConversationId={params.id} initialMessages={initialMessages} />
+    <div className="flex flex-col h-full">
+      {/* Conversation header with Mark Resolved button */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-2 shrink-0">
+        <span className="truncate text-sm font-medium text-fg max-w-[70%]" title={conv.title}>
+          {conv.title}
+        </span>
+        <MarkResolvedButton conversationId={params.id} />
+      </div>
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <ChatView initialConversationId={params.id} initialMessages={initialMessages} />
+      </div>
+    </div>
   );
 }

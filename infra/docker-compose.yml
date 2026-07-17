@@ -39,26 +39,10 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
 
-  # postgres: DECOMMISSIONED 2026-07-13. Legacy Next.js web + old agent used
-  # this for chat conversations + audit_log. Both services decom 2026-06-24;
-  # LiteLLM DB backend disabled (Prisma search_path issue). Runtime verified
-  # zero connections + last write 2026-06-23 → data dumped to backups/.
-  # Resurrect: uncomment + restore dump. Data dir moved to data/postgres.legacy/.
-  # postgres:
-  #   image: postgres:16-alpine
-  #   container_name: ragstack-postgres
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_DB: rag
-  #     POSTGRES_USER: ${POSTGRES_USER}
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  #   ports:
-  #     - "127.0.0.1:5432:5432"
-  #   volumes:
-  #     - ./data/postgres:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-  #     interval: 30s
+  # postgres: DECOMMISSIONED 2026-07-13 (previous chat/audit) + 2026-07-17 (KB
+  # Phase 1 pivot to OpenWebUI native Knowledge — /web + Postgres removed).
+  # No live service depends on Postgres. If resurrecting for a future feature,
+  # uncomment and pick a fresh profile. Legacy dump at ./backup/postgres-legacy-*.sql.
 
   # redis: DECOMMISSIONED 2026-07-13. Was intended for agent alert dedup +
   # multi-replica session state, but agent uses in-memory TTL dedup
@@ -76,7 +60,7 @@ services:
   #     - ./data/redis:/data
 
   vector:
-    image: timberio/vector:0.40.0-alpine
+    image: timberio/vector:${VECTOR_IMAGE_TAG:-0.40.0-alpine}
     container_name: ragstack-vector
     restart: unless-stopped
     ports:
@@ -111,7 +95,7 @@ services:
   # NATS JetStream — Vector tap stream (WARN+) → indexer worker.
   # Single-node, file-backed. Subject: logs.warn (filter applied at Vector sink).
   nats:
-    image: nats:2.10-alpine
+    image: nats:${NATS_IMAGE_TAG:-2.10-alpine}
     container_name: ragstack-nats
     restart: unless-stopped
     command:
@@ -161,6 +145,32 @@ services:
       - "127.0.0.1:9002:9000"
     volumes:
       - ./data/audit:/var/log/onelog-audit
+
+  # VictoriaMetrics single-node — scrapes /metrics from OneLog components so
+  # ops can see ingest rate, indexer batch lag, Qdrant collection size, etc.
+  # Opt-in via profile [monitoring]. Grafana provisioning wires it as a
+  # datasource when both profiles are up. Retention 30d.
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:${VM_IMAGE_TAG:-latest}
+    container_name: ragstack-vm
+    restart: unless-stopped
+    profiles: [monitoring]
+    command:
+      - "-storageDataPath=/vm-data"
+      - "-retentionPeriod=${VM_RETENTION:-30d}"
+      - "-promscrape.config=/etc/vm/scrape.yml"
+      - "-httpListenAddr=:8428"
+      - "-memory.allowedBytes=256MB"
+    ports:
+      - "127.0.0.1:8428:8428"
+    volumes:
+      - ./victoriametrics/scrape.yml:/etc/vm/scrape.yml:ro
+      - ./data/victoriametrics:/vm-data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # vmalert — evaluates LogsQL stats queries against VictoriaLogs, fires
   # to Alertmanager. Native VL datasource since vmalert v1.96+.
@@ -236,65 +246,8 @@ services:
       # Skip /etc/localtime mount (host may be UTC) — rely on TZ env instead.
       - /usr/share/zoneinfo:/usr/share/zoneinfo:ro
 
-  # ────────────────────────────────────────────────────────────────────────
-  # DECOMMISSIONED 2026-06-24 — MCP-only rollout (Phase 02)
-  # ────────────────────────────────────────────────────────────────────────
-  # The Next.js web UI + FastAPI agent (with server-side Anthropic API) were
-  # replaced by Claude Desktop + MCP (mcp-vl + mcp-semantic). 5 ops use their
-  # Claude Team subscription, eliminating the duplicate LLM cost.
-  #
-  # CODE INTACT: folders `web/` and `agent/` stay on master for cheap resurrect.
-  # Branch `legacy-web` snapshots the last bootable state.
-  #
-  # RESURRECT (see plans/260623-2041-mcp-only-rollout/phase-03-review-checkpoint.md):
-  #   1. Uncomment the two blocks below (web + agent)
-  #   2. Set ANTHROPIC_API_KEY (or OPENAI_API_KEY) in .env
-  #   3. `docker compose --profile web --profile agent up -d`
-  #   4. Smoke: curl http://app.local/chat → 200
-  # Quick drill: `infra/scripts/resurrect-drill.sh`
-  # ────────────────────────────────────────────────────────────────────────
-  #
-  # KB Phase 1: web service enabled — provides /api/kb/* endpoints consumed by
-  # OpenWebUI Function kb_mark_resolved. Deploy with:
-  #   docker compose --profile kb up -d web
-  # or alongside OpenWebUI:
-  #   docker compose --profile chat --profile kb up -d
-  web:
-    build: ../web
-    container_name: ragstack-web
-    restart: unless-stopped
-    profiles: [web, kb]
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/rag
-      NODE_ENV: production
-      # OpenWebUI integration — KB Phase 1
-      OPENWEBUI_URL: http://openwebui:8080
-      OPENWEBUI_ADMIN_API_KEY: ${OPENWEBUI_ADMIN_API_KEY:-}
-      # LLM summarizer (DeepSeek OpenAI-compat)
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      KB_SUMMARIZE_MODEL: ${KB_SUMMARIZE_MODEL:-deepseek-chat}
-      KB_LLM_MOCK: ${KB_LLM_MOCK:-false}
-      # Embeddings (OpenAI-compat)
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      EMBED_MODEL: ${EMBED_MODEL:-text-embedding-3-small}
-      EMBED_MOCK: ${EMBED_MOCK:-false}
-      # Qdrant vector store
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      KB_QDRANT_COLLECTION: ${KB_QDRANT_COLLECTION:-kb_resolved}
-      # KB tuning
-      KB_DEDUP_THRESHOLD: ${KB_DEDUP_THRESHOLD:-0.9}
-      KB_SNAP_THRESHOLD: ${KB_SNAP_THRESHOLD:-0.85}
-      KB_DRAFT_TTL_MINUTES: ${KB_DRAFT_TTL_MINUTES:-30}
-      KB_RATE_LIMIT_PER_USER_DAY: ${KB_RATE_LIMIT_PER_USER_DAY:-20}
-      # Public URL returned in review links (must be reachable by the member's browser)
-      KB_WEB_PUBLIC_URL: ${KB_WEB_PUBLIC_URL:-http://localhost:3000}
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      - postgres
-      - qdrant
+  # web: DECOMMISSIONED 2026-07-17 — KB pivoted to OpenWebUI native Knowledge.
+  # Folder `web/` removed from repo. Legacy snapshot on branch `legacy-web`.
   #
   # Agent service — re-enabled 2026-07-02 with LiteLLM adapter (Phase 1 plan
   # 260701-1544). Talks to LLM providers directly via LiteLLM SDK, not through
@@ -328,7 +281,6 @@ services:
       QDRANT_API_KEY: ${QDRANT_API_KEY}
       QDRANT_COLLECTION: log_templates
       VL_URL: http://victorialogs:9428
-      WEB_URL: http://web:3000
       # Alerting
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
@@ -380,7 +332,7 @@ services:
   # Auth gated by Caddy `forward_auth` to mcp-semantic:/auth/verify (single token
   # table). MCP_PASSTHROUGH_HEADERS keeps the Authorization header for traceability.
   mcp-vl:
-    image: ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0
+    image: ghcr.io/victoriametrics/mcp-victorialogs:${MCPVL_IMAGE_TAG:-v1.9.0}
     container_name: ragstack-mcp-vl
     restart: unless-stopped
     profiles: [mcp]   # opt-in: docker compose --profile mcp up -d
@@ -405,7 +357,7 @@ services:
   # Only reads infra/litellm/.env.llm (provider keys) — infra/.env exposes just
   # the master key + DB URL. Blast radius separation per RT-F1.
   litellm-proxy:
-    image: ghcr.io/berriai/litellm:main-stable
+    image: ghcr.io/berriai/litellm:${LITELLM_IMAGE_TAG:-main-stable}
     container_name: ragstack-litellm
     restart: unless-stopped
     # Listed in both profiles so `--profile chat` alone brings up its dep
@@ -448,7 +400,7 @@ services:
   # Tools. Config baked with token at container start via sed (mcpo doesn't
   # expand env vars in config.json).
   mcpo:
-    image: ghcr.io/open-webui/mcpo:main
+    image: ghcr.io/open-webui/mcpo:${MCPO_IMAGE_TAG:-main}
     container_name: ragstack-mcpo
     restart: unless-stopped
     profiles: [chat]
@@ -470,6 +422,23 @@ services:
       - mcp-vl
       - mcp-semantic
       - caddy
+    # mcpo discovers tools ONCE at startup (no retry). If upstream flaps at boot,
+    # openapi paths stay empty forever → OpenWebUI sees 0 tools → LLM hallucinates
+    # tool names. Healthcheck fails when any server has 0 paths, restart:unless-
+    # stopped then kicks in → mcpo re-discovers on fresh process. start_period
+    # covers cold start of mcp-vl + caddy.
+    # Docker healthcheck only marks unhealthy — doesn't restart. `|| kill 1` exits
+    # PID 1 (mcpo) so `restart: unless-stopped` kicks in and mcpo re-discovers
+    # tools on fresh process.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,json,sys; [sys.exit(1) for s in ('onelog-vl','onelog-semantic') if not json.loads(urllib.request.urlopen(f'http://localhost:8080/{s}/openapi.json',timeout=3).read()).get('paths')]" || kill 1
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
     networks:
       - default
 
@@ -478,7 +447,7 @@ services:
   # backend, mounts MCP config for tool access to mcp-vl + mcp-semantic.
   # Local user auth (V1) — signup disabled after bootstrap (RT-F2).
   openwebui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:${OPENWEBUI_IMAGE_TAG:-main}
     container_name: ragstack-openwebui
     restart: unless-stopped
     profiles: [chat]   # opt-in: docker compose --profile chat up -d
@@ -534,8 +503,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # step-ca — internal CA for issuing rsyslog mTLS client certs + Vector
+  # server cert. Opt-in via profile [tls]. Bootstrap flow docs in
+  # docs/deployment-mtls.md. Data persisted at ./data/step-ca (bootstrap once,
+  # then treat as authoritative — do NOT re-init or you invalidate all issued certs).
+  step-ca:
+    image: smallstep/step-ca:${STEPCA_IMAGE_TAG:-0.28.1}
+    container_name: ragstack-step-ca
+    restart: unless-stopped
+    profiles: [tls]
+    environment:
+      # Bootstrap parameters — read once on empty data volume. Change and
+      # rebuild only if starting from a clean CA (destructive).
+      DOCKER_STEPCA_INIT_NAME: "${STEPCA_NAME:-OneLog Internal CA}"
+      DOCKER_STEPCA_INIT_DNS_NAMES: "${STEPCA_DNS:-step-ca,localhost}"
+      DOCKER_STEPCA_INIT_PROVISIONER_NAME: "${STEPCA_PROVISIONER:-onelog-ops}"
+      DOCKER_STEPCA_INIT_PASSWORD_FILE: /home/step/secrets/password
+    volumes:
+      - ./data/step-ca:/home/step
+    ports:
+      - "127.0.0.1:9000:9000"
+
   caddy:
-    image: caddy:2-alpine
+    image: caddy:${CADDY_IMAGE_TAG:-2-alpine}
     container_name: ragstack-caddy
     restart: unless-stopped
     ports:
@@ -581,10 +571,10 @@ services:
   # Bring up: docker compose --profile dashboard up -d grafana
   # Access: http://admin.webui.local/ (strict CIDR + Bearer + Grafana login)
   grafana:
-    image: grafana/grafana-oss:11.4.0
+    image: grafana/grafana-oss:${GRAFANA_IMAGE_TAG:-11.4.0}
     container_name: ragstack-grafana
     restart: unless-stopped
-    profiles: [dashboard]
+    profiles: [dashboard, monitoring]
     ports:
       - "127.0.0.1:3000:3000"
     # Public DNS — Host dùng systemd-resolved (127.0.0.53) mà container không

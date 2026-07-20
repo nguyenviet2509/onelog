@@ -63,6 +63,11 @@ litellm_settings:
   # `success_callback:` reserved for BUILT-IN tags only (prometheus, s3, datadog,
   # langfuse…) — passing a module.instance string causes proxy startup crash.
   callbacks: custom_callbacks.proxy_handler_instance
+  # Built-in prometheus tag → exposes /metrics endpoint for VictoriaMetrics
+  # scrape (component up-status + per-model QPS/latency). Coexists with the
+  # custom callback above (different slot). Cost analytics still sourced from
+  # JSON stdout → Vector → VL — this is only for pipeline-health panels.
+  success_callback: ["prometheus"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

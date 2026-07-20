@@ -165,6 +165,9 @@ services:
       - "-memory.allowedBytes=256MB"
     ports:
       - "127.0.0.1:8428:8428"
+    environment:
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     volumes:
       - ./victoriametrics/scrape.yml:/etc/vm/scrape.yml:ro
       - ./data/victoriametrics:/vm-data

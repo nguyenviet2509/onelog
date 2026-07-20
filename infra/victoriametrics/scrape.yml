@@ -26,9 +26,13 @@ scrape_configs:
         labels:
           component: victorialogs
 
-  # Qdrant — /metrics on :6333 (requires QDRANT__SERVICE__ENABLE_TLS=false + api-key).
+  # Qdrant — /metrics on :6333. Requires Bearer auth when QDRANT__SERVICE__API_KEY set.
+  # Env expansion enabled via -promscrape.configEnvVarsExpansion on VM cmdline.
   - job_name: onelog-qdrant
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials: "%{QDRANT_API_KEY}"
     static_configs:
       - targets: ["qdrant:6333"]
         labels:
@@ -43,7 +47,11 @@ scrape_configs:
 
   # LiteLLM proxy — /metrics endpoint on :4000/metrics (Prometheus format
   # requires config.yaml litellm_settings.callbacks: [prometheus]).
+  # /metrics requires Bearer auth unless litellm_settings.require_auth_for_metrics_endpoint: false.
   - job_name: onelog-litellm
+    authorization:
+      type: Bearer
+      credentials: "%{LITELLM_MASTER_KEY}"
     static_configs:
       - targets: ["litellm-proxy:4000"]
         labels:

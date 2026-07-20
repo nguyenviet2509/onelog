@@ -17,8 +17,12 @@ global:
 route:
   receiver: telegram-trend          # default: burst/trend rules → send RESOLVED
                                     # → Client-Server topic (thread từ TELEGRAM_ALERT_THREAD_ID)
-  group_by: ["alertname", "host"]
-  group_wait: 10s
+  # Group across hosts: cùng alertname + severity + category → 1 message
+  # (dù có 200 host cùng fire). Trước đây group_by chứa `host` khiến mỗi host
+  # spawn 1 Telegram message riêng → spam khi fleet-wide burst xảy ra.
+  # Template render compact (chỉ list host) khi len(Alerts) > 10.
+  group_by: ["alertname", "severity", "category"]
+  group_wait: 30s                   # 30s window để gom burst cross-host
   group_interval: 5m
   repeat_interval: 2h               # default = severity=warning cadence (giảm noise)
   routes:
@@ -67,18 +71,24 @@ receivers:
         send_resolved: true
         message: &telegram_message_template |
           {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — <b>{{ .CommonLabels.alertname }}</b>{{ if gt (len .Alerts) 1 }} (×{{ len .Alerts }}){{ end }}
-          {{ range .Alerts }}
+          {{ with .CommonLabels.severity }}<b>severity:</b> <code>{{ . }}</code>  {{ end }}{{ with .CommonLabels.category }}<b>category:</b> <code>{{ . }}</code>{{ end }}
+          {{ if gt (len .Alerts) 10 }}
           ━━━━━━━━━━━━━━━━━━━━
-          {{ with .Labels.severity }}<b>severity:</b>    <code>{{ . }}</code>
-          {{ end }}{{ with .Labels.category }}<b>category:</b>    <code>{{ . }}</code>
-          {{ end }}{{ with .Labels.host }}<b>host:</b>        <code>{{ . }}</code>
+          <b>{{ len .Alerts }} hosts affected</b> (compact view, first 10):
+          {{ range $i, $a := .Alerts }}{{ if lt $i 10 }}• <code>{{ $a.Labels.host }}</code>{{ with $a.Labels.host_ip }} (<code>{{ . }}</code>){{ end }}{{ if not $a.StartsAt.IsZero }} — {{ $a.StartsAt.Local.Format "15:04:05" }}{{ end }}
+          {{ end }}{{ end }}{{ if gt (len .Alerts) 10 }}… và các host còn lại (xem VMUI để đầy đủ)
+          {{ end }}{{ with (index .Alerts 0).Labels.sample_msg }}<b>sample_msg:</b> <code>{{ . }}</code>
+          {{ end }}{{ with (index .Alerts 0).Annotations.summary }}<b>summary:</b> {{ . }}
+          {{ end }}{{ else }}{{ range .Alerts }}
+          ━━━━━━━━━━━━━━━━━━━━
+          {{ with .Labels.host }}<b>host:</b>        <code>{{ . }}</code>
           {{ end }}{{ with .Labels.host_ip }}<b>host_ip:</b>     <code>{{ . }}</code>
           {{ end }}{{ with .Labels.attacker_ip }}<b>attacker_ip:</b> <code>{{ . }}</code>
           {{ end }}{{ if not .StartsAt.IsZero }}<b>started:</b>     <code>{{ .StartsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
           {{ end }}{{ if and (eq $.Status "resolved") (not .EndsAt.IsZero) }}<b>ended:</b>       <code>{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
           {{ end }}{{ with .Labels.sample_msg }}<b>msg:</b>         <code>{{ . }}</code>
           {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
-          {{ end }}{{ end }}
+          {{ end }}{{ end }}{{ end }}
 
   - name: telegram-event
     telegram_configs:

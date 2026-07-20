@@ -1,0 +1,101 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "title": "OneLog Pipeline Health",
+  "uid": "onelog-pipeline-health",
+  "schemaVersion": 39,
+  "tags": ["onelog", "self-monitoring"],
+  "time": {"from": "now-3h", "to": "now"},
+  "refresh": "30s",
+  "templating": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ingest rate (VL, bytes/s)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "expr": "rate(vl_bytes_ingested_total[1m])",
+          "legendFormat": "{{component}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Indexer NATS lag (undelivered msgs)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "expr": "onelog_indexer_nats_pending or vector(0)",
+          "legendFormat": "pending",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(onelog_indexer_batches_total[1m])",
+          "legendFormat": "batches/s",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Qdrant collection points (log_templates)",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 8, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "expr": "qdrant_collections_vector_total{collection=\"log_templates\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "VL storage (GB)",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 8, "w": 6, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {
+          "expr": "vl_data_size_bytes / 1024 / 1024 / 1024",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "GB", "decimals": 2}}
+    },
+    {
+      "id": 5,
+      "title": "Component up",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "up{job=~\"onelog-.*\"}", "legendFormat": "{{job}}", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Recent alerts (vmalert)",
+      "type": "table",
+      "gridPos": {"x": 0, "y": 14, "w": 24, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "ALERTS{alertstate=\"firing\"}", "instant": true, "refId": "A"}
+      ]
+    }
+  ]
+}

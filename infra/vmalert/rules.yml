@@ -527,6 +527,31 @@ groups:
           description: "VL container báo err. Check disk / ingest lag: docker logs ragstack-victorialogs | tail -100"
 
   # ─────────────────────────────────────────────────────────────────────────
+  # INGEST FRESHNESS — catches TOTAL pipeline breakage: WarnEventsStale only
+  # fires when WARN+ = 0. If the whole ingest chain (rsyslog→Vector→VL) drops,
+  # this rule fires within 5m regardless of severity mix. Threshold `<10` is
+  # deliberately low — a healthy 50-100-server fleet emits hundreds of events/5m
+  # even in quiet hours. Tune after 1-week baseline.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: ingest-freshness
+    type: vlogs
+    interval: 1m
+    rules:
+      - alert: AnyEventsStale
+        expr: |
+          _time:5m
+            | stats count() as value
+            | filter value:<10
+        for: 2m
+        labels:
+          severity: critical
+          category: monitoring
+          component: ingest-pipeline
+        annotations:
+          summary: "Toàn cluster < 10 events / 5m — ingest pipeline có thể dead"
+          description: "Cả VictoriaLogs nhận < 10 log-event trong 5m. Kiểm tra Vector container, syslog port 6514 (ss -tnp | grep 6514), rsyslog client ESTAB. Bật `docker logs ragstack-vector | tail -50`."
+
+  # ─────────────────────────────────────────────────────────────────────────
   # SEMANTIC PIPELINE INPUT — mock-logs.service trên srv-01/srv-02 phải bơm
   # WARN+ liên tục để (a) sanity-test Vector→NATS→indexer→Qdrant chain,
   # (b) validate vmalert rule (SSH brute, mysql err, audit fail) còn hoạt động.

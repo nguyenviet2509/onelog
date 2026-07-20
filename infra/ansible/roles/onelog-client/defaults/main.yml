@@ -1,0 +1,9 @@
+# Role defaults — override in inventory group_vars or via -e.
+
+# TLS OFF by default. Migration model: enable per-group, verify, then flip fleet.
+enable_tls: false
+
+# When enable_tls=true, point this at the directory ON THE CONTROL NODE holding
+# per-host {inventory_hostname}.crt/.key + ca.crt files.
+# Recommend: `infra/ansible/tls-certs/` (gitignored), populated by step-ca script.
+tls_cert_src_dir: "./tls-certs"

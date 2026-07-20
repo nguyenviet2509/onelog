@@ -485,7 +485,6 @@
 ├── <span class="d">agent/</span>          <span class="cm"># FastAPI · build từ Dockerfile</span>
 ├── <span class="d">indexer/</span>        <span class="cm"># NATS worker · Drain3 + embed</span>
 ├── <span class="d">mcp-semantic/</span>   <span class="cm"># FastMCP + /auth/verify</span>
-├── <span class="d">web/</span>            <span class="cm"># Next.js (decommissioned)</span>
 ├── <span class="d">docs/</span>           <span class="cm"># deployment · ops guides</span>
 └── <span class="d">backup/</span>         <span class="cm"># snapshot tar.gz (crontab daily)</span>
 
@@ -790,7 +789,6 @@ bash scripts/healthcheck.sh
 <span class="c"># 3. Endpoint chính</span>
 curl -fsS http://localhost:9428/health         <span class="c"># VL</span>
 curl -fsS http://localhost:8080/health         <span class="c"># agent</span>
-docker exec ragstack-postgres pg_isready -U rag
 
 <span class="c"># 4. Systemd</span>
 systemctl status ragstack --no-pager</div>
@@ -935,11 +933,7 @@ docker ps -a --filter name=ragstack- --format \
         <!-- 4. Exec vào service query -->
         <div class="card2 p-3">
           <div class="pill vio mb-2">④ Exec vào service · query nhanh</div>
-          <div class="cmd"><span class="c"># Postgres psql</span>
-dc exec postgres psql -U rag -d rag
-dc exec postgres pg_isready -U rag
-
-<span class="c"># Redis ping (đúng password từ .env)</span>
+          <div class="cmd"><span class="c"># Redis ping (đúng password từ .env)</span>
 dc exec redis redis-cli -a "$REDIS_PASSWORD" ping
 
 <span class="c"># VictoriaLogs — query LogsQL</span>

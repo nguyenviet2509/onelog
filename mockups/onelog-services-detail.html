@@ -91,7 +91,7 @@
     </div>
     <div class="flex items-center gap-2 text-xs">
       <span class="chip on">infra/docker-compose.yml</span>
-      <span class="chip"><span class="dot" style="background:var(--ok)"></span> 2026-06-24</span>
+      <span class="chip"><span class="dot" style="background:var(--ok)"></span> 2026-07-17</span>
     </div>
   </header>
 
@@ -100,8 +100,7 @@
     <div class="h-title px-2 mb-1">Services</div>
     <a href="#victorialogs"><span class="ico">①</span><span class="lbl">victorialogs</span></a>
     <a href="#qdrant"><span class="ico">②</span><span class="lbl">qdrant</span></a>
-    <a href="#postgres"><span class="ico">③</span><span class="lbl">postgres</span></a>
-    <a href="#rsyslog"><span class="ico">③·⁵</span><span class="lbl">rsyslog <span class="badge ml-1">client</span></span></a>
+    <a href="#rsyslog"><span class="ico">③</span><span class="lbl">rsyslog <span class="badge ml-1">client</span></span></a>
     <a href="#vector"><span class="ico">④</span><span class="lbl">vector</span></a>
     <a href="#nats"><span class="ico">⑤</span><span class="lbl">nats (jetstream)</span></a>
     <a href="#indexer"><span class="ico">⑥</span><span class="lbl">indexer</span></a>
@@ -110,12 +109,10 @@
     <a href="#caddy"><span class="ico">⑨</span><span class="lbl">caddy</span></a>
     <a href="#vmalert"><span class="ico">⑩</span><span class="lbl">vmalert</span></a>
     <a href="#alertmanager"><span class="ico">⑪</span><span class="lbl">alertmanager</span></a>
-    <a href="#redis"><span class="ico">⑫</span><span class="lbl">redis <span class="badge ml-1">off</span></span></a>
-    <a href="#agent"><span class="ico">⑬</span><span class="lbl">agent <span class="badge ml-1">new</span></span></a>
-    <a href="#litellm-proxy"><span class="ico">⑭</span><span class="lbl">litellm-proxy <span class="badge ml-1">new</span></span></a>
-    <a href="#openwebui"><span class="ico">⑮</span><span class="lbl">openwebui <span class="badge ml-1">new</span></span></a>
-    <a href="#grafana"><span class="ico">⑯</span><span class="lbl">grafana <span class="badge ml-1">new</span></span></a>
-    <a href="#decom"><span class="ico">—</span><span class="lbl">decommissioned</span></a>
+    <a href="#agent"><span class="ico">⑫</span><span class="lbl">agent</span></a>
+    <a href="#litellm-proxy"><span class="ico">⑬</span><span class="lbl">litellm-proxy</span></a>
+    <a href="#openwebui"><span class="ico">⑭</span><span class="lbl">openwebui</span></a>
+    <a href="#grafana"><span class="ico">⑮</span><span class="lbl">grafana</span></a>
   </nav>
 
   <!-- INTRO -->
@@ -123,7 +120,7 @@
     <div class="card p-5">
       <div class="h-title">Tổng quan stack</div>
       <p class="mt-2 text-sm leading-relaxed mut">
-        Toàn bộ OneLog là <b class="acc">16 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 6 nhóm:
+        Toàn bộ OneLog là <b class="acc">13 containers</b> trên 1 docker-compose (network <code>ragstack</code>) + <b class="acc">1 client-side</b> drop-in (<i>rsyslog forwarders</i> trên mỗi VM). Chia 6 nhóm:
         <span class="pill amber">ingestion</span> nhận log,
         <span class="pill lime">storage</span> lưu trữ,
         <span class="pill cyan">query / mcp</span> phục vụ chat clients,
@@ -133,7 +130,7 @@
         Hầu hết bind <code>127.0.0.1</code> — chỉ <span class="pill amber">vector :514/6514/6515</span> và <span class="pill amber">caddy :80/:443</span> mở ra LAN.
       </p>
       <div class="grid grid-cols-6 gap-2 mt-4 text-[11px]">
-        <div class="card2 p-3"><div class="h-title">always-on</div><div class="mt-1 acc">8 services</div><div class="mut text-[10px] mt-0.5">vl · qdrant · pg · vector · nats · mcp-semantic · mcp-vl · caddy</div></div>
+        <div class="card2 p-3"><div class="h-title">always-on</div><div class="mt-1 acc">7 services</div><div class="mut text-[10px] mt-0.5">vl · qdrant · vector · nats · mcp-semantic · mcp-vl · caddy</div></div>
         <div class="card2 p-3"><div class="h-title">profile=indexer</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">indexer (Drain3 + embed)</div></div>
         <div class="card2 p-3"><div class="h-title">profile=alerts</div><div class="mt-1 acc">2</div><div class="mut text-[10px] mt-0.5">vmalert + alertmanager</div></div>
         <div class="card2 p-3"><div class="h-title">profile=agent</div><div class="mt-1 acc">1</div><div class="mut text-[10px] mt-0.5">agent :8080 (LiteLLM SDK)</div></div>
@@ -276,71 +273,11 @@ payload:
     </div>
   </section>
 
-  <!-- ③ POSTGRES -->
-  <section id="postgres" class="anchor mt-4 card p-5">
-    <div class="svc-header">
-      <div>
-        <div class="text-lg font-semibold"><span class="num">3</span>postgres <span class="pill lime ml-1">storage</span></div>
-        <div class="mut text-xs mt-1">Postgres 16-alpine · audit log + metadata; KHÔNG lưu raw log</div>
-      </div>
-      <div class="flex gap-1.5">
-        <span class="chip on">image: <code>postgres:16-alpine</code></span>
-        <span class="chip">db: <code>rag</code></span>
-      </div>
-    </div>
-    <hr class="sep"/>
-    <div class="grid-2">
-      <div>
-        <div class="h-title">Ports</div>
-        <table class="k mt-1"><tr><td><code>127.0.0.1:5432</code></td><td>psql client — chỉ nội bộ</td></tr></table>
-        <div class="h-title mt-3">Volumes</div>
-        <table class="k mt-1"><tr><td><code>./data/postgres</code></td><td>→ <code>/var/lib/postgresql/data</code></td></tr></table>
-        <div class="h-title mt-3">Healthcheck</div>
-        <pre class="card2 p-2 mt-1">pg_isready -U ${POSTGRES_USER}</pre>
-      </div>
-      <div>
-        <div class="h-title">Environment</div>
-<pre class="card2 p-2 mt-1">POSTGRES_DB=rag
-POSTGRES_USER=${POSTGRES_USER}
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}</pre>
-        <div class="h-title mt-3">Vai trò hiện tại</div>
-        <ul class="text-sm mt-1 space-y-1.5 mut">
-          <li>• Audit MCP tool call (5 ops · ai gọi gì khi nào)</li>
-          <li>• Token table (sau khi rollout phase 03 — hiện env-based)</li>
-          <li>• <i>Note:</i> sau khi decom rag-agent, PG dùng nhẹ — có thể remove ở phase 04 nếu audit chuyển file rotation</li>
-        </ul>
-      </div>
-    </div>
-    <div class="role">
-      <h4>Tác dụng chi tiết</h4>
-      <ul>
-        <li><b>Giải quyết:</b> 5 ops chia sẻ chung tool — cần biết <b>ai làm gì</b> để truy vết khi có abuse hoặc rate-limit. <b>Compliance log</b>: lệnh nội bộ "log mọi tool call" mà file rotation thì khó join theo user.</li>
-        <li><b>Vị trí:</b> chỉ <span class="pill vio">mcp-semantic</span> insert (audit_call) hiện tại; sau phase 03 sẽ host thêm <code>mcp_token(user, token, scopes, created_at)</code> để Caddy <code>forward_auth</code> verify.</li>
-        <li><b>Nếu thiếu:</b> mất audit join-able. File log vẫn có nhưng không grep được theo user/tháng/tool gọn.</li>
-      </ul>
-      <div class="grid4">
-        <div class="b"><div class="t">Vì sao Postgres</div><div class="x">SQL ANSI quen tay, ops grep + <code>psql -c</code> nhanh hơn ELK. Alpine 16 nhỏ &lt;100MB image.</div></div>
-        <div class="b"><div class="t">JSONB filters</div><div class="x">Cột <code>filters JSONB</code> giữ nguyên payload tool call → query <code>filters-&gt;&gt;'service'='mysql'</code>.</div></div>
-        <div class="b"><div class="t">Retention</div><div class="x">Chưa có policy — sau 90d ops sẽ partition theo tháng + drop tự động.</div></div>
-        <div class="b"><div class="t">Bind 127.0.0.1</div><div class="x">Không expose LAN. Container khác trong network <code>ragstack</code> mới connect được.</div></div>
-      </div>
-    </div>
-    <div class="files">
-      <h4>Cấu hình ở đâu</h4>
-      <table>
-        <tr><td><code>infra/docker-compose.yml</code> <span class="mut">(svc <code>postgres</code>)</span></td><td>Image <code>postgres:16-alpine</code> · env <code>POSTGRES_DB=rag</code> · volume <code>./data/postgres</code> · healthcheck <code>pg_isready</code></td></tr>
-        <tr><td><code>mcp-semantic/src/mcp_semantic/audit.py</code></td><td>Module <code>get_audit()</code> — schema <code>audit_call</code>, insert sau mỗi tool call</td></tr>
-        <tr><td><code>.env</code></td><td><code>POSTGRES_USER</code> · <code>POSTGRES_PASSWORD</code></td></tr>
-      </table>
-      <div class="reload">Reload: <code>docker compose restart postgres</code> · Connect: <code>docker exec -it ragstack-postgres psql -U $POSTGRES_USER rag</code></div>
-    </div>
-  </section>
-
-  <!-- ③·⁵ RSYSLOG CLIENT FORWARDERS -->
+  <!-- ③ RSYSLOG CLIENT FORWARDERS -->
   <section id="rsyslog" class="anchor mt-4 card p-5" style="border-color:#1f2a14;background:linear-gradient(180deg,#0d130a,#0e0e12)">
     <div class="svc-header">
       <div>
-        <div class="text-lg font-semibold"><span class="num">3·⁵</span>rsyslog client forwarders <span class="pill amber ml-1">client-side</span> <span class="pill lime ml-1">ingestion</span></div>
+        <div class="text-lg font-semibold"><span class="num">3</span>rsyslog client forwarders <span class="pill amber ml-1">client-side</span> <span class="pill lime ml-1">ingestion</span></div>
         <div class="mut text-xs mt-1">Drop-in config trên mỗi client VM · KHÔNG phải container · upstream feeder của <span class="pill amber">vector</span></div>
       </div>
       <div class="flex gap-1.5">
@@ -997,45 +934,7 @@ entrypoint: sh -c 'sed -e s|__TOKEN__|$TOKEN|g \
     </div>
   </section>
 
-  <!-- ⑫ REDIS -->
-  <section id="redis" class="anchor mt-4 card p-5" style="opacity:.85">
-    <div class="svc-header">
-      <div>
-        <div class="text-lg font-semibold"><span class="num">12</span>redis <span class="pill gray ml-1">cache</span> <span class="badge ml-1">profile=agent · OFF</span></div>
-        <div class="mut text-xs mt-1">Chỉ start khi agent stack hoạt động (đã decom) — hiện không chạy</div>
-      </div>
-      <span class="chip on">image: <code>redis:7-alpine</code></span>
-    </div>
-    <hr class="sep"/>
-    <div class="grid-2">
-      <div>
-        <div class="h-title">Ports</div>
-        <table class="k mt-1"><tr><td><code>127.0.0.1:6379</code></td><td>client</td></tr></table>
-        <div class="h-title mt-3">Command</div>
-<pre class="card2 p-2 mt-1">redis-server --appendonly yes
-  --requirepass ${REDIS_PASSWORD}
-  --maxmemory 128mb</pre>
-      </div>
-      <div>
-        <div class="h-title">Vai trò (khi bật lại)</div>
-        <ul class="text-sm mt-1 space-y-1.5 mut">
-          <li>• Cache embedding query (tránh re-embed cùng câu hỏi)</li>
-          <li>• Cache kết quả VictoriaLogs cho query lặp</li>
-          <li>• Hiện không cần — Claude Desktop tự cache prompt; mỗi MCP call stateless</li>
-        </ul>
-      </div>
-    </div>
-    <div class="role">
-      <h4>Tác dụng chi tiết</h4>
-      <ul>
-        <li><b>Giải quyết (legacy):</b> rag-agent dùng Redis cache embedding của query lặp (vd 5 ops cùng hỏi "mysql lỗi") → tiết kiệm OpenAI call. Cache TTL ~5 phút.</li>
-        <li><b>Vị trí (hiện tại):</b> KHÔNG khởi động. Profile <code>agent</code> chưa active.</li>
-        <li><b>Vì sao bỏ:</b> Claude Desktop có prompt cache riêng ở client side. Mỗi MCP server stateless = đơn giản, không cần coordination giữa replica. Bỏ Redis = giảm 1 component, 128MB RAM.</li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- ⑬ AGENT -->
+  <!-- ⑫ AGENT -->
   <section id="agent" class="anchor mt-4 card p-5" style="border-color:#082f3f">
     <div class="svc-header">
       <div>
@@ -1279,36 +1178,6 @@ dns: [8.8.8.8, 1.1.1.1]  # plugin install</pre>
     </div>
   </section>
 
-  <!-- DECOMMISSIONED -->
-  <section id="decom" class="anchor mt-4 card p-5" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
-    <div class="svc-header">
-      <div>
-        <div class="text-lg font-semibold warn">— decommissioned 2026-06-24 (MCP-only rollout)</div>
-        <div class="mut text-xs mt-1">Code giữ trên master · branch <code>legacy-web</code> snapshot · resurrect: <code>infra/scripts/resurrect-drill.sh</code></div>
-      </div>
-      <span class="pill amber">DECOM</span>
-    </div>
-    <hr class="sep"/>
-    <table class="k">
-      <thead><tr><th>Service</th><th>Image / Build</th><th>Port</th><th>Lý do remove</th></tr></thead>
-      <tbody>
-        <tr>
-          <td><span class="pill red">web</span></td>
-          <td>build <code>../web</code> (Next.js)</td>
-          <td><code>127.0.0.1:3000</code></td>
-          <td>Workflow chuyển sang Claude Desktop — không còn người dùng web UI</td>
-        </tr>
-        <tr>
-          <td><span class="pill lime">agent</span> <span class="text-[10px] mut">(restored 2026-07)</span></td>
-          <td>build <code>../agent</code> (FastAPI)</td>
-          <td><code>127.0.0.1:8080</code></td>
-          <td><s>Chi phí trùng với Claude Team</s> → phục hồi với LiteLLM adapter, xem section ⑬</td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="mt-3 mut text-[12px]">Phục hồi web: uncomment block <code>web:</code> trong <code>infra/docker-compose.yml</code>, chạy <code>docker compose --profile web up -d</code>. Agent đã phục hồi (2026-07-02) — không cần drill.</div>
-  </section>
-
   <!-- DEPENDENCY SUMMARY -->
   <section class="mt-6 card p-5">
     <div class="h-title">Phụ thuộc — ai cần ai</div>
@@ -1317,12 +1186,11 @@ dns: [8.8.8.8, 1.1.1.1]  # plugin install</pre>
       <tbody>
         <tr><td><span class="pill lime">victorialogs</span></td><td>—</td><td>vector (write) · mcp-vl · vmalert</td></tr>
         <tr><td><span class="pill lime">qdrant</span></td><td>—</td><td>indexer (write) · mcp-semantic (read)</td></tr>
-        <tr><td><span class="pill lime">postgres</span></td><td>—</td><td>mcp-semantic (audit) — token table sau phase 03</td></tr>
         <tr><td><span class="pill amber">rsyslog (client)</span></td><td>—</td><td>vector (push TCP 6514/6515)</td></tr>
         <tr><td><span class="pill amber">vector</span></td><td>victorialogs · nats</td><td>rsyslog clients (srv-01/02 + tương lai) · mock-logs</td></tr>
         <tr><td><span class="pill cyan">nats</span></td><td>—</td><td>vector (publish) · indexer (consume)</td></tr>
         <tr><td><span class="pill cyan">indexer</span></td><td>nats (healthy) · qdrant</td><td>—</td></tr>
-        <tr><td><span class="pill vio">mcp-semantic</span></td><td>qdrant · postgres · OpenAI API</td><td>Claude Desktop (qua caddy) · caddy forward_auth</td></tr>
+        <tr><td><span class="pill vio">mcp-semantic</span></td><td>qdrant · OpenAI API</td><td>Claude Desktop (qua caddy) · audit → JSON Lines file</td></tr>
         <tr><td><span class="pill cyan">mcp-vl</span></td><td>victorialogs</td><td>Claude Desktop (qua caddy)</td></tr>
         <tr><td><span class="pill amber">caddy</span></td><td>mcp-vl · mcp-semantic</td><td>5 ops laptop</td></tr>
         <tr><td><span class="pill vio">vmalert</span></td><td>victorialogs · alertmanager</td><td>—</td></tr>
@@ -1337,7 +1205,7 @@ dns: [8.8.8.8, 1.1.1.1]  # plugin install</pre>
   <!-- PROFILES & BRINGUP -->
   <section class="mt-6 card p-5">
     <div class="h-title">Lệnh khởi động</div>
-<pre class="card2 p-3 mt-2"><span class="mut"># minimal stack (vl + qdrant + pg + vector + nats + mcp-vl + mcp-semantic + caddy)</span>
+<pre class="card2 p-3 mt-2"><span class="mut"># minimal stack (vl + qdrant + vector + nats + mcp-vl + mcp-semantic + caddy)</span>
 docker compose up -d
 
 <span class="mut"># bật indexer (cần OPENAI_API_KEY hoặc EMBED_MOCK=true)</span>
@@ -1373,9 +1241,8 @@ docker compose down -v && rm -rf infra/data/*</pre>
         <tr><td><code>gen-mcp-tokens.sh</code></td><td>Sinh 5 token Bearer <code>sk-mcp-*</code> → in ra format <code>MCP_BEARER_TOKENS=user1:sk-...</code></td><td>Phát hành onboard 5 ops</td></tr>
         <tr><td><code>smoke-mcp-phase01.sh</code></td><td>End-to-end test: auth, /mcp/vl/sse, /mcp/semantic/sse, tool call mẫu</td><td>Sau deploy / sau update MCP</td></tr>
         <tr><td><code>healthcheck.sh</code></td><td>Loop curl health từng service · in PASS/FAIL · exit code</td><td>Cron 5 phút · CI smoke</td></tr>
-        <tr><td><code>snapshot-daily.sh</code></td><td>Backup VL <code>/snapshot/create</code> + dump Postgres → tar về <code>data/snapshots/</code></td><td>Cron 02:00</td></tr>
+        <tr><td><code>snapshot-daily.sh</code></td><td>Backup VL <code>/snapshot/create</code> → tar về <code>data/snapshots/</code></td><td>Cron 02:00</td></tr>
         <tr><td><code>restore-snapshot.sh</code></td><td>Khôi phục từ snapshot tar — stop stack, replace data, start lại</td><td>Khi crash data dir</td></tr>
-        <tr><td><code>resurrect-drill.sh</code></td><td>Bật lại web+agent stack từ legacy: uncomment compose block, set env, up, smoke <code>/chat</code></td><td>Quarterly drill để đảm bảo legacy còn boot được</td></tr>
         <tr><td><code>soak-check.sh</code></td><td>Sanity 5p liên tục: VL ingest rate, NATS pending, Qdrant count, MCP latency</td><td>Sau phase rollout lớn</td></tr>
         <tr><td><code>backup-openwebui.sh</code> <span class="pill lime text-[9px]">new</span></td><td>Streaming <code>tar</code> chat history → age encryption → <code>~/onelog/backup/openwebui-*.tgz.age</code></td><td>Cron 03:00 daily (chat có thể chứa PII từ log paste)</td></tr>
       </tbody>
@@ -1413,7 +1280,7 @@ docker compose down -v && rm -rf infra/data/*</pre>
   </nav>
 
   <footer class="mt-8 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
-    <span>OneLog · chi tiết service · đồng bộ với <code>infra/docker-compose.yml</code> @ 2026-06-24</span>
+    <span>OneLog · chi tiết service · đồng bộ với <code>infra/docker-compose.yml</code> @ 2026-07-17</span>
     <span>Xem kèm: <a class="acc" href="onelog-system-explainer.html">onelog-system-explainer.html</a></span>
   </footer>
 </div>

@@ -15,11 +15,9 @@ LLM call is in flight.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Request
 
 from agent.agent_loop import run_agent
@@ -30,7 +28,7 @@ from agent.telegram_client import TelegramClient
 
 router = APIRouter()
 _telegram = TelegramClient()
-_WEB_URL = os.getenv("WEB_URL", "http://web:3000")
+# _WEB_URL removed 2026-07-17 — web BFF decom, audit trail moved to log stream.
 
 
 def _triage_prompt(alert: dict[str, Any]) -> str:
@@ -72,24 +70,6 @@ async def _collect_triage(prompt: str) -> tuple[str, list[dict[str, Any]], bool]
     return final, tool_calls, had_error
 
 
-async def _persist_audit(prompt: str, tool_calls: list[dict[str, Any]], latency_ms: int, status: str) -> None:
-    """Best-effort POST to web BFF; never raise into the alert pipeline."""
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as cli:
-            await cli.post(
-                f"{_WEB_URL}/api/internal/audit",
-                json={
-                    "source": "alert",
-                    "prompt": prompt,
-                    "toolCalls": tool_calls,
-                    "latencyMs": latency_ms,
-                    "status": status,
-                },
-            )
-    except Exception as exc:  # noqa: BLE001
-        log.warning("alert.audit_persist_failed", err=str(exc))
-
-
 async def _process_one(alert: dict[str, Any]) -> None:
     fp = fingerprint(alert)
     if dedupe.seen(fp):
@@ -110,8 +90,16 @@ async def _process_one(alert: dict[str, Any]) -> None:
         triage = f"_(triage failed: {exc})_"
         status = "error"
 
+    # Audit persistence removed with web BFF decom (2026-07-17). Structured log
+    # below carries the same fields for VL ingest.
     latency_ms = int((time.monotonic() - started) * 1000)
-    await _persist_audit(prompt, tool_calls, latency_ms, status)
+    log.info(
+        "alert.triage_done",
+        fingerprint=fp,
+        latency_ms=latency_ms,
+        status=status,
+        tool_calls=len(tool_calls),
+    )
 
     body = format_alert(alert, triage)
     await _telegram.send(body)

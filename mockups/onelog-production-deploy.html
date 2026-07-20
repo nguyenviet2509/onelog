@@ -450,12 +450,12 @@
       <div class="stack-node new">🌉 mcpo<br/><span class="mut">[chat] MCP→OpenAPI</span></div>
       <div class="stack-node new">🖥️ openwebui<br/><span class="mut">[chat] SQLite UI</span></div>
       <div class="stack-node" style="border-color:#78350f;background:#1a1407">🔍 sqlite-web<br/><span class="mut">[dbtools] opt-in dev</span></div>
-      <div class="stack-node skip">💀 ragstack-web<br/><span class="mut">deprecated, skip</span></div>
+      <div class="stack-node skip">💀 ragstack-web<br/><span class="mut">removed 2026-07-17</span></div>
     </div>
     <div class="text-[11px] mut mt-3">
       <b class="acc">Core (always-on):</b> 8 service không cần profile flag ·
       <b class="acc">Full stack production:</b> <code>--profile agent --profile indexer --profile alerts --profile llm --profile chat</code> ·
-      <b class="err">SKIP:</b> <code>web</code> service (Next.js frontend decommission 2026-06-24) — nếu container cũ còn chạy, <code>docker rm -f ragstack-web</code>.
+      <b class="err">REMOVED:</b> <code>web</code> + <code>postgres</code> services physically removed from compose on 2026-07-17. If old container still running, <code>docker rm -f ragstack-web ragstack-postgres</code>. Otherwise ignore.
     </div>
   </div>
 
@@ -642,7 +642,8 @@ EOF
     <div class="step-body">
       <div class="step-title">Tạo tài khoản admin OpenWebUI + khóa signup</div>
       <div class="step-desc">2 dòng ENV vào .env, restart openwebui, verify log tạo admin, rồi comment lại để lock.</div>
-      <div class="cmd"><span class="prompt">$</span> printf "\nOPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local\nOPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe2026!\n" >> .env && docker compose --profile chat restart openwebui && sleep 30 && docker compose --profile chat logs openwebui --tail=10 | grep -i admin</div>
+      <div class="cmd"><span class="prompt">$</span> <span class="comment"># Dùng single quotes để bash không expand `!` (history expansion) trong password</span>
+printf '\nOPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local\nOPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe2026!\n' >> .env && docker compose --profile chat restart openwebui && sleep 30 && docker compose --profile chat logs openwebui --tail=10 | grep -i admin</div>
       <div class="cmd" style="margin-top:6px"><span class="prompt">$</span> <span class="comment"># Sau khi verify + đổi password → lock signup</span>
 sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env && docker compose --profile chat restart openwebui</div>
     </div>
@@ -820,112 +821,57 @@ A     chat.onelog.company.com     → &lt;LOGSERVER_IP&gt;
   </div>
 </section>
 
-<!-- SYSLOG CLIENT DEPLOY — 8-step playbook -->
+<!-- SYSLOG CLIENT DEPLOY — 3-step playbook (deploy-client.sh wrapper) -->
 <section class="card p-5 mb-6" style="border-color:#4c1d95">
   <div class="flex items-center justify-between mb-4">
-    <span class="h-title vio">Client deploy · 8 bước cho mỗi server nguồn log</span>
+    <span class="h-title vio">Client deploy · 3 bước · 1 lệnh chính từ logserver</span>
     <div class="flex gap-2">
-      <span class="pill vio">chạy trên CLIENT (srv-01, srv-02, ...)</span>
-      <span class="pill gray">~5 phút / client</span>
+      <span class="pill vio">chạy trên LOGSERVER</span>
+      <span class="pill gray">~1 phút / client</span>
     </div>
   </div>
 
   <div class="text-[13px] mb-3">
-    Sau khi logserver PASS 15 bước ở trên, kết nối từng server nguồn log vào. Lab lặp cho <code>&lt;SRV_01_IP&gt;</code> và <code>&lt;SRV_02_IP&gt;</code>. Prod scale ra N server. Script <code>setup-rsyslog-client.sh</code> cấu hình rsyslog forward TCP 6514 RFC5424 + queue on-disk 500MB (log không mất khi logserver reboot).
+    Sau khi logserver PASS 15 bước ở trên, deploy từng client bằng <code>deploy-client.sh</code> — wrapper SSH + ControlMaster multiplex password 1 lần/host, tự scp <code>setup-rsyslog-client.sh</code>, chạy remote với <code>sudo LOG_SERVER_IP=...</code>, auto-resolve <code>hostname</code> client, verify VictoriaLogs nhận log (retry 3×10s). Chấp nhận HOST arg = hostname / IP / FQDN.
   </div>
 
-  <!-- CLIENT STEP 1 -->
+  <!-- CLIENT STEP 1 — one-time prereq trên logserver -->
   <div class="step">
     <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">1</div>
     <div class="step-body">
-      <div class="step-title">SSH vào client + cài timezone + kiểm tra kết nối</div>
-      <div class="step-desc">Timezone phải khớp logserver (Asia/Saigon) để log timestamp không lệch. Kiểm tra TCP 6514 tới logserver mở trước.</div>
-      <div class="cmd"><span class="comment"># Lab: ssh vietnt@192.168.122.52 · logserver = 192.168.122.53</span>
-<span class="prompt">$</span> ssh &lt;SSH_USER&gt;@&lt;SRV_01_IP&gt; && sudo timedatectl set-timezone Asia/Saigon && timeout 3 bash -c 'cat &lt;/dev/tcp/&lt;LOGSERVER_IP&gt;/6514' && echo " REACHABLE"</div>
-      <div class="text-[11px] mut mt-1">Nếu <code>REACHABLE</code> không print → firewall giữa client-logserver chưa mở 6514/tcp. Sửa trước bước tiếp.</div>
+      <div class="step-title">One-time prereq · SSH key từ logserver → client</div>
+      <div class="step-desc">Nếu chưa có SSH key, script vẫn chạy với password (prompt 1 lần/host qua ControlMaster). Khuyến nghị <code>ssh-copy-id</code> để zero-prompt + phù hợp CI. Chạy 1 lần cho mỗi client mới.</div>
+      <div class="cmd"><span class="comment"># Trên LOGSERVER — copy public key sang client</span>
+<span class="prompt">$</span> ssh-copy-id &lt;SSH_USER&gt;@&lt;SRV_XX_IP&gt;</div>
+      <div class="cmd" style="margin-top:6px"><span class="comment"># Optional: sudo NOPASSWD trên client (giảm còn 0 prompt tổng)</span>
+<span class="prompt">$</span> ssh &lt;SSH_USER&gt;@&lt;SRV_XX_IP&gt; 'echo "&lt;SSH_USER&gt; ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/&lt;SSH_USER&gt;-nopasswd'</div>
+      <div class="text-[11px] mut mt-1">Không có SSH key vẫn OK — script prompt password 1 lần/host, cache 5 phút cho scp + sudo remote.</div>
     </div>
   </div>
 
-  <!-- CLIENT STEP 2 -->
+  <!-- CLIENT STEP 2 — one-time prereq trên client (chỉ nếu VM fresh) -->
   <div class="step">
     <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">2</div>
     <div class="step-body">
-      <div class="step-title">Cài rsyslog + chrony (nếu chưa có)</div>
-      <div class="step-desc">Ubuntu/Debian thường có sẵn rsyslog. Chrony bắt buộc — client clock drift = log timestamp sai.</div>
-      <div class="cmd"><span class="prompt">$</span> sudo apt-get update && sudo apt-get install -y rsyslog chrony && sudo systemctl enable --now chrony rsyslog && chronyc tracking | grep -E 'Leap|System time'</div>
+      <div class="step-title">One-time prereq trên client · timezone + chrony (chỉ khi VM fresh)</div>
+      <div class="step-desc">Ubuntu/Debian mặc định có sẵn <code>rsyslog</code>. Chrony cần thiết để timestamp không lệch — client clock drift = log time sai. Timezone phải khớp logserver (Asia/Saigon). Skip bước này nếu VM đã cấu hình sẵn.</div>
+      <div class="cmd"><span class="comment"># Trên CLIENT — chạy 1 lần</span>
+<span class="prompt">$</span> sudo timedatectl set-timezone Asia/Saigon && sudo apt-get install -y chrony && sudo systemctl enable --now chrony && chronyc tracking | grep -E 'Leap|System time'</div>
+      <div class="text-[11px] mut mt-1">Nếu client có UFW outbound strict: <code>sudo ufw allow out to &lt;LOGSERVER_IP&gt; port 6514 proto tcp</code>. Đa số distro default allow all outbound — bỏ qua.</div>
     </div>
   </div>
 
-  <!-- CLIENT STEP 3 -->
+  <!-- CLIENT STEP 3 — 1 lệnh deploy -->
   <div class="step">
     <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">3</div>
     <div class="step-body">
-      <div class="step-title">Copy setup script từ workstation sang client</div>
-      <div class="step-desc">2 cách. Cách A: scp từ workstation đã clone repo. Cách B: curl trực tiếp từ GitHub (không cần workstation trung gian).</div>
-      <div class="cmd"><span class="comment"># Cách A — scp từ workstation (chạy trên workstation, KHÔNG trên client)</span>
-<span class="prompt">$</span> scp ~/onelog/infra/scripts/setup-rsyslog-client.sh &lt;SSH_USER&gt;@&lt;SRV_01_IP&gt;:/tmp/</div>
-      <div class="cmd" style="margin-top:6px"><span class="comment"># Cách B — curl từ GitHub raw (chạy trên client)</span>
-<span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/nguyenviet2509/onelog/master/infra/scripts/setup-rsyslog-client.sh -o /tmp/setup-rsyslog-client.sh</div>
-    </div>
-  </div>
-
-  <!-- CLIENT STEP 4 -->
-  <div class="step">
-    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">4</div>
-    <div class="step-body">
-      <div class="step-title">Chạy setup script</div>
-      <div class="step-desc">Script tự động: (a) cài rsyslog nếu thiếu, (b) backup config cũ <code>.bak</code>, (c) tạo <code>/etc/rsyslog.d/90-forward-onelog.conf</code> với queue on-disk 500MB, (d) kiểm tra syntax + restart, (e) gửi test log.</div>
-      <div class="cmd"><span class="comment"># Lab: LOG_SERVER_IP=192.168.122.53</span>
-<span class="prompt">$</span> sudo LOG_SERVER_IP=&lt;LOGSERVER_IP&gt; bash /tmp/setup-rsyslog-client.sh</div>
-      <div class="text-[11px] mut mt-1">Output kỳ vọng cuối: <code>[5/5] ✓ TCP connection ESTABLISHED tới ...</code></div>
-    </div>
-  </div>
-
-  <!-- CLIENT STEP 5 -->
-  <div class="step">
-    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">5</div>
-    <div class="step-body">
-      <div class="step-title">Kiểm tra kết nối TCP ổn định (trên client)</div>
-      <div class="step-desc">Sau restart rsyslog phải có socket ESTABLISHED tới logserver:6514. Nếu chỉ có SYN-SENT / CLOSE-WAIT = logserver chưa accept.</div>
-      <div class="cmd"><span class="prompt">$</span> sudo ss -tnp | grep :6514 && sudo systemctl status rsyslog --no-pager | head -8</div>
-    </div>
-  </div>
-
-  <!-- CLIENT STEP 6 -->
-  <div class="step">
-    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">6</div>
-    <div class="step-body">
-      <div class="step-title">Gửi log test + verify từ logserver</div>
-      <div class="step-desc">Gửi 1 log tag riêng, chờ 3s, query VL từ logserver. Nếu count = 1 → pipeline OK end-to-end.</div>
-      <div class="cmd"><span class="comment"># Trên client — fire log</span>
-<span class="prompt">$</span> logger -t onboard-check "verify $(hostname) $(date -Is)"</div>
-      <div class="cmd" style="margin-top:6px"><span class="comment"># Trên logserver — verify (SSH lại logserver hoặc mở terminal khác)</span>
-<span class="prompt">$</span> sleep 3 && curl -sG http://127.0.0.1:9428/select/logsql/query --data-urlencode 'query=service:onboard-check | limit 3' | jq</div>
-    </div>
-  </div>
-
-  <!-- CLIENT STEP 7 -->
-  <div class="step">
-    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">7</div>
-    <div class="step-body">
-      <div class="step-title">Firewall phía client · cho phép outbound 6514/tcp</div>
-      <div class="step-desc">Nếu client có UFW/iptables outbound rule strict, cần allow explicit. Đa số distro default allow all outbound — bước này chỉ áp dụng khi có policy đặc biệt.</div>
-      <div class="cmd"><span class="prompt">$</span> sudo ufw status | grep -E 'Status|6514' && sudo ufw allow out to &lt;LOGSERVER_IP&gt; port 6514 proto tcp comment "onelog syslog forward"</div>
-    </div>
-  </div>
-
-  <!-- CLIENT STEP 8 -->
-  <div class="step">
-    <div class="step-num" style="background:#1f0f3a;border-color:#7c3aed;color:#c4b5fd">8</div>
-    <div class="step-body">
-      <div class="step-title">Lặp cho các client còn lại (loop 1 command)</div>
-      <div class="step-desc">Sau khi 1 client PASS, deploy hàng loạt bằng loop. SSH key phải configured trước cho tất cả IP (workflow: <code>ssh-copy-id</code> cho mỗi client).</div>
-      <div class="cmd"><span class="comment"># Chạy trên WORKSTATION — auto SSH + copy + run cho mỗi client</span>
-<span class="prompt">$</span> for IP in &lt;SRV_01_IP&gt; &lt;SRV_02_IP&gt; &lt;SRV_03_IP&gt;; do
-    echo "=== $IP ==="
-    scp ~/onelog/infra/scripts/setup-rsyslog-client.sh &lt;SSH_USER&gt;@$IP:/tmp/ &&
-    ssh &lt;SSH_USER&gt;@$IP "sudo LOG_SERVER_IP=&lt;LOGSERVER_IP&gt; bash /tmp/setup-rsyslog-client.sh";
-  done</div>
+      <div class="step-title">Deploy · 1 lệnh từ logserver (N client)</div>
+      <div class="step-desc">Wrapper tự chạy: [1/5] SSH reachable → [2/5] scp setup script → [3/5] remote <code>sudo bash setup-rsyslog-client.sh</code> → [4/5] cleanup /tmp → [5/5] verify VL nhận log (retry 3×10s). Auto-detect <code>LOG_SERVER_IP</code> qua <code>hostname -I</code>. Exit code = số host failed.</div>
+      <div class="cmd"><span class="comment"># Trên LOGSERVER — hostname, IP, hoặc FQDN đều OK</span>
+<span class="prompt">$</span> cd ~/onelog/infra && bash scripts/deploy-client.sh srv-05 srv-06 srv-07</div>
+      <div class="cmd" style="margin-top:6px"><span class="comment"># Flags: --user, --log-server-ip, --dry-run</span>
+<span class="prompt">$</span> bash scripts/deploy-client.sh --user vietnt --log-server-ip 192.168.122.53 --dry-run 192.168.122.55</div>
+      <div class="text-[11px] mut mt-1">Output kỳ vọng cuối: <code>✅ DONE</code> + <code>Summary: N OK, 0 failed</code>. Xem chi tiết ở <code>docs/deployment-client.md</code>.</div>
     </div>
   </div>
 

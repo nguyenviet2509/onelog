@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · Presentation for team</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--acc2:#a5f3fc;
+    --warn:#fbbf24;--ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui;font-feature-settings:"ss01","cv11"}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--mut);background:#0d0d11}
+  .chip.on{color:var(--fg);background:#15151a}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .h-title{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  kbd{background:#1f1f25;border:1px solid #2a2a30;border-radius:4px;padding:1px 5px;font-size:10px;font-family:ui-monospace}
+  pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .step-num{width:34px;height:34px;border-radius:8px;background:#082f3f;border:1px solid #0e4a63;display:inline-grid;place-items:center;font-size:14px;color:var(--acc);font-weight:700}
+  .grid-bg{background-image:linear-gradient(#15151a 1px,transparent 1px),linear-gradient(90deg,#15151a 1px,transparent 1px);background-size:24px 24px;background-position:-1px -1px}
+  .mermaid{background:transparent}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:18px 0}
+  .pill{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .stage{scroll-margin-top:16px;min-height:82vh;padding-top:24px}
+  .big{font-size:44px;line-height:1.05;font-weight:700;letter-spacing:-.02em}
+  .huge{font-size:64px;line-height:1;font-weight:800;letter-spacing:-.03em}
+  .lead{font-size:18px;line-height:1.55;color:#cdd2d8}
+  .kbd-line{font-size:11px;color:var(--mut)}
+  .kbd-line kbd{margin:0 2px}
+  .stat{background:#0e0e12;border:1px solid var(--line);border-radius:12px;padding:18px}
+  .stat .n{font-size:38px;font-weight:800;color:var(--fg)}
+  .callout{border-left:3px solid var(--acc);padding:8px 14px;background:#07171f;border-radius:6px}
+  .quote{font-size:22px;line-height:1.45;color:var(--fg);font-weight:500}
+  table.k{width:100%;font-size:13px;border-collapse:collapse}
+  table.k th,table.k td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+  .nav-side{position:fixed;left:14px;top:50%;transform:translateY(-50%);z-index:50;display:flex;flex-direction:column;gap:6px}
+  .nav-side a{width:10px;height:10px;border-radius:50%;background:#1f1f25;border:1px solid #2a2a30;transition:all .15s}
+  .nav-side a:hover{background:var(--acc)}
+  .nav-side a.active{background:var(--acc);transform:scale(1.4)}
+  details>summary{cursor:pointer;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+</style>
+</head>
+<body>
+
+<nav class="nav-side" id="dots">
+  <a href="#s0" title="Hook"></a>
+  <a href="#s1" title="OneLog là gì"></a>
+  <a href="#s2" title="RAG"></a>
+  <a href="#s3" title="Topology"></a>
+  <a href="#s4" title="Query"></a>
+  <a href="#s5" title="Team workflow"></a>
+  <a href="#s6" title="Alerting"></a>
+  <a href="#s7" title="Runbook + Q&A"></a>
+</nav>
+
+<div class="max-w-[1100px] mx-auto px-8">
+
+  <!-- HEADER -->
+  <header class="pt-6 pb-4 flex items-center justify-between border-b border-[#1f1f25]">
+    <div class="flex items-center gap-3">
+      <div class="size-9 rounded-xl bg-white text-black grid place-items-center font-black">O</div>
+      <div>
+        <div class="font-semibold leading-tight">OneLog <span class="mut font-normal">/ presentation deck</span></div>
+        <div class="text-[11px] mut">Trình bày cho đồng nghiệp · ~20–25 phút · cuộn theo section</div>
+      </div>
+    </div>
+    <div class="text-[11px] mut kbd-line">Điều hướng: <kbd>↓</kbd>/<kbd>Space</kbd> cuộn · <kbd>Home</kbd> đầu · <kbd>End</kbd> cuối · chấm bên trái = jump section</div>
+  </header>
+
+  <!-- ============================ -->
+  <!-- STAGE 0 · HOOK              -->
+  <!-- ============================ -->
+  <section id="s0" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">0</span>
+      <span class="h-title">Hook · 1 phút · Mở đầu bằng demo</span>
+    </div>
+
+    <div class="card p-10 grid-bg">
+      <div class="chip on mb-4">🎬 Live demo · Claude Desktop</div>
+      <div class="quote">"mysql có lỗi gì 1 giờ qua không?"</div>
+      <div class="mut mt-3">→ Claude tự chọn tool · trả lời tiếng Việt · kèm <code>[service:host:ts]</code> · click mở VMUI xem raw log.</div>
+
+      <hr class="sep"/>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Trước OneLog</div>
+          <ul class="text-sm space-y-2 mut">
+            <li>❌ SSH 3 VM · <code>grep -R</code> · tự đoán service nào</li>
+            <li>❌ Hỏi anh senior "hôm nay log mysql ra sao?"</li>
+            <li>❌ Copy-paste log về Slack · không ai save lại</li>
+          </ul>
+        </div>
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Sau OneLog</div>
+          <ul class="text-sm space-y-2">
+            <li class="ok">✅ Hỏi tiếng Việt trong Claude Desktop / OpenWebUI</li>
+            <li class="ok">✅ Câu trả lời có citation · click ra VMUI</li>
+            <li class="ok">✅ Conversation lưu trong Project · 5 ops cùng thấy</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout mt-5 text-sm">
+        <b>Cách kể:</b> demo trước, giải thích sau. Đừng vẽ topology ngay slide 1.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 1 · OneLog là gì       -->
+  <!-- ============================ -->
+  <section id="s1" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">1</span>
+      <span class="h-title">OneLog là gì · 2 phút</span>
+    </div>
+
+    <div class="card p-10">
+      <div class="big">Một <span class="acc">"log brain"</span> duy nhất cho 5 ops —<br/>hỏi tiếng Việt, ra log kèm citation.</div>
+      <p class="lead mt-5 max-w-[820px]">
+        Gom log tất cả VM về <b>VictoriaLogs</b> trung tâm, index semantic template log vào <b>Qdrant</b>.
+        Ops mở <b>Claude Desktop</b> hoặc <b>OpenWebUI</b>, hỏi tiếng Việt — hệ thống tự chọn tool phù hợp và trả về log kèm trích dẫn.
+      </p>
+
+      <div class="grid grid-cols-4 gap-3 mt-8">
+        <div class="stat"><div class="h-title">VM</div><div class="n mt-2">3</div><div class="text-[12px] mut mt-1">srv-01 · srv-02 · logserver</div></div>
+        <div class="stat"><div class="h-title">MCP server</div><div class="n mt-2">2</div><div class="text-[12px] mut mt-1">mcp-vl · mcp-semantic</div></div>
+        <div class="stat"><div class="h-title">LLM provider</div><div class="n mt-2">4</div><div class="text-[12px] mut mt-1">swap qua 1 env var</div></div>
+        <div class="stat"><div class="h-title">Ops</div><div class="n mt-2">5</div><div class="text-[12px] mut mt-1">shared conversation project</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 2 · RAG                -->
+  <!-- ============================ -->
+  <section id="s2" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">2</span>
+      <span class="h-title">Khái niệm RAG · 3 phút · Vì sao gọi là "RAG Log Server"</span>
+    </div>
+
+    <div class="card p-8">
+      <p class="lead">
+        Thay vì bắt LLM "nhớ" mọi log production (bất khả thi + tốn token + lộ dữ liệu), ta
+        <b class="acc">Retrieve</b> đoạn log liên quan → <b class="vio">Augment</b> vào prompt làm bằng chứng → LLM <b class="ok">Generate</b> câu trả lời có trích dẫn.
+      </p>
+
+      <div class="grid grid-cols-3 gap-3 mt-6">
+        <div class="card2 p-5">
+          <div class="pill cyan">R · Retrieval</div>
+          <div class="font-semibold mt-3">Tìm log liên quan</div>
+          <ul class="text-[13px] mut mt-2 space-y-1.5">
+            <li>• <b class="acc">mcp-vl</b> — LogsQL chính xác trên VictoriaLogs</li>
+            <li>• <b class="acc">mcp-semantic</b> — semantic search trên Qdrant</li>
+            <li>• LLM tự chọn tool <i>precise</i> hay <i>fuzzy</i></li>
+          </ul>
+        </div>
+        <div class="card2 p-5">
+          <div class="pill vio">A · Augmentation</div>
+          <div class="font-semibold mt-3">Bổ sung ngữ cảnh</div>
+          <ul class="text-[13px] mut mt-2 space-y-1.5">
+            <li>• Trả về evidence <code class="text-[11px]">[svc:host:ts]</code></li>
+            <li>• Kèm VMUI link mở raw log 1 click</li>
+            <li>• Audit từng tool call</li>
+          </ul>
+        </div>
+        <div class="card2 p-5">
+          <div class="pill lime">G · Generation</div>
+          <div class="font-semibold mt-3">Sinh câu trả lời</div>
+          <ul class="text-[13px] mut mt-2 space-y-1.5">
+            <li>• LLM tổng hợp thành narrative tiếng Việt</li>
+            <li>• Claude / GPT / Gemini / DeepSeek</li>
+            <li>• Có citation — không "bịa"</li>
+          </ul>
+        </div>
+      </div>
+
+      <hr class="sep"/>
+
+      <div class="mermaid">
+flowchart LR
+  Q["Ops hỏi<br/>'mysql lỗi gì 1h qua?'"] --> LLM1["LLM chọn tool"]
+  LLM1 -->|precise| VL["mcp-vl<br/>LogsQL → VictoriaLogs"]
+  LLM1 -->|fuzzy| SEM["mcp-semantic<br/>embed → Qdrant"]
+  VL --> EV["Evidence<br/>[svc:host:ts] + VMUI link"]
+  SEM --> EV
+  EV --> LLM2["LLM sinh câu trả lời<br/>+ citation"]
+  LLM2 --> ANS["Ops đọc + click VMUI<br/>xem raw log"]
+      </div>
+
+      <div class="callout mt-4 text-sm">
+        <b>Điểm chốt cho đồng nghiệp:</b> log KHÔNG lên cloud toàn bộ — chỉ evidence đoạn ngắn được gửi lên LLM. On-prem, PII redacted trước.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 3 · Topology & Ingest  -->
+  <!-- ============================ -->
+  <section id="s3" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">3</span>
+      <span class="h-title">Topology & pipeline ghi log · 5 phút</span>
+    </div>
+
+    <div class="card p-6">
+      <div class="h-title mb-3">Lab subnet 192.168.122.0/24</div>
+      <div class="mermaid">
+flowchart LR
+  subgraph SRV1["srv-01 · .52"]
+    R1["rsyslog / vector-agent"]
+  end
+  subgraph SRV2["srv-02 · .51"]
+    R2["rsyslog / vector-agent"]
+  end
+  subgraph LOG["logserver · .53"]
+    V["vector<br/>514 udp · 6514 tcp · 6515 json"]
+    VL[("VictoriaLogs :9428")]
+    NA[["NATS :4222"]]
+    IDX["indexer"]
+    Q[("Qdrant :6333")]
+    MVL["mcp-vl"]
+    MSE["mcp-semantic"]
+    AG["agent :8080"]
+    LLM["litellm-proxy :4000"]
+    OWU["openwebui :8090"]
+    CAD["Caddy 80/443<br/>IP allowlist + Bearer"]
+  end
+  CL["Claude Desktop"]
+  OW["Browser (webui.local)"]
+  P1[("Anthropic · OpenAI<br/>Gemini · DeepSeek")]
+  R1 --> V
+  R2 --> V
+  V -- "all events" --> VL
+  V -- "WARN+ only" --> NA --> IDX -- "embed + upsert" --> Q
+  CL --> CAD
+  OW --> CAD
+  CAD --> MVL --> VL
+  CAD --> MSE --> Q
+  CAD --> OWU --> LLM --> P1
+  CAD --> AG --> P1
+      </div>
+
+      <hr class="sep"/>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Fan-out tại vector</div>
+          <p class="text-sm mut leading-relaxed">1 line log → ghi <span class="pill lime">VictoriaLogs</span> (full, query được). Chỉ <b>WARN+</b> mới publish <span class="pill gray">NATS</span> → indexer → Qdrant. Tiết kiệm chi phí embedding ~100×.</p>
+        </div>
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Xóa PII trước khi lưu</div>
+          <p class="text-sm mut leading-relaxed">Vector VRL redact email · RFC1918 IP · JWT · AWS key · Bearer · password=… <b>trước khi ghi</b>. Downstream luôn đọc data sạch.</p>
+        </div>
+      </div>
+
+      <div class="callout mt-4 text-sm">
+        <b>Nhấn khi trình bày:</b> chỉ tay theo mũi tên ingest — App → vector → VL + NATS → Qdrant. Đừng đọc từng service.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 4 · Query pipeline     -->
+  <!-- ============================ -->
+  <section id="s4" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">4</span>
+      <span class="h-title">Pipeline query · 4 phút · Từ câu hỏi tiếng Việt tới citation</span>
+    </div>
+
+    <div class="card p-6">
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Ops
+  participant CD as Claude Desktop
+  participant CA as Caddy
+  participant MSE as mcp-semantic
+  participant MVL as mcp-vl
+  participant Q as Qdrant
+  participant VL as VictoriaLogs
+  U->>CD: "mysql lỗi gì 1h qua?"
+  CD->>CD: LLM classify intent → fuzzy
+  CD->>CA: /mcp/semantic/sse Bearer sk-mcp-*
+  CA->>MSE: forward (allowlist + auth OK)
+  MSE->>Q: embed(q) + vector search top-k
+  Q-->>MSE: template hits + scores
+  MSE-->>CD: hits + vmui_url
+  CD->>CA: /mcp/vl/sse · query(logsql=...)
+  CA->>MVL: forward
+  MVL->>VL: LogsQL
+  VL-->>MVL: log lines
+  MVL-->>CD: lines + vmui_url
+  CD-->>U: câu trả lời + [mysql:srv-02:14:31] · click → VMUI
+      </div>
+
+      <hr class="sep"/>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="card2 p-4">
+          <div class="h-title">Câu hỏi mơ hồ</div>
+          <p class="text-[13px] mut mt-2">"vì sao", "bất thường"... → <span class="pill vio">mcp-semantic</span> · embed → Qdrant top-k.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Lọc chính xác</div>
+          <p class="text-[13px] mut mt-2">"service=nginx status=502 _time:1h" → <span class="pill cyan">mcp-vl</span> · LogsQL trực tiếp.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Hợp đồng citation</div>
+          <p class="text-[13px] mut mt-2">Mọi câu trả lời PHẢI có <code class="text-[11px]">[svc:host:ts]</code> + <code class="text-[11px]">vmui_url</code>. Không cite = không tin.</p>
+        </div>
+      </div>
+
+      <div class="callout mt-4 text-sm">
+        <b>Demo tại đây:</b> gõ 2 câu hỏi khác kiểu (1 mơ hồ, 1 cụ thể) → cho đồng nghiệp thấy LLM chọn tool khác nhau.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 5 · Team workflow      -->
+  <!-- ============================ -->
+  <section id="s5" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">5</span>
+      <span class="h-title">5 ops làm việc chung · 3 phút</span>
+    </div>
+
+    <div class="card p-6">
+      <div class="mermaid">
+flowchart TB
+  A[["Ops nhận alert / thấy bất thường"]] --> B{Đã có conversation<br/>tương tự &lt; 30 ngày?}
+  B -- "Có" --> C[Mở conversation cũ<br/>đọc root cause + fix]
+  C --> D[Apply fix]
+  B -- "Không" --> E["+ New chat trong Project"]
+  E --> F["Claude chọn tool<br/>(vl / semantic)"]
+  F --> G["Đọc citation + vmui_url"]
+  G --> H{Đủ root cause?}
+  H -- "Chưa" --> F
+  H -- "Rồi" --> I["Rename: [YYYY-MM-DD] svc - symptom"]
+  I --> J["Comment cuối:<br/>Root cause / Fix / Prevention"]
+  J --> K{Fix lâu dài?}
+  K -- "Có" --> L[(docs/runbooks/*.md)]
+  K -- "Không" --> M[(Stay trong Project<br/>5 ops cùng thấy)]
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mt-5">
+        <div class="card2 p-4">
+          <div class="h-title">Realtime</div>
+          <p class="text-[13px] mut mt-2">Paste link conversation vào Slack → đồng nghiệp click reply tiếp thẳng chỗ đang debug.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Async</div>
+          <p class="text-[13px] mut mt-2">Mọi conversation tự hiện với 5 ops. Standup quét 5 cái gần nhất.</p>
+        </div>
+        <div class="card2 p-4">
+          <div class="h-title">Hàng tuần</div>
+          <p class="text-[13px] mut mt-2">Ops trực T6 trích điểm nổi bật → cập nhật <code>docs/runbooks/</code>.</p>
+        </div>
+      </div>
+
+      <div class="callout mt-4 text-sm">
+        <b>Câu chốt:</b> conversation = shared memory. Không ai phải kể lại từ đầu khi handover.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 6 · Alerting           -->
+  <!-- ============================ -->
+  <section id="s6" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">6</span>
+      <span class="h-title">Pipeline cảnh báo · 3 phút · Từ log tới Telegram</span>
+    </div>
+
+    <div class="card p-6">
+      <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant V as vector
+  participant VL as VictoriaLogs
+  participant VA as vmalert
+  participant AM as alertmanager
+  participant TG as Telegram
+  V->>VL: insert log line
+  loop 30s instant / 5m burst
+    VA->>VL: LogsQL stats_query (rule expr)
+    VL-->>VA: series {host, host_ip, sample_msg}
+    alt expr trả row
+      VA->>AM: firing
+    else expr rỗng
+      VA->>AM: resolved
+    end
+  end
+  AM->>AM: dedupe · group_by(alertname,host)
+  AM->>TG: sendMessage (HTML template)
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mt-4">
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Instant rules (eval 30s)</div>
+          <p class="text-sm mut">OomKill · DiskFull · NewUserOrSudoer. Fire NGAY khi 1 event match — không chờ.</p>
+        </div>
+        <div class="card2 p-5">
+          <div class="h-title mb-2">Burst rules (eval 5m, for=1m)</div>
+          <p class="text-sm mut">SSH brute force · MySQL err burst · kernel err. Cần &gt;N event/5m mới fire.</p>
+        </div>
+      </div>
+
+      <div class="callout mt-4 text-sm">
+        <b>Show alert thật:</b> nếu có Telegram history sẵn, mở ra cho đồng nghiệp thấy format thực tế (host_ip, sample_msg, started/ended giờ VN).
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ -->
+  <!-- STAGE 7 · Runbook + Q&A      -->
+  <!-- ============================ -->
+  <section id="s7" class="stage">
+    <div class="flex items-center gap-3 mb-4">
+      <span class="step-num">7</span>
+      <span class="h-title">Onboard 10 phút + Q&amp;A · 3 phút</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card p-6">
+        <div class="h-title mb-3">Cài đặt máy ops (1 lần)</div>
+        <div class="text-sm mb-2"><b class="cyan">A · Claude Desktop</b></div>
+        <ol class="text-[12px] space-y-1.5 list-decimal pl-5 mb-3 mut">
+          <li>Map <code>192.168.122.53 app.local</code> trong hosts</li>
+          <li>Cài Claude Desktop · login workspace</li>
+          <li>Config <code>claude_desktop_config.json</code> → 2 server MCP</li>
+          <li>Restart · verify icon tool-use sáng</li>
+        </ol>
+        <div class="text-sm mb-2"><b class="vio">B · OpenWebUI</b></div>
+        <ol class="text-[12px] space-y-1.5 list-decimal pl-5 mut">
+          <li>Map <code>192.168.122.53 webui.local</code> trong hosts</li>
+          <li>Mở browser <code>http://webui.local/</code></li>
+          <li>Login credential admin cấp</li>
+          <li>Chọn model từ dropdown (default gemini-flash)</li>
+        </ol>
+      </div>
+
+      <div class="card p-6">
+        <div class="h-title mb-3">Investigation hằng ngày</div>
+        <ol class="text-sm space-y-2 list-decimal pl-5">
+          <li>Mở Project <b>onelog-investigations</b></li>
+          <li>Search keyword trước khi tạo mới (mysql, 502, redis…)</li>
+          <li>Đặt câu hỏi → đọc kết quả + bấm <code>vmui_url</code></li>
+          <li>Root cause → rename <code>[YYYY-MM-DD] svc - symptom</code></li>
+          <li>Tin nhắn cuối: Nguyên nhân / Sửa / Phòng tránh</li>
+          <li>Fix lâu dài → <code>docs/runbooks/&lt;svc&gt;.md</code></li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card mt-4 p-6">
+      <div class="h-title mb-3">3 câu hỏi chắc chắn bị hỏi — có sẵn câu trả lời</div>
+      <div class="divide-y divide-[#1f1f25]">
+        <details class="py-3" open>
+          <summary class="flex justify-between items-center"><span class="font-semibold">Log có bị lộ lên LLM không?</span><span class="mut">↕</span></summary>
+          <p class="mut text-sm mt-2">Chỉ evidence ngắn (đoạn log liên quan) được gửi lên LLM. Toàn bộ log gốc ở lại on-prem trên VictoriaLogs. Trước khi lưu, vector đã redact PII/secret (email · IP · JWT · AWS key · Bearer · password=). 2 lớp bảo vệ.</p>
+        </details>
+        <details class="py-3">
+          <summary class="flex justify-between items-center"><span class="font-semibold">Mất internet — OneLog còn dùng được không?</span><span class="mut">↕</span></summary>
+          <p class="mut text-sm mt-2">Ingest + LogsQL query nội bộ vẫn chạy. Nhưng LLM cần internet → mất internet thì không hỏi natural language được. Fallback: vào VMUI <code>:9428</code> query LogsQL tay.</p>
+        </details>
+        <details class="py-3">
+          <summary class="flex justify-between items-center"><span class="font-semibold">Scale lên 30 VM thì đổi gì?</span><span class="mut">↕</span></summary>
+          <p class="mut text-sm mt-2">Xem <code>docs/ha-roadmap.md</code>. Tóm tắt: vector multi-node · VictoriaLogs cluster mode · Qdrant replica · NATS jetstream cluster · Caddy → HAProxy/Nginx LB. Không cần rewrite, chỉ nhân bản node.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="card mt-4 p-6" style="border-color:#082f3f;background:linear-gradient(180deg,#07171f,#0e0e12)">
+      <div class="h-title mb-2">Handout sau buổi</div>
+      <ul class="text-sm space-y-1.5">
+        <li>📄 <a class="acc underline" href="onelog-system-explainer.html">mockups/onelog-system-explainer.html</a> — deep-dive kỹ thuật đầy đủ</li>
+        <li>📄 <code>docs/onelog-team-project-guide.md</code> — hướng dẫn 5 ops làm việc chung</li>
+        <li>📄 <code>docs/mcp-setup-guide.md</code> — setup Claude Desktop + OpenWebUI</li>
+        <li>📄 <code>docs/deployment-guide.md</code> — vận hành trên logserver</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="mt-16 mb-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
+    <span>OneLog · presentation deck · 2026-07-17</span>
+    <span>Nguồn nội dung: <code>mockups/onelog-system-explainer.html</code></span>
+  </footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:'base',
+    themeVariables:{
+      darkMode:true,
+      background:'#0a0a0b',
+      primaryColor:'#15151a',
+      primaryTextColor:'#ededf0',
+      primaryBorderColor:'#2a2a30',
+      lineColor:'#3a3a44',
+      secondaryColor:'#0e0e12',
+      tertiaryColor:'#111114',
+      fontFamily:'Geist, Inter, ui-sans-serif',
+      actorBkg:'#15151a', actorBorder:'#2a2a30', actorTextColor:'#ededf0',
+      signalColor:'#7dd3fc', signalTextColor:'#cdd2d8',
+      labelBoxBkgColor:'#0e0e12', labelBoxBorderColor:'#2a2a30',
+      noteBkgColor:'#1f1a3a', noteBorderColor:'#3a3a44', noteTextColor:'#c4b5fd'
+    },
+    flowchart:{curve:'basis',htmlLabels:true},
+    sequence:{actorMargin:50, boxMargin:10, mirrorActors:false}
+  });
+
+  // scroll-spy for side nav dots
+  const dots = document.querySelectorAll('#dots a');
+  const stages = document.querySelectorAll('.stage');
+  const obs = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const id = '#' + e.target.id;
+        dots.forEach(d=>d.classList.toggle('active', d.getAttribute('href')===id));
+      }
+    });
+  },{rootMargin:'-40% 0px -50% 0px'});
+  stages.forEach(s=>obs.observe(s));
+</script>
+</body>
+</html>

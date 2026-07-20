@@ -36,3 +36,9 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# mTLS artifacts — never commit private keys or CA state
+infra/ansible/tls-certs/
+infra/vector/certs/
+# Real Ansible inventory (may contain internal IPs / hostnames)
+infra/ansible/inventory.ini

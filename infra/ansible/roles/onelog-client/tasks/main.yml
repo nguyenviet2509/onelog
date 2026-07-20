@@ -1,0 +1,62 @@
+# onelog-client role — install rsyslog + drop forwarder config + verify.
+#
+# Idempotent: re-runs safe. Only restarts rsyslog when config actually changes
+# (handler-triggered).
+
+- name: Ensure rsyslog installed
+  ansible.builtin.package:
+    name: rsyslog
+    state: present
+
+- name: Enable rsyslog service
+  ansible.builtin.service:
+    name: rsyslog
+    enabled: true
+
+- name: Install + provision client TLS bundle (when enable_tls=true)
+  ansible.builtin.include_tasks: tls.yml
+  when: enable_tls | default(false)
+
+- name: Find conflicting legacy forwarder configs
+  ansible.builtin.find:
+    paths: /etc/rsyslog.d
+    patterns:
+      - "*-forward*.conf"
+      - "*-onelog*.conf"
+    excludes:
+      - "90-forward-onelog.conf"
+    file_type: file
+  register: legacy_forwarders
+
+- name: Backup + disable legacy forwarders
+  ansible.builtin.command: "mv {{ item.path }} {{ item.path }}.bak"
+  loop: "{{ legacy_forwarders.files }}"
+  when: legacy_forwarders.files | length > 0
+  changed_when: true
+  # Rename step — Ansible has no direct "rename" module; command is acceptable
+  # since we guard with the find result (won't run when list empty).
+
+- name: Drop OneLog forwarder config
+  ansible.builtin.template:
+    src: 90-forward-onelog.conf.j2
+    dest: "{{ rsyslog_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "rsyslogd -N1 -f %s"
+  notify: restart rsyslog
+
+- name: Flush handlers before verify (make sure rsyslog is reloaded now)
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure rsyslog is running
+  ansible.builtin.service:
+    name: rsyslog
+    state: started
+
+- name: Fire smoke log tagged client-onboard
+  ansible.builtin.command: "logger -t client-onboard OneLog verify {{ ansible_date_time.iso8601 }} from {{ ansible_hostname }}"
+  changed_when: false
+
+- name: Include verify tasks (query VL from control node)
+  ansible.builtin.include_tasks: verify.yml

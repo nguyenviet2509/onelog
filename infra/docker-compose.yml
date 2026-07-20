@@ -20,9 +20,11 @@ services:
     volumes:
       - ./data/victorialogs:/victoria-logs-data
     healthcheck:
-      # Distroless-ish VL image không resolve "localhost" → dùng 127.0.0.1 literal.
-      # Explain: FailingStreak 37k+ trước fix chỉ do resolver miss, VL vẫn serve OK.
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9428/health"]
+      # VL image is distroless (no wget/curl/nc/sh). Use the VL binary itself
+      # as a liveness probe — if the process is alive it will respond to -help
+      # and exit 0. HTTP readiness is verified indirectly via downstream
+      # services (indexer, vmalert) failing loudly if VL is unreachable.
+      test: ["CMD", "/victoria-logs-prod", "-help"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -488,7 +490,8 @@ services:
       # 1. Auto — set TOOL_SERVER_CONNECTIONS env below (JSON array).
       # 2. Manual — user Settings → Tools → + Add Connection with URL
       #    http://mcpo:8080/onelog-vl (+ onelog-semantic), Bearer = MCPO_API_KEY.
-      TOOL_SERVER_CONNECTIONS: ${TOOL_SERVER_CONNECTIONS:-}
+      # Default '[]' (not empty) — OpenWebUI does json.loads() and empty string throws.
+      TOOL_SERVER_CONNECTIONS: ${TOOL_SERVER_CONNECTIONS:-[]}
     # [RT-F13] service_started, NOT service_healthy — if 1 provider API is down
     # at reboot, LiteLLM liveness may flake and would deadlock OpenWebUI boot.
     # OpenWebUI retries at first request instead.

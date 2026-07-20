@@ -2,6 +2,8 @@
 
 ## KB Module
 
+**Superseded 2026-07-17** — KB workflow moved to OpenWebUI native (Notes + Knowledge). All `/api/kb/*` endpoints listed below are historical planning artifacts and will not be implemented. Retained for reference in case a bespoke KB service is resurrected.
+
 ### KB Phase 01: OpenWebUI Integration (KB01)
 
 **Status:** ✅ **Complete** (2026-07-16)

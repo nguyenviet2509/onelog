@@ -1,5 +1,36 @@
 # Project Changelog
 
+## 2026-07-17
+
+### feat(kb): Pivot to OpenWebUI native + /web removal
+
+**Status:** ✅ Complete
+
+KB workflow pivoted to OpenWebUI native (sidebar Notes + Workspace → Knowledge). Decommissioned custom Next.js KB service, Postgres, and all supporting infrastructure.
+
+**Deleted:**
+- `web/` folder (entire Next.js application)
+- `infra/openwebui/functions/kb_mark_resolved.py` (OpenWebUI Action Function)
+- `docs/deployment-kb.md` (KB service deployment doc)
+
+**Infrastructure removal:**
+- Postgres service + docker-compose profile removed
+- `web:3000` service removed from compose
+- Caddy `/kb/*` proxy routes removed
+
+**Environment variables removed:**
+- `KB_WEB_PUBLIC_URL`, `INTERNAL_CRON_TOKEN`
+- `OPENWEBUI_ADMIN_API_KEY`, `KB_SUMMARIZE_MODEL`, `KB_LLM_MOCK`
+- `KB_QDRANT_COLLECTION`, `KB_DEDUP_THRESHOLD`, `KB_SNAP_THRESHOLD`, `KB_DRAFT_TTL_MINUTES`, `KB_RATE_LIMIT_PER_USER_DAY`
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_IMAGE_TAG`
+
+**Code changes:**
+- Removed `_persist_audit()` + `_WEB_URL` ref from `agent/src/agent/routes/alert.py` (replaced with structured log)
+
+**Rationale:** Unify KB workflow inside OpenWebUI — members use native "Add to Note" → sidebar Notes; admin curates + uploads to shared Workspace Knowledge collection. YAGNI custom review UI. No data lost (Phase 1 never deployed to production).
+
+---
+
 ## 2026-07-16
 
 ### feat(kb): Phase 1 shipped — OpenWebUI integration

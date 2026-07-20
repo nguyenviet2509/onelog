@@ -1,0 +1,36 @@
+# verify.yml — confirm VictoriaLogs received the smoke log from this host.
+# Runs on CONTROL NODE (delegate_to: localhost) — clients cannot reach VL.
+
+- name: Wait for VL to ingest smoke log
+  ansible.builtin.uri:
+    url: "{{ vl_query_url }}"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      query: "host:{{ ansible_hostname }} AND service:client-onboard"
+      limit: "1"
+    return_content: true
+    status_code: 200
+    timeout: 5
+  register: vl_check
+  delegate_to: localhost
+  become: false
+  retries: 6
+  delay: 5
+  until: vl_check.content is defined and vl_check.content | length > 0
+  changed_when: false
+  failed_when: false
+
+- name: Report ingest status
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'OK — VL received log from ' + ansible_hostname
+         if (vl_check.content is defined and vl_check.content | length > 0)
+         else 'FAIL — no log seen for ' + ansible_hostname + ' after 30s.
+              Check UFW on log server allows ' ~ log_server_port ~ '/tcp,
+              rsyslog ESTAB via: ss -tnp | grep :' ~ log_server_port }}
+
+- name: Fail host if verify did not see log
+  ansible.builtin.fail:
+    msg: "VictoriaLogs did not ingest smoke log from {{ ansible_hostname }}"
+  when: not (vl_check.content is defined and vl_check.content | length > 0)

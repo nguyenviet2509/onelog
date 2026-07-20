@@ -18,6 +18,25 @@ sources:
     address: 0.0.0.0:6514
     mode: tcp
 
+  # syslog_tcp_tls: mTLS listener for hardened fleet rollout.
+  # ENABLE BY:
+  #   1. Provision server cert + key + CA at ./vector/certs/{server.crt,server.key,ca.crt}
+  #      (see docs/deployment-mtls.md — step-ca workflow).
+  #   2. Uncomment this block; expose port 6516 in docker-compose vector.ports.
+  #   3. Migrate clients to port 6516 via Ansible `enable_tls=true` (see
+  #      infra/ansible/README.md), then retire 6514.
+  # Vector docs: https://vector.dev/docs/reference/configuration/sources/syslog/#tls
+  # syslog_tcp_tls:
+  #   type: syslog
+  #   address: 0.0.0.0:6516
+  #   mode: tcp
+  #   tls:
+  #     enabled: true
+  #     verify_certificate: true          # mTLS — client cert required
+  #     ca_file: /etc/vector/certs/ca.crt
+  #     crt_file: /etc/vector/certs/server.crt
+  #     key_file: /etc/vector/certs/server.key
+
   # rsyslog JSON line-delimited (ECS-lite schema) — for clients with existing
   # rsyslog omfwd JSON pipelines (e.g. forwarding to ELK/SIEM). Plain TCP, IP
   # whitelist enforced at firewall layer. TLS roadmap = separate plan.

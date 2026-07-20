@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+# OneLog rsyslog forwarder → {{ log_server_ip }}:{{ log_server_port }} ({{ 'TLS' if enable_tls | default(false) else 'plain TCP' }}, RFC5424).
+# Vector strict syslog parser requires the RFC3339 timestamp + RFC5424 layout.
+#
+# Reload:  sudo systemctl restart rsyslog
+# Verify:  ss -tnp | grep ':{{ log_server_port }}'   # ESTAB → {{ log_server_ip }}
+{% if enable_tls | default(false) %}
+# TLS mode: gtls stream driver, x509/certvalid auth. Certs installed by
+# onelog-tls role at /etc/rsyslog.d/tls/. If missing → rsyslog refuses to load.
+global(
+  DefaultNetstreamDriver="gtls"
+  DefaultNetstreamDriverCAFile="/etc/rsyslog.d/tls/ca.crt"
+  DefaultNetstreamDriverCertFile="/etc/rsyslog.d/tls/client.crt"
+  DefaultNetstreamDriverKeyFile="/etc/rsyslog.d/tls/client.key"
+)
+{% endif %}
+
+template(name="ragstack_fmt" type="string"
+  string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% %HOSTNAME% %APP-NAME% %PROCID% %MSGID% - %msg%\n"
+)
+
+*.* action(type="omfwd"
+  target="{{ log_server_ip }}"
+  port="{{ log_server_port }}"
+  protocol="tcp"
+{% if enable_tls | default(false) %}
+  StreamDriver="gtls"
+  StreamDriverMode="1"
+  StreamDriverAuthMode="x509/certvalid"
+{% endif %}
+  template="ragstack_fmt"
+  action.resumeRetryCount="-1"
+  queue.type="LinkedList"
+  queue.size="10000"
+  queue.filename="onelog_fwd"
+  queue.saveOnShutdown="on"
+  queue.maxDiskSpace="500m"
+)

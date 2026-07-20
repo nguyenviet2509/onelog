@@ -1,0 +1,28 @@
+# deploy-clients.yml — rollout rsyslog forwarder → OneLog log server across fleet.
+#
+# Usage:
+#   ansible-playbook deploy-clients.yml
+#   ansible-playbook deploy-clients.yml -l web         # subset
+#   ansible-playbook deploy-clients.yml --check        # dry-run
+#   ansible-playbook deploy-clients.yml -e log_server_ip=10.0.0.5
+#
+# Mirrors infra/scripts/setup-rsyslog-client.sh + deploy-client.sh but batched,
+# idempotent, and with per-host verify against VictoriaLogs.
+
+- name: Deploy OneLog rsyslog forwarder
+  hosts: onelog_clients
+  become: true
+  gather_facts: true
+  serial: "20%"        # rolling wave — cap failure blast radius at 1/5 of fleet
+  any_errors_fatal: false
+
+  vars:
+    log_server_ip: "{{ log_server_ip | default('192.168.122.53') }}"
+    log_server_port: "{{ log_server_port | default(6514) }}"
+    rsyslog_conf_path: /etc/rsyslog.d/90-forward-onelog.conf
+    # VL endpoint reachable from CONTROL NODE (where ansible runs). Verify step
+    # queries this to confirm log ingest. Set via -e or group_vars.
+    vl_query_url: "{{ vl_query_url | default('http://' + log_server_ip + ':9428/select/logsql/query') }}"
+
+  roles:
+    - onelog-client

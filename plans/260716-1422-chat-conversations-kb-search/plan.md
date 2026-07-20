@@ -3,7 +3,7 @@ name: chat-conversations-kb-search
 title: Chat Conversations → Team KB (OpenWebUI integration)
 slug: chat-conversations-kb-search
 date: 2026-07-16
-status: phase-1-completed
+status: superseded-2026-07-17
 owner: trihd@inet.vn
 mode: --fast
 pivotedAt: 2026-07-16T15:54:00+07:00
@@ -27,7 +27,9 @@ history:
   - date: 2026-07-16T14:47+07:00
     action: "Phase 1 shipped (commit 7b20851) built for custom web"
   - date: 2026-07-16T15:54+07:00
-    action: "Reverted (c8c843b) — pivoted to OpenWebUI integration"
+    action: "Reverted (c8c843b) — pivoted to OpenWebUI Function + custom web review page"
+  - date: 2026-07-17
+    action: "SUPERSEDED — /web removed entirely; KB will use OpenWebUI native Notes + Workspace → Knowledge. No Postgres, no Function, no review page. Team saves useful chat messages via OpenWebUI's built-in note button, and admin uploads curated summaries to a shared Knowledge collection."
 ---
 
 # Plan: Chat Conversations → Team KB (OpenWebUI)

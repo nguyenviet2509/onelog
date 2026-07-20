@@ -1,0 +1,57 @@
+# VictoriaMetrics scrape config — pulls /metrics from OneLog components.
+# Fed to victoriametrics service via -promscrape.config.
+#
+# Add scrape targets carefully: only endpoints that already expose Prometheus
+# metrics natively. Adding Vector requires enabling its `prometheus_exporter`
+# sink (not free — extra port + config). Deferred to Phase 2.
+
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+
+scrape_configs:
+  # Indexer — Drain3 batch/embed worker. Already exposes /metrics on :9100
+  # (see infra/docker-compose.yml → indexer.METRICS_PORT).
+  - job_name: onelog-indexer
+    static_configs:
+      - targets: ["indexer:9100"]
+        labels:
+          component: indexer
+
+  # VictoriaLogs — /metrics on :9428 (native Prometheus format).
+  - job_name: onelog-victorialogs
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["victorialogs:9428"]
+        labels:
+          component: victorialogs
+
+  # Qdrant — /metrics on :6333 (requires QDRANT__SERVICE__ENABLE_TLS=false + api-key).
+  - job_name: onelog-qdrant
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["qdrant:6333"]
+        labels:
+          component: qdrant
+
+  # vmalert — /metrics on :8880.
+  - job_name: onelog-vmalert
+    static_configs:
+      - targets: ["vmalert:8880"]
+        labels:
+          component: vmalert
+
+  # LiteLLM proxy — /metrics endpoint on :4000/metrics (Prometheus format
+  # requires config.yaml litellm_settings.callbacks: [prometheus]).
+  - job_name: onelog-litellm
+    static_configs:
+      - targets: ["litellm-proxy:4000"]
+        labels:
+          component: litellm
+
+  # VictoriaMetrics self-scrape.
+  - job_name: victoriametrics
+    static_configs:
+      - targets: ["victoriametrics:8428"]
+        labels:
+          component: victoriametrics

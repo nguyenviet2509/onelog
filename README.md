@@ -25,7 +25,6 @@ RAG-powered log server + LLM chat stack. Centralizes syslog/rsyslog JSON logs fr
 |---|---|---|
 | `victorialogs` | Log storage + LogsQL | default |
 | `qdrant` | Vector store for log-template embeddings | default |
-| `postgres` | Metadata / audit / cost logs | default |
 | `vector` | Log shipper + parser | default |
 | `nats` | JetStream — Vector→Indexer bus | default |
 | `indexer` | Drain3 cluster + embed + upsert Qdrant | `indexer` |
@@ -56,6 +55,10 @@ Then browse `http://app.local/` — see [docs/deployment-guide.md](docs/deployme
 ## Documentation
 
 - **[docs/deployment-guide.md](docs/deployment-guide.md)** — full deploy runbook, .env template, troubleshooting, rollback.
+- **[docs/deployment-fleet.md](docs/deployment-fleet.md)** — Ansible playbook for rolling out rsyslog forwarder to 50-100 clients.
+- **[docs/deployment-backup-offsite.md](docs/deployment-backup-offsite.md)** — S3/MinIO push for daily snapshots + restore drill.
+- **[docs/deployment-self-monitoring.md](docs/deployment-self-monitoring.md)** — VictoriaMetrics + Grafana + vmalert covering OneLog pipeline health.
+- **[docs/deployment-mtls.md](docs/deployment-mtls.md)** — step-ca + mTLS syslog rollout via Ansible.
 - [docs/deployment-llm-abstraction.md](docs/deployment-llm-abstraction.md) — LiteLLM proxy setup (Phase 2).
 - [docs/cost-dashboard.md](docs/cost-dashboard.md) — Grafana cost dashboard ops.
 - [docs/llm-provider-ops.md](docs/llm-provider-ops.md) — multi-provider management.
@@ -70,7 +73,6 @@ Then browse `http://app.local/` — see [docs/deployment-guide.md](docs/deployme
 ```
 onelog/
 ├─ agent/          FastAPI /chat service (Python, LiteLLM SDK)
-├─ web/            Next.js frontend (decommissioned 2026-06-24 — kept for resurrect)
 ├─ indexer/        NATS→Drain3→Qdrant worker (Python)
 ├─ mcp-semantic/   FastMCP server for semantic log-template search
 ├─ infra/          docker-compose + Caddy + Vector + vmalert + Alertmanager + Grafana
@@ -83,7 +85,7 @@ onelog/
 
 Latest audit: [plans/reports/audit-260710-0854-prod-readiness-full.md](plans/reports/audit-260710-0854-prod-readiness-full.md).
 
-Before public-domain deploy: pin image tags in `infra/.env`, enable Caddy `auto_https`, replace `app.local` references with real FQDN, set Grafana `cookie_secure=true`.
+Before public-domain deploy: pin image tags in `infra/.env` (run `bash infra/scripts/pin-images.sh` on the log server to capture currently-running tags — or `--digest` for immutable sha256 locks), enable Caddy `auto_https`, replace `app.local` references with real FQDN, set Grafana `cookie_secure=true`.
 
 ## License
 

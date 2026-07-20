@@ -88,6 +88,7 @@
     <nav class="card p-4 toc text-sm">
       <div class="h-title mb-2">Mục lục</div>
       <ol class="space-y-1.5">
+        <li><a href="#rag">0. RAG trong OneLog</a></li>
         <li><a href="#topology">1. Topology 3 VM</a></li>
         <li><a href="#components">2. Danh sách component</a></li>
         <li><a href="#ingest">3. Pipeline ghi log</a></li>
@@ -100,6 +101,93 @@
         <li><a href="#runbook">10. Runbook nhanh</a></li>
       </ol>
     </nav>
+  </section>
+
+  <!-- 0. RAG INTRO -->
+  <section id="rag" class="anchor mt-8">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-lg font-semibold"><span class="step-num">0</span> &nbsp;RAG trong OneLog — Retrieval · Augmentation · Generation</h2>
+      <span class="mut text-xs">Vì sao OneLog là "RAG Log Server"</span>
+    </div>
+
+    <div class="card p-5 mt-3">
+      <p class="mut text-sm leading-relaxed max-w-[900px]">
+        <b class="acc">RAG</b> (Retrieval-Augmented Generation) là mẫu kiến trúc kết hợp <i>tìm kiếm</i> dữ liệu ngoài với
+        <i>khả năng sinh ngôn ngữ</i> của LLM: thay vì bắt LLM "nhớ" mọi log production (bất khả thi + tốn token + lộ dữ liệu),
+        ta <b>truy hồi (retrieve)</b> đoạn log liên quan, <b>gắn (augment)</b> vào prompt làm bằng chứng, rồi để LLM
+        <b>sinh (generate)</b> câu trả lời có trích dẫn. OneLog áp dụng RAG cho log ops — tất cả offline, on-prem.
+      </p>
+
+      <!-- 3 pillars -->
+      <div class="grid grid-cols-3 gap-3 mt-4">
+        <div class="card2 p-4">
+          <div class="pill cyan">R · Retrieval</div>
+          <div class="font-semibold mt-2 text-sm">Tìm log liên quan</div>
+          <ul class="text-[12px] mut mt-2 space-y-1 leading-relaxed">
+            <li>• <b class="acc">mcp-vl</b> → LogsQL chính xác trên <b>VictoriaLogs</b> (filter service/host/level/time)</li>
+            <li>• <b class="acc">mcp-semantic</b> → semantic search trên <b>Qdrant</b> (templates đã Drain3-cluster + OpenAI embedding)</li>
+            <li>• LLM tự chọn tool tùy câu hỏi <i>precise</i> hay <i>fuzzy</i></li>
+          </ul>
+        </div>
+        <div class="card2 p-4">
+          <div class="pill vio">A · Augmentation</div>
+          <div class="font-semibold mt-2 text-sm">Bổ sung ngữ cảnh</div>
+          <ul class="text-[12px] mut mt-2 space-y-1 leading-relaxed">
+            <li>• MCP trả về <b>bằng chứng</b>: <code class="text-[11px]">[service:host:ts]</code> + sample log</li>
+            <li>• Kèm <b>VMUI link</b> để ops mở raw log gốc trong 1 click</li>
+            <li>• Audit log ghi lại từng tool call (user, query, kết quả)</li>
+          </ul>
+        </div>
+        <div class="card2 p-4">
+          <div class="pill lime">G · Generation</div>
+          <div class="font-semibold mt-2 text-sm">Sinh câu trả lời</div>
+          <ul class="text-[12px] mut mt-2 space-y-1 leading-relaxed">
+            <li>• LLM (Claude / GPT / Gemini / DeepSeek) tổng hợp thành narrative tiếng Việt</li>
+            <li>• Chạy phía <b>client</b> — Claude Desktop hoặc OpenWebUI (via LiteLLM)</li>
+            <li>• Trả lời có <b>citation</b> — không "bịa" log</li>
+          </ul>
+        </div>
+      </div>
+
+      <hr class="sep"/>
+
+      <!-- Flow -->
+      <div class="h-title mb-2">Luồng RAG một câu hỏi</div>
+      <div class="mermaid">
+flowchart LR
+  Q["Ops hỏi<br/>'mysql lỗi gì 1h qua?'"] --> LLM1["LLM chọn tool"]
+  LLM1 -->|precise| VL["mcp-vl<br/>LogsQL → VictoriaLogs"]
+  LLM1 -->|fuzzy| SEM["mcp-semantic<br/>embed → Qdrant"]
+  VL --> EV["Evidence<br/>[svc:host:ts] + VMUI link"]
+  SEM --> EV
+  EV --> LLM2["LLM sinh câu trả lời<br/>+ citation"]
+  LLM2 --> ANS["Ops đọc + click VMUI<br/>xem raw log"]
+      </div>
+
+      <hr class="sep"/>
+
+      <!-- Why -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <div class="h-title mb-2">Vì sao RAG hợp với log ops</div>
+          <ul class="text-[12px] mut space-y-1 leading-relaxed">
+            <li>✅ <b>Không leak</b>: log ở lại on-prem, chỉ gửi <b>đoạn evidence</b> lên LLM</li>
+            <li>✅ <b>Rẻ</b>: không cần fine-tune model theo log của bạn</li>
+            <li>✅ <b>Fresh</b>: index mới liên tục — hỏi ngay log 5 phút trước</li>
+            <li>✅ <b>Kiểm chứng được</b>: mọi câu trả lời có link VMUI để verify</li>
+          </ul>
+        </div>
+        <div>
+          <div class="h-title mb-2">Điểm khác RAG "vanilla"</div>
+          <ul class="text-[12px] mut space-y-1 leading-relaxed">
+            <li>🔀 <b>Hybrid retrieval</b>: LogsQL <i>precise</i> + vector <i>fuzzy</i> chạy song song, không chỉ vector</li>
+            <li>🧩 <b>Template-first</b>: index <i>Drain3 templates</i> (đã gom nhóm) thay vì raw log — giảm nhiễu, tăng recall</li>
+            <li>🛰️ <b>MCP transport</b>: retrieval được đóng gói thành MCP tools — cắm được Claude Desktop, OpenWebUI, IDE</li>
+            <li>🔒 <b>Bearer + IP whitelist</b>: gatekeep bởi Caddy trước khi vào retrieval layer</li>
+          </ul>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- 1. TOPOLOGY -->
@@ -131,7 +219,6 @@ flowchart LR
     OWU["openwebui :8090<br/>(webui.local)<br/>NEW 2026-07"]
     CAD["Caddy 80/443<br/>app.local + webui.local + admin.webui.local<br/>IP allowlist + Bearer"]
     GF["grafana :3000<br/>(admin.webui.local)<br/>LLM cost UI · profile=dashboard<br/>NEW 2026-07"]
-    DECOM["web Next.js :3000<br/>(decommissioned)"]
   end
   CL["Claude Desktop<br/>(ops laptop)<br/>mcp-remote bridge"]
   OW["Browser<br/>(webui.local)"]
@@ -168,7 +255,7 @@ flowchart LR
         <span><i class="pill cyan">cyan</i> &nbsp;đường chính xác (mcp-vl)</span>
         <span><i class="pill vio">vio</i> &nbsp;đường ngữ nghĩa (mcp-semantic)</span>
         <span><i class="pill lime">lime</i> &nbsp;lưu trữ</span>
-        <span><i class="pill amber">amber</i> &nbsp;ingress · đã gỡ bỏ</span>
+        <span><i class="pill amber">amber</i> &nbsp;ingress</span>
       </div>
     </div>
   </section>
@@ -188,14 +275,6 @@ flowchart LR
       </div>
     </div>
 
-    <!-- Legacy web decommission (still valid) -->
-    <div class="mt-2 card p-3 flex items-start gap-3" style="border-color:#2a1f06;background:linear-gradient(180deg,#1a1407,#0e0e12)">
-      <span class="pill amber mt-0.5">VẪN ĐÃ GỠ BỎ</span>
-      <div class="text-[12px] leading-relaxed mut">
-        Web UI (Next.js :3000) vẫn commented trong <code>docker-compose.yml</code>. Chức năng chat đã thay bằng OpenWebUI (subdomain webui.local). Code <code>web/</code> giữ trên master để resurrect nếu cần. Redis (cache cho web cũ) cũng chưa reactivate.
-      </div>
-    </div>
-
     <div class="card mt-3 p-2">
       <table class="k">
         <thead>
@@ -205,7 +284,6 @@ flowchart LR
           <tr><td><span class="pill amber">vector</span></td><td>514/udp · 6514/tcp · 6515/tcp-json · 8686</td><td>Nhận syslog (UDP/TCP) + JSON ECS-lite (6515), enrich → redact PII → ghi VL (all) + NATS (WARN+ only)</td><td>Agent đơn thay rsyslog/fluentd; pipeline VRL khai báo; TLS = roadmap</td></tr>
           <tr><td><span class="pill lime">victorialogs</span></td><td>9428</td><td>Lưu trữ log time-series, query LogsQL, ít RAM</td><td>10× rẻ ELK với log dạng line; native LogsQL</td></tr>
           <tr><td><span class="pill vio">qdrant</span></td><td>6333 (127.0.0.1)</td><td>Vector DB cho semantic search template log</td><td>Rust, single-binary, payload filter mạnh</td></tr>
-          <tr><td><s><span class="pill gray">postgres</span></s></td><td><s>5432</s></td><td colspan="2" class="mut">Decommissioned 2026-07-13. Legacy Next.js web + old agent. Không service nào ghi từ 2026-06-24. Audit trail giờ = JSON Lines file (mcp-semantic). Compose block commented, data dumped.</td></tr>
           <tr><td><span class="pill gray">nats</span></td><td>4222</td><td>JetStream subject <code>logs.warn</code> (WARN+ events) cho indexer pull-consume</td><td>Đảm bảo giao nhận ít nhất 1 lần, tách biệt vector ↔ indexer</td></tr>
           <tr><td><span class="pill cyan">indexer</span></td><td>—</td><td>Subscribe NATS → drain3 template → embed → upsert Qdrant</td><td>Bất đồng bộ, điều tiết theo chi phí embedding API</td></tr>
           <tr><td><span class="pill cyan">mcp-vl</span></td><td>SSE (qua Caddy)</td><td>Server <code>mcp-victorialogs</code> chính chủ — expose LogsQL tools (query / hits / stats_query)</td><td>Đường tìm kiếm chính xác; không cần tự code</td></tr>
@@ -220,7 +298,6 @@ flowchart LR
           <tr><td colspan="4" class="mut text-[11px] pt-3"><b class="acc">━━ Dashboard (opt-in profile=dashboard · deployed 2026-07) ━━</b></td></tr>
           <tr><td><span class="pill" style="background:#1a2a1a;color:#a3e635">grafana</span></td><td>3000 (127.0.0.1)</td><td>Grafana OSS 11.4 · dashboard LLM cost (per provider/user/model, DeepSeek balance) · datasource VictoriaLogs qua plugin <code>victoriametrics-logs-datasource</code> · access <code>admin.webui.local</code></td><td>Dashboard-as-code (JSON provisioned), plugin đọc LogsQL trực tiếp — không cần ETL sang Prometheus</td></tr>
           <tr><td><span class="pill" style="background:#1a2a1a;color:#a3e635">sqlite-web</span></td><td>8085 (127.0.0.1)</td><td>Read-only browser cho OpenWebUI SQLite (<code>webui.db</code>) — grep chat khi support user</td><td>Debug UI nhẹ, không cần cài client; localhost only</td></tr>
-          <tr><td colspan="4" class="mut text-[11px]"><span class="pill amber">decommissioned 2026-06-24</span> &nbsp;<s>web (Next.js :3000)</s> · <s>rag-agent FastAPI :8000</s> · <s>redis cache (2026-07-13, DBSIZE=0)</s> · <s>postgres (2026-07-13, legacy Next.js data only)</s> → code giữ trong repo, comment-out trong docker-compose, branch <code>legacy-web</code> snapshot.</td></tr>
         </tbody>
       </table>
     </div>
@@ -438,9 +515,7 @@ payload: {
   "result_size": 5,
   "latency_ms": 87
 }
-// Append-only · rotate by host logrotate.
-// Postgres decom 2026-07-13 (audit_log
-// table unused since 2026-06-24).</pre>
+// Append-only · rotate by host logrotate.</pre>
       </div>
     </div>
   </section>
@@ -584,16 +659,8 @@ sequenceDiagram
         <p class="mut text-sm mt-2">Plan 260701-1544 (LLM Provider Abstraction): mở đường thay 4 provider (Claude/GPT/Gemini/DeepSeek) qua 1 env var để giảm cost (Gemini Flash raw ~12% Claude). Agent restored với LiteLLM adapter thay Anthropic direct SDK — API <code>/chat</code> SSE dùng lại cho integration ngoài. OpenWebUI cho team ops muốn UI web thay Claude Desktop (không phải bắt buộc migrate). Cả 2 UX song song, chọn 1 trong 2 hoặc cả 2.</p>
       </details>
       <details class="p-4">
-        <summary class="flex justify-between items-center"><span>Vì sao trước đây bỏ web UI + rag-agent? Chỉ dùng MCP qua Claude Desktop?</span><span class="mut">↕</span></summary>
-        <p class="mut text-sm mt-2">Phase 02 (2026-06-24): decommission Next.js web + FastAPI agent (Anthropic direct SDK) vì duplicate cost với Claude Team subscription. Chỉ giữ 2 MCP server thin. Đến 2026-07, agent restored vì có LiteLLM abstraction — không còn hard-code 1 provider, có thể dùng key rẻ hơn. Web UI cũ vẫn commented, thay bằng OpenWebUI (off-the-shelf).</p>
-      </details>
-      <details class="p-4">
         <summary class="flex justify-between items-center"><span>Tách 2 MCP server (vl + semantic) thay vì gộp 1?</span><span class="mut">↕</span></summary>
         <p class="mut text-sm mt-2">Để Claude tự routing theo intent. mcp-vl chạy LogsQL trực tiếp (nhanh, rẻ, không embed). mcp-semantic phải embed query (chậm hơn, có cost). Tách giúp audit + rate-limit theo loại, và mcp-vl tận dụng upstream <code>mcp-victorialogs</code> không phải code.</p>
-      </details>
-      <details class="p-4">
-        <summary class="flex justify-between items-center"><span>Resurrect web UI khi cần?</span><span class="mut">↕</span></summary>
-        <p class="mut text-sm mt-2">Uncomment 2 block <code>web</code> + <code>agent</code> trong <code>infra/docker-compose.yml</code>, set <code>ANTHROPIC_API_KEY</code> trong <code>.env</code>, chạy <code>docker compose --profile web --profile agent up -d</code>. Drill: <code>infra/scripts/resurrect-drill.sh</code>. Branch <code>legacy-web</code> giữ snapshot bootable.</p>
       </details>
       <details class="p-4">
         <summary class="flex justify-between items-center"><span>Vì sao Qdrant lưu <i>template</i> chứ không phải từng log line?</span><span class="mut">↕</span></summary>
@@ -623,7 +690,7 @@ sequenceDiagram
   </nav>
 
   <footer class="mt-10 pt-5 border-t border-[#1f1f25] flex items-center justify-between text-xs mut">
-    <span>OneLog · system explainer · 2026-07-10</span>
+    <span>OneLog · system explainer · 2026-07-17</span>
     <span>Đọc kèm: <code>docs/deployment-guide.md</code> · <code>docs/deployment-llm-abstraction.md</code> · <code>docs/mcp-setup-guide.md</code> · <code>docs/onelog-team-project-guide.md</code></span>
   </footer>
 </div>

@@ -32,11 +32,13 @@ else
   fail "qdrant unhealthy"
 fi
 
-# Postgres
-if docker exec ragstack-postgres pg_isready -U "${POSTGRES_USER:-rag}" >/dev/null 2>&1; then
-  ok "postgres pg_isready"
-else
-  fail "postgres not ready"
+# Postgres — decommissioned 2026-07-17. Skip unless running (future resurrect).
+if docker ps --format '{{.Names}}' | grep -q '^ragstack-postgres$'; then
+  if docker exec ragstack-postgres pg_isready -U "${POSTGRES_USER:-rag}" >/dev/null 2>&1; then
+    ok "postgres pg_isready"
+  else
+    fail "postgres not ready"
+  fi
 fi
 
 # Redis (only if running — profile=agent)

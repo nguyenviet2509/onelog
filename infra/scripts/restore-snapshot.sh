@@ -5,10 +5,26 @@
 
 set -euo pipefail
 
-ARCHIVE="${1:?usage: restore-snapshot.sh <archive.tar.gz>  (set FORCE=1 to skip prompt)}"
+ARCHIVE="${1:?usage: restore-snapshot.sh <archive.tar.gz | s3://bucket/key>  (set FORCE=1 to skip prompt)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STAGE="$(mktemp -d -t ragrestore.XXXXXX)"
+
+# S3 URI shortcut — download to /tmp first, then continue with local path.
+# Uses same BACKUP_S3_ENDPOINT env as snapshot-daily.sh.
+if [[ "$ARCHIVE" == s3://* ]]; then
+  if ! command -v aws >/dev/null 2>&1; then
+    echo "[restore] ERROR: aws cli missing for S3 URI" >&2; exit 4
+  fi
+  # Load env early so endpoint URL resolves.
+  [[ -f "$INFRA_DIR/.env" ]] && { set -a; . "$INFRA_DIR/.env"; set +a; }
+  S3_ENDPOINT_ARG=()
+  [[ -n "${BACKUP_S3_ENDPOINT:-}" ]] && S3_ENDPOINT_ARG+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+  LOCAL_COPY="/tmp/$(basename "$ARCHIVE")"
+  echo "[restore] fetch $ARCHIVE → $LOCAL_COPY"
+  aws "${S3_ENDPOINT_ARG[@]}" s3 cp "$ARCHIVE" "$LOCAL_COPY" --only-show-errors
+  ARCHIVE="$LOCAL_COPY"
+fi
 
 if [[ "${FORCE:-0}" != "1" ]]; then
   echo "[restore] DESTRUCTIVE: this will overwrite victorialogs / qdrant / postgres data."
@@ -31,7 +47,8 @@ cd "$INFRA_DIR"
 
 # --- 1. Stop affected services ---
 echo "[restore] stop victorialogs, qdrant, postgres"
-docker compose stop victorialogs qdrant postgres || true
+docker compose stop victorialogs qdrant || true
+docker compose --profile kb stop postgres 2>/dev/null || true
 
 # --- 2. VictoriaLogs ---
 if [[ -f "$STAGE/victorialogs.tar" ]]; then
@@ -65,10 +82,10 @@ if [[ -d "$STAGE/qdrant" ]]; then
   done
 fi
 
-# --- 4. Postgres ---
+# --- 4. Postgres — only when archive has a dump ---
 if [[ -f "$STAGE/postgres-rag.sql" ]]; then
   echo "[restore] postgres rag db"
-  docker compose up -d postgres
+  docker compose --profile kb up -d postgres
   for i in $(seq 1 30); do
     if docker exec ragstack-postgres pg_isready -U "${POSTGRES_USER:-rag}" >/dev/null 2>&1; then break; fi
     sleep 1

@@ -1,0 +1,49 @@
+# tls.yml — install client cert bundle + rsyslog-gnutls when enable_tls=true.
+#
+# Assumes certs are ALREADY issued (via step-ca or your CA of choice) and
+# staged on the Ansible control node at:
+#   {{ tls_cert_src_dir }}/{{ inventory_hostname }}.crt
+#   {{ tls_cert_src_dir }}/{{ inventory_hostname }}.key
+#   {{ tls_cert_src_dir }}/ca.crt
+#
+# See docs/deployment-mtls.md for the cert issuance workflow.
+
+- name: Install rsyslog GnuTLS driver
+  ansible.builtin.package:
+    name: rsyslog-gnutls
+    state: present
+
+- name: Ensure /etc/rsyslog.d/tls directory
+  ansible.builtin.file:
+    path: /etc/rsyslog.d/tls
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Copy CA certificate
+  ansible.builtin.copy:
+    src: "{{ tls_cert_src_dir }}/ca.crt"
+    dest: /etc/rsyslog.d/tls/ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart rsyslog
+
+- name: Copy client certificate
+  ansible.builtin.copy:
+    src: "{{ tls_cert_src_dir }}/{{ inventory_hostname }}.crt"
+    dest: /etc/rsyslog.d/tls/client.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart rsyslog
+
+- name: Copy client private key
+  ansible.builtin.copy:
+    src: "{{ tls_cert_src_dir }}/{{ inventory_hostname }}.key"
+    dest: /etc/rsyslog.d/tls/client.key
+    owner: root
+    group: root
+    mode: "0400"
+  notify: restart rsyslog

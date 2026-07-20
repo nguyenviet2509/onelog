@@ -640,12 +640,15 @@ EOF
   <div class="step">
     <div class="step-num">11</div>
     <div class="step-body">
-      <div class="step-title">Tạo tài khoản admin OpenWebUI + khóa signup</div>
-      <div class="step-desc">2 dòng ENV vào .env, restart openwebui, verify log tạo admin, rồi comment lại để lock.</div>
-      <div class="cmd"><span class="prompt">$</span> <span class="comment"># Dùng single quotes để bash không expand `!` (history expansion) trong password</span>
-printf '\nOPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local\nOPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe2026!\n' >> .env && docker compose --profile chat restart openwebui && sleep 30 && docker compose --profile chat logs openwebui --tail=10 | grep -i admin</div>
-      <div class="cmd" style="margin-top:6px"><span class="prompt">$</span> <span class="comment"># Sau khi verify + đổi password → lock signup</span>
-sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env && docker compose --profile chat restart openwebui</div>
+      <div class="step-title">Tạo tài khoản admin OpenWebUI (qua form)</div>
+      <div class="step-desc">OpenWebUI 0.10.x <b>không</b> support env-var bootstrap admin. Khi DB rỗng, form "Create Admin Account" tự hiện ở <code>/auth</code> — bypass <code>ENABLE_SIGNUP=false</code> cho user #0. Sau đó signup bị khóa, chỉ invite được.</div>
+      <div class="cmd"><span class="prompt">$</span> <span class="comment"># 1. Mở browser: https://webui.local  → form Create Admin Account tự hiện</span>
+<span class="comment"># 2. Nhập Name / Email (vd admin@onelog.local) / Password mạnh → Create</span>
+<span class="comment"># 3. First user tự nhận role admin. Signup lock cho user tiếp theo.</span></div>
+      <div class="cmd" style="margin-top:6px"><span class="prompt">$</span> <span class="comment"># Nếu lỡ tạo sai password hoặc muốn reset về form trống:</span>
+docker exec ragstack-openwebui cp /app/backend/data/webui.db /app/backend/data/webui.db.bak
+docker exec ragstack-openwebui sh -c 'sqlite3 /app/backend/data/webui.db "DELETE FROM auth; DELETE FROM user;"'
+docker compose --profile chat restart openwebui</div>
     </div>
   </div>
 

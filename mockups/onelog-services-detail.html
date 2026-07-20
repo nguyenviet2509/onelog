@@ -1088,8 +1088,8 @@ ENABLE_SIGNUP=false
 ENABLE_MCP=true
 MCP_CONFIG_PATH=/app/backend/data/mcp-config.json
 MCP_TOKEN_OPENWEBUI=sk-mcp-openwebui-*
-WEBUI_ADMIN_EMAIL/PASSWORD=${...:-}
-  # empty = skip; set once khi bootstrap</pre>
+  # First admin: dùng form /auth (auto khi DB rỗng),
+  # 0.10.x không hỗ trợ env-var bootstrap admin.</pre>
         <div class="h-title mt-3">Volumes</div>
         <div class="text-[12px] mut">SQLite <code>data/openwebui/</code> · mount <code>openwebui/mcp-config.json</code></div>
       </div>

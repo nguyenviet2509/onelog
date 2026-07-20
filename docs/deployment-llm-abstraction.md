@@ -114,29 +114,17 @@ sed -i 's/^LLM_MOCK=true/LLM_MOCK=false/' .env
 
 ## Bootstrap admin OpenWebUI
 
-Chỉ động `.env`, KHÔNG động `docker-compose.yml`.
+OpenWebUI 0.10.x **không** hỗ trợ env-var bootstrap admin. Cách chuẩn:
 
+1. Mở browser: `https://webui.local` → khi DB rỗng, form **Create Admin Account** tự hiện tại `/auth` (bypass `ENABLE_SIGNUP=false` cho user #0).
+2. Nhập Name / Email / Password mạnh → Create.
+3. First user tự nhận role admin. Signup lock cho user tiếp theo (chỉ invite được).
+
+Nếu lỡ tạo sai / muốn reset về form trống:
 ```bash
-# Set 2 dòng trong .env
-cat >> .env <<'EOF'
-
-OPENWEBUI_BOOTSTRAP_ADMIN_EMAIL=admin@onelog.local
-OPENWEBUI_BOOTSTRAP_ADMIN_PASSWORD=ChangeMe2026!
-EOF
-
+docker exec ragstack-openwebui cp /app/backend/data/webui.db /app/backend/data/webui.db.bak
+docker exec ragstack-openwebui sh -c 'sqlite3 /app/backend/data/webui.db "DELETE FROM auth; DELETE FROM user;"'
 docker compose --profile chat restart openwebui
-sleep 30
-docker compose --profile chat logs openwebui --tail=10 | grep -i admin
-# → "Admin account created successfully: admin@onelog.local"
-```
-
-Login `http://webui.local/` → **Settings → Account → Change password** (đổi khỏi bootstrap).
-
-Lock signup:
-```bash
-sed -i 's|^OPENWEBUI_BOOTSTRAP_ADMIN|# OPENWEBUI_BOOTSTRAP_ADMIN|' .env
-docker compose --profile chat restart openwebui
-# ENV empty → OpenWebUI skip admin creation
 ```
 
 ---

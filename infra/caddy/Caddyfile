@@ -97,9 +97,13 @@
         #         flush_interval -1   # streaming SSE — no buffering
         #     }
         # }
-        # Fallback for any unmatched path — landing note pointing at MCP guides.
+        # Root → OpenWebUI. All more-specific handles above (/select/*, /vmui/,
+        # /mcp/*, /llm/*, /insert/*, /grafana*, /health, /metrics) match first.
+        # This lets ops reach chat UI at http://<vps-ip>/ without a hosts entry.
         handle {
-            respond "onelog: web UI deprecated — use Claude Desktop + MCP. See docs/mcp-setup-guide.md" 410
+            reverse_proxy openwebui:8080 {
+                flush_interval -1
+            }
         }
     }
     handle {

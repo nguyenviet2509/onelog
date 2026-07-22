@@ -55,17 +55,30 @@ emit() {
     --arg svc "provider_cost" \
     --arg p   "$provider" \
     '. + {_time: $ts, service: $svc, provider: $p}')
-  # logger: tag=provider_cost → rsyslog routes to Vector :6514.
-  # -t sets the syslog tag (appname). Message must NOT contain raw API keys.
-  logger -t provider_cost "$msg"
+  # logger: tag=provider_cost → Vector filter_provider_cost picks up on syslog_tcp
+  # source. TCP RFC5424 required — Vector's filter transform tests .appname
+  # which only populates from RFC5424 STRUCTURED-DATA / app-name.
+  # SYSLOG_TARGET_HOST/PORT (default empty) sends direct TCP to Vector :6514
+  # bypassing any local rsyslog forwarder. Set on hosts without rsyslog:
+  #   SYSLOG_TARGET_HOST=127.0.0.1 bash poll-provider-cost.sh
+  if [[ -n "${SYSLOG_TARGET_HOST:-}" ]]; then
+    logger -n "${SYSLOG_TARGET_HOST}" -P "${SYSLOG_TARGET_PORT:-6514}" -T --rfc5424 -t provider_cost "$msg"
+  else
+    logger -t provider_cost "$msg"
+  fi
 }
 
 # warn: emit a plain syslog warning for failed provider (user.warn facility).
 # Args: $1=provider_name  $2=reason_string
 warn() {
   local provider="$1" reason="$2"
-  logger -t provider_cost -p user.warn \
-    "provider=${provider} status=fail msg=\"${reason}\""
+  if [[ -n "${SYSLOG_TARGET_HOST:-}" ]]; then
+    logger -n "${SYSLOG_TARGET_HOST}" -P "${SYSLOG_TARGET_PORT:-6514}" -T --rfc5424 -t provider_cost -p user.warn \
+      "provider=${provider} status=fail msg=\"${reason}\""
+  else
+    logger -t provider_cost -p user.warn \
+      "provider=${provider} status=fail msg=\"${reason}\""
+  fi
 }
 
 # curl_api: thin wrapper enforcing timeout + silent mode.

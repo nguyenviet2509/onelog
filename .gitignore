@@ -6,6 +6,11 @@ infra/litellm/.env.cost
 infra/docker-compose.override.yml
 infra/victoriametrics/scrape.yml
 
+# Ad-hoc session scripts under plans/reports/ (deploy/debug throwaways).
+# .md reports/audits stay tracked as design records. If a .sh proves
+# reusable, promote it to infra/scripts/ instead of keeping here.
+plans/reports/*.sh
+
 # Backups & dumps — chứa data user / hashed passwords / secrets snapshot.
 # 2026-07-13: postgres-legacy-*.sql (28KB) dumped vào backups/ khi decom PG.
 # KHÔNG commit — nếu cần archive, upload offsite (S3/1Password/keepass).

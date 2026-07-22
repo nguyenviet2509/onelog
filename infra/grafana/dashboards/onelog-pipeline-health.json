@@ -26,18 +26,18 @@
     },
     {
       "id": 2,
-      "title": "Indexer NATS lag (undelivered msgs)",
+      "title": "Indexer NATS lag (seconds) + batches/s",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
       "targets": [
         {
-          "expr": "onelog_indexer_nats_pending or vector(0)",
-          "legendFormat": "pending",
+          "expr": "indexer_ingest_lag_seconds or vector(0)",
+          "legendFormat": "lag (s)",
           "refId": "A"
         },
         {
-          "expr": "rate(onelog_indexer_batches_total[1m])",
+          "expr": "rate(indexer_batches_processed_total[1m])",
           "legendFormat": "batches/s",
           "refId": "B"
         }
@@ -51,7 +51,7 @@
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
       "targets": [
         {
-          "expr": "qdrant_collections_vector_total{collection=\"log_templates\"}",
+          "expr": "collection_points{id=\"log_templates\"} or vector(0)",
           "refId": "A"
         }
       ]

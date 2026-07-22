@@ -191,7 +191,11 @@ groups:
     interval: 30s
     rules:
       - alert: ScrapeTargetDown
-        expr: up{job=~"onelog-.*"} == 0
+        # Catches non-critical targets (vmalert self, future add-ons). Critical
+        # data-path services (litellm/victorialogs/qdrant/indexer) handled by
+        # CriticalServiceDown with tighter `for: 1m` — exclude here to avoid
+        # duplicate pages. Host handled by NodeExporterDown.
+        expr: up{job=~"onelog-.*", job!~"onelog-(litellm|victorialogs|qdrant|indexer|host)"} == 0
         for: 3m
         labels:
           severity: warning
@@ -212,4 +216,20 @@ groups:
           component: host
         annotations:
           summary: "node-exporter DOWN — host telemetry lost on {{ $labels.instance }}"
+
+      - alert: CriticalServiceDown
+        # Fast-fire rule for data-path services: LLM proxy, log ingest, vector
+        # DB, indexer. `for: 1m` — user impact is immediate when these are down
+        # (chat 502, log lost, embed queue backing up), so we accept a slightly
+        # noisier signal in exchange for < 90s time-to-page.
+        # Non-critical (vmalert self, host — covered separately) not listed.
+        expr: up{job=~"onelog-(litellm|victorialogs|qdrant|indexer)"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: monitoring
+          component: host
+        annotations:
+          summary: "CRITICAL: {{ $labels.job }} DOWN > 1m ({{ $labels.instance }})"
+          description: "Data-path service unavailable — user-facing impact. `docker ps | grep {{ $labels.job }}` and `docker logs` immediately."
           description: "All host alerts blind until this recovers. `docker restart ragstack-node-exporter`."

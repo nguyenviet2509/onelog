@@ -77,19 +77,36 @@ echo "QDRANT_API_KEY=$(openssl rand -hex 24)"
 echo "REDIS_PASSWORD=$(openssl rand -hex 24)"
 vi .env    # paste secrets + provider API keys (nếu có)
 
-# 6. Deploy full stack
-docker compose --profile agent --profile mcp --profile alerts --profile indexer \
-  pull
-docker compose --profile agent --profile mcp --profile alerts --profile indexer \
-  up -d
-sleep 30
-docker compose --profile agent --profile mcp --profile alerts --profile indexer \
-  ps
+# 6. Render VM scrape config (secrets from .env → scrape.yml)
+bash infra/scripts/render-scrape.sh
 
-# 7. Systemd auto-restart
+# 7. (Optional) sub-path deploy behind Caddy at bare-IP endpoints
+cp infra/docker-compose.override.yml.example infra/docker-compose.override.yml
+# edit GF_SERVER_ROOT_URL to your VPS reachable URL
+
+# 8. Deploy full stack (all profiles + host monitoring)
+PROFILES="--profile agent --profile mcp --profile alerts --profile indexer \
+--profile chat --profile llm --profile dashboard --profile monitoring"
+docker compose $PROFILES pull
+docker compose $PROFILES up -d
+sleep 30
+docker compose $PROFILES ps
+
+# 9. Systemd auto-restart
 sudo bash infra/scripts/install-systemd-unit.sh
 sudo systemctl status ragstack --no-pager
 ```
+
+### Access URLs (bare-IP deploy)
+
+| Path | Service |
+|---|---|
+| `http://<vps-ip>/` | OpenWebUI (chat) |
+| `http://<vps-ip>/grafana/` | Grafana (login: admin / `$GRAFANA_ADMIN_PASSWORD`) |
+| `http://<vps-ip>/vmui/` | VictoriaLogs UI |
+| `http://<vps-ip>/llm/v1/*` | LiteLLM proxy (Bearer master key) |
+| `http://<vps-ip>/mcp/vl/`, `/mcp/semantic/` | MCP servers (Bearer) |
+| `<vps-ip>:514/udp`, `:6514/tcp` | Syslog ingest |
 
 Nếu deploy thêm LLM abstraction (LiteLLM + OpenWebUI), xem [deployment-llm-abstraction.md](deployment-llm-abstraction.md).
 

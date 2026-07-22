@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · Grafana Monitoring Guide</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--warn:#fbbf24;
+    --ok:#34d399;--err:#f87171;--vio:#c4b5fd;--lime:#86efac;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)} .acc{color:var(--acc)} .ok{color:var(--ok)}
+  .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)} .lime{color:var(--lime)}
+  .h-title{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  pre,code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.err{background:#3a0f0f;color:#f87171}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .cmd{background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;padding:10px 12px;
+       font-family:ui-monospace;font-size:12px;color:#cffafe;white-space:pre-wrap;word-break:break-word}
+  .cmd .c{color:#5f5f6b} .cmd .k{color:#c4b5fd} .cmd .s{color:#86efac}
+  table.k{width:100%;font-size:12.5px;border-collapse:collapse}
+  table.k th,table.k td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+  table.k td.mono{white-space:nowrap;color:#7dd3fc}
+  .panel{background:#0e0e12;border:1px solid var(--line);border-radius:10px;padding:14px}
+  .panel h4{font-size:14px;font-weight:700;margin:0 0 4px}
+  .panel .metric{font-size:11px;color:#7dd3fc;font-family:ui-monospace}
+  .threshold{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .thr{padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600}
+  .thr.ok{background:#0c2a12;color:#86efac}
+  .thr.warn{background:#2a1f06;color:#fbbf24}
+  .thr.crit{background:#3a0f0f;color:#f87171}
+  .anchor{scroll-margin-top:24px}
+  .num-pill{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+    border-radius:50%;background:#1f1a3a;color:#c4b5fd;font-size:11px;font-weight:700}
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="max-w-6xl mx-auto p-6">
+
+  <!-- Header -->
+  <header class="mb-8">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="h-title">OneLog · Ops Guide</div>
+        <h1 class="text-3xl font-black tracking-tight mt-1">Grafana Monitoring — Đọc &amp; Xử lý</h1>
+        <p class="mut text-sm mt-2 max-w-3xl">Hướng dẫn ops đọc 2 dashboard chính của OneLog: <b class="acc">Pipeline Health</b> và <b class="acc">VPS Host</b>. Kèm ngưỡng cần lưu ý, dấu hiệu sớm, và cách xử lý khi bất thường.</p>
+      </div>
+      <div class="text-right text-xs mut">
+        <div>Version: 2026-07-22</div>
+        <div>Stack: VictoriaMetrics + node_exporter + Grafana 11.4</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Access + auth -->
+  <section class="card p-5 mb-6">
+    <div class="h-title mb-3">Truy cập</div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <table class="k">
+          <tr><th>Dashboard</th><th>URL</th></tr>
+          <tr><td>Pipeline Health</td><td class="mono">http://10.200.0.30/grafana/d/onelog-pipeline-health</td></tr>
+          <tr><td>VPS Host</td><td class="mono">http://10.200.0.30/grafana/d/onelog-vps-host</td></tr>
+          <tr><td>LLM Cost</td><td class="mono">http://10.200.0.30/grafana/d/llm-cost-overview</td></tr>
+        </table>
+      </div>
+      <div class="card2 p-4">
+        <div class="h-title mb-2">Login</div>
+        <div class="text-sm">User <span class="mono acc">admin</span> · password lấy từ VPS:</div>
+        <div class="cmd mt-2"><span class="c"># trên máy dev</span>
+ssh onelog-vps <span class="s">"grep ^GRAFANA_ADMIN_PASSWORD /opt/onelog/infra/.env"</span></div>
+        <div class="mut text-xs mt-2">Chỉ IP trong <span class="mono">10.0.0.0/8</span> đi được vào Caddy.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard 1 -->
+  <section class="mb-6 anchor" id="pipeline">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">1</span>
+      <h2 class="text-xl font-bold">Pipeline Health — sức khoẻ đường log</h2>
+      <span class="pill cyan">refresh 30s</span>
+      <span class="pill gray">Last 15m khuyến nghị</span>
+    </div>
+    <p class="mut text-sm mb-4 max-w-3xl">Xem 1 lượt hàng sáng để chắc pipeline log vẫn chạy. Bất kỳ panel nào "No data" hoặc trend bất thường &rarr; điều tra.</p>
+
+    <div class="grid md:grid-cols-2 gap-3">
+      <div class="panel">
+        <h4>Ingest rate (VL, bytes/s)</h4>
+        <div class="metric">rate(vl_bytes_ingested_total[1m])</div>
+        <p class="text-sm mut mt-2">Tốc độ log Vector đẩy vào VictoriaLogs. Zero &rarr; syslog client mất kết nối hoặc Vector chết. Spike đột biến &rarr; loop log hoặc app đổ debug.</p>
+        <div class="threshold">
+          <span class="thr ok">bình thường 0.5–5 MB/s</span>
+          <span class="thr warn">&gt;20 MB/s: check spam</span>
+          <span class="thr crit">= 0 &gt; 5 phút</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Indexer NATS lag (seconds) + batches/s</h4>
+        <div class="metric">indexer_ingest_lag_seconds · rate(indexer_batches_processed_total[1m])</div>
+        <p class="text-sm mut mt-2">Lag = giây log nằm trong NATS chưa được embed. batches/s = throughput indexer. Lag tăng đều &rarr; embed chậm (OpenAI rate limit, mạng chậm) hoặc load quá cao.</p>
+        <div class="threshold">
+          <span class="thr ok">lag &lt; 30s</span>
+          <span class="thr warn">30–120s: watch</span>
+          <span class="thr crit">&gt; 300s: escalate</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Qdrant collection points (log_templates)</h4>
+        <div class="metric">collection_points{id="log_templates"}</div>
+        <p class="text-sm mut mt-2">Số template log đã cluster + embed. Tăng đều = indexer hoạt động. Chững lại vài giờ = indexer treo hoặc embed API 4xx/5xx.</p>
+        <div class="threshold">
+          <span class="thr ok">tăng theo giờ</span>
+          <span class="thr warn">phẳng 30 phút</span>
+          <span class="thr crit">giảm bất thường</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>VL storage (GB)</h4>
+        <div class="metric">vl_data_size_bytes / 1024^3</div>
+        <p class="text-sm mut mt-2">Dung lượng VictoriaLogs. Tăng đều theo retention (mặc định 7d). Nếu tăng vọt &rarr; app đổ log lỗi lặp.</p>
+        <div class="threshold">
+          <span class="thr ok">tăng chậm, ổn định sau 7d</span>
+          <span class="thr warn">gấp 2× baseline/ngày</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Component up</h4>
+        <div class="metric">up{job=~"onelog-.*"}</div>
+        <p class="text-sm mut mt-2">Trạng thái scrape /metrics của mỗi service. DOWN trong &gt; 2 phút = container hoặc endpoint có vấn đề. Xoá series stale nếu target đã đổi.</p>
+        <div class="threshold">
+          <span class="thr ok">tất cả UP</span>
+          <span class="thr crit">bất kỳ DOWN</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Recent alerts (vmalert)</h4>
+        <div class="metric">ALERTS{alertstate="firing"}</div>
+        <p class="text-sm mut mt-2">Alert đang firing. Rỗng = OK. Có alert &rarr; đọc labels (severity, service, mount) để hành động; Telegram cũng đã push song song.</p>
+        <div class="threshold">
+          <span class="thr ok">bảng rỗng</span>
+          <span class="thr crit">severity=critical</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Host sparkline (CPU / RAM / net)</h4>
+        <div class="metric">3 stat panels, click drill-down &rarr; VPS Host</div>
+        <p class="text-sm mut mt-2">Cover VPS-level. Đỏ ở đây trước khi pipeline bị ảnh hưởng &rarr; xử lý host trước.</p>
+        <div class="threshold">
+          <span class="thr ok">CPU &lt; 70% · RAM &lt; 75%</span>
+          <span class="thr warn">70–85%</span>
+          <span class="thr crit">&gt; 90%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard 2 -->
+  <section class="mb-6 anchor" id="host">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">2</span>
+      <h2 class="text-xl font-bold">VPS Host — CPU / RAM / mạng / đĩa</h2>
+      <span class="pill cyan">refresh 30s</span>
+      <span class="pill gray">Last 1h khuyến nghị</span>
+    </div>
+    <p class="mut text-sm mb-4 max-w-3xl">Khi Pipeline Health báo bất thường mà không rõ nguyên nhân, mở dashboard này. Cũng dùng cho capacity planning (khi nào cần scale VPS).</p>
+
+    <div class="grid md:grid-cols-2 gap-3">
+      <div class="panel">
+        <h4>CPU % (by mode)</h4>
+        <div class="metric">avg by (mode) (rate(node_cpu_seconds_total[1m])) * 100</div>
+        <p class="text-sm mut mt-2">Chú ý màu <span class="warn">iowait</span> (chờ disk) và <span class="err">softirq</span> (network irq overload). user + system nhiều = compute-bound.</p>
+        <div class="threshold">
+          <span class="thr ok">idle &gt; 40%</span>
+          <span class="thr warn">iowait &gt; 20%</span>
+          <span class="thr crit">idle &lt; 10% liên tục</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Load average (1/5/15m)</h4>
+        <div class="metric">node_load1 · node_load5 · node_load15</div>
+        <p class="text-sm mut mt-2">Số process ready-to-run. So với số core (VPS 8 cores). load1 &gt; core count &rarr; đang queue.</p>
+        <div class="threshold">
+          <span class="thr ok">&lt; 8 (số core)</span>
+          <span class="thr warn">8–12</span>
+          <span class="thr crit">&gt; 16 kéo dài</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Memory (used / cached / free)</h4>
+        <div class="metric">MemTotal − MemFree − Buffers − Cached · Cached+Buffers · MemFree</div>
+        <p class="text-sm mut mt-2">Cached lớn = OK (Linux dùng RAM làm disk cache). Chỉ lo khi <b>used</b> gần bằng total và <b>free + cached</b> nhỏ.</p>
+        <div class="threshold">
+          <span class="thr ok">used &lt; 75%</span>
+          <span class="thr warn">75–90%</span>
+          <span class="thr crit">&gt; 90% OOM risk</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Swap used</h4>
+        <div class="metric">SwapTotal − SwapFree</div>
+        <p class="text-sm mut mt-2">VPS hiện KHÔNG có swap (0B). Nếu số &gt; 0 =&gt; ai đó bật swap thủ công. RAM đang thiếu &rarr; xem Memory panel.</p>
+        <div class="threshold">
+          <span class="thr ok">= 0</span>
+          <span class="thr warn">&gt; 0</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Root disk used %</h4>
+        <div class="metric">100 − (avail/size × 100), mountpoint="/"</div>
+        <p class="text-sm mut mt-2">Đĩa 100 GB. VL retention 7d nên baseline &lt; 20 GB. Vọt &gt; 80% &rarr; check <span class="mono">docker system df</span>, snapshot backups đầy.</p>
+        <div class="threshold">
+          <span class="thr ok">&lt; 70%</span>
+          <span class="thr warn">70–85%</span>
+          <span class="thr crit">&gt; 85% (vmalert fires)</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Network throughput (rx / tx bytes/s)</h4>
+        <div class="metric">rate(node_network_{receive,transmit}_bytes_total[1m]), interface không phải docker/veth</div>
+        <p class="text-sm mut mt-2">Đo card mạng thật. Rx spike bất thường &rarr; log flood từ client. Tx spike &rarr; LLM proxy trả nhiều token hoặc backup S3 upload.</p>
+        <div class="threshold">
+          <span class="thr ok">&lt; 10 MB/s baseline</span>
+          <span class="thr warn">sustained &gt; 50 MB/s</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Disk I/O bytes/s (read / write)</h4>
+        <div class="metric">rate(node_disk_{read,written}_bytes_total[1m])</div>
+        <p class="text-sm mut mt-2">Write spike thường do VL flush index hoặc backup snapshot. Read spike thường do VMUI truy vấn dài. iowait CPU panel là chỉ báo sớm hơn.</p>
+        <div class="threshold">
+          <span class="thr ok">&lt; 100 MB/s</span>
+          <span class="thr warn">peak &gt; 200 MB/s liên tục</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Troubleshooting -->
+  <section class="card p-5 mb-6 anchor" id="troubleshoot">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">3</span>
+      <h2 class="text-xl font-bold">Troubleshooting nhanh</h2>
+    </div>
+    <table class="k">
+      <thead><tr><th>Triệu chứng</th><th>Nguyên nhân thường gặp</th><th>Xử lý</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="warn">Panel "No data"</td>
+          <td>VM chưa scrape đủ (target down / query sai tên metric / time range dài hơn tuổi VM)</td>
+          <td>Giảm time range xuống 15m; check <span class="mono">/api/v1/targets</span>; verify tên metric bằng <span class="mono">/api/v1/label/__name__/values</span></td>
+        </tr>
+        <tr>
+          <td class="warn">2 series cùng job, 1 UP 1 DOWN</td>
+          <td>Stale series khi đổi target (VM giữ đến hết retention 30d)</td>
+          <td><span class="mono">POST /api/v1/admin/tsdb/delete_series?match[]={instance="&lt;old&gt;"}</span></td>
+        </tr>
+        <tr>
+          <td class="err">Ingest rate = 0</td>
+          <td>Vector container die; rsyslog client mất kết nối; syslog port bị chặn</td>
+          <td><span class="mono">docker logs ragstack-vector</span>; test <span class="mono">logger -n &lt;vps&gt; -P 514 test</span> từ client</td>
+        </tr>
+        <tr>
+          <td class="err">Indexer NATS lag &gt; 300s</td>
+          <td>Embed API rate limit / mạng ra ngoài chậm / batch quá lớn</td>
+          <td>Check <span class="mono">docker logs ragstack-indexer</span>; nếu OPENAI 429 &rarr; giảm batch hoặc tăng interval; nếu EMBED_MOCK=true &rarr; đây là hash embed, không phải bug</td>
+        </tr>
+        <tr>
+          <td class="err">Root disk &gt; 85%</td>
+          <td>VL data lớn; docker image cũ; backup snapshot dồn</td>
+          <td><span class="mono">docker system df</span>; <span class="mono">docker system prune -a --volumes</span> (cẩn thận); giảm <span class="mono">VL_RETENTION</span> tạm thời</td>
+        </tr>
+        <tr>
+          <td class="err">CPU idle &lt; 10% liên tục</td>
+          <td>1 container ăn hết; hoặc thundering herd embed</td>
+          <td><span class="mono">docker stats</span> để xác định thủ phạm; scale VPS hoặc kill loop</td>
+        </tr>
+        <tr>
+          <td class="warn">Memory used &gt; 90%</td>
+          <td>VL memory.allowedBytes chưa giới hạn; OpenWebUI cache lớn</td>
+          <td>Check <span class="mono">docker stats --no-stream</span>; restart container ăn nhiều; xem lại <span class="mono">memory.allowedBytes</span> flag VL</td>
+        </tr>
+        <tr>
+          <td class="warn">Component onelog-host DOWN sau đổi config</td>
+          <td>Scrape target đổi tên nhưng series cũ còn</td>
+          <td>Delete stale series như dòng "2 series cùng job" bên trên</td>
+        </tr>
+        <tr>
+          <td class="warn">Network rx spike</td>
+          <td>Client log flood do app đổ debug lặp</td>
+          <td>LogsQL: <span class="mono">* | stats by (service) count()</span> để tìm top talker; rate-limit ở Vector transform</td>
+        </tr>
+        <tr>
+          <td class="warn">Alert firing nhưng Telegram không có</td>
+          <td>Bot token / chat_id sai; thread_id bị filter; alertmanager route lỗi</td>
+          <td>Check <span class="mono">docker logs ragstack-alertmanager</span>; test bot: <span class="mono">curl -X POST https://api.telegram.org/bot&lt;TOKEN&gt;/getMe</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Alert flow -->
+  <section class="card p-5 mb-6 anchor" id="alert-flow">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">4</span>
+      <h2 class="text-xl font-bold">Alert flow — từ metric sang Telegram</h2>
+    </div>
+    <pre class="cmd">VictoriaLogs / VictoriaMetrics
+        │  (metric / LogsQL query)
+        ▼
+    vmalert       <span class="c"># evaluates rules mỗi 15s</span>
+        │  (fires ALERTS{alertstate="firing"})
+        ▼
+    alertmanager  <span class="c"># dedupe + group + route</span>
+        │
+        ▼
+    Telegram bot &rarr; group chat (thread_id theo severity)</pre>
+    <p class="text-sm mut mt-3">Rules ở <span class="mono">infra/vmalert/rules.yml</span>. Routes ở <span class="mono">infra/alertmanager/config.yml</span>. Test cơ chế alert:</p>
+    <div class="cmd mt-2"><span class="c"># fake alert xuyên qua toàn bộ chain</span>
+docker exec ragstack-alertmanager amtool alert add TestAlert \
+  severity=critical service=api-1 --annotation=<span class="s">"summary=Smoke test"</span></div>
+  </section>
+
+  <!-- Useful commands -->
+  <section class="card p-5 mb-6 anchor" id="commands">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">5</span>
+      <h2 class="text-xl font-bold">Command nhanh (SSH lên VPS)</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+      <div>
+        <div class="h-title mb-2">Health &amp; status</div>
+        <div class="cmd">docker compose ps
+docker stats --no-stream
+bash infra/scripts/healthcheck.sh
+curl -sSf http://127.0.0.1:8428/health</div>
+      </div>
+      <div>
+        <div class="h-title mb-2">Query VM trực tiếp</div>
+        <div class="cmd">curl -sS <span class="s">'http://127.0.0.1:8428/api/v1/query?query=up'</span> | jq
+curl -sS <span class="s">'http://127.0.0.1:8428/api/v1/targets'</span> | jq
+curl -sS <span class="s">'http://127.0.0.1:8428/api/v1/label/__name__/values'</span> | jq</div>
+      </div>
+      <div>
+        <div class="h-title mb-2">Query VL (log search)</div>
+        <div class="cmd">curl -sS <span class="s">'http://127.0.0.1:9428/select/logsql/query'</span> \
+  --data-urlencode <span class="s">'query=service:api-1 _time:15m'</span> \
+  --data-urlencode <span class="s">'limit=20'</span></div>
+      </div>
+      <div>
+        <div class="h-title mb-2">Xoá stale series</div>
+        <div class="cmd">curl -X POST <span class="s">'http://127.0.0.1:8428/api/v1/admin/tsdb/delete_series'</span> \
+  --data-urlencode <span class="s">'match[]={instance="OLD:9101"}'</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Playbook triage -->
+  <section class="card p-5 mb-6 anchor" id="playbook">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">6</span>
+      <h2 class="text-xl font-bold">Playbook triage 5 phút</h2>
+    </div>
+    <ol class="text-sm space-y-2 list-decimal ml-5">
+      <li>Mở <a href="#pipeline" class="acc underline">Pipeline Health</a> · time range <b>Last 15m</b>.</li>
+      <li>Check <b>Component up</b> — bất kỳ DOWN &rarr; nhớ tên service.</li>
+      <li>Check <b>Ingest rate</b> khác 0 và tương đương baseline hằng ngày.</li>
+      <li>Check <b>Indexer lag</b> &lt; 30s. Nếu tăng nhanh &rarr; embed API có vấn đề.</li>
+      <li>Sparkline <b>CPU/RAM/net</b> — nếu đỏ, mở <a href="#host" class="acc underline">VPS Host</a>.</li>
+      <li>Cuối cùng liếc <b>Recent alerts (vmalert)</b> — nếu có, đọc labels và annotate summary.</li>
+    </ol>
+    <p class="text-xs mut mt-3">Nếu tất cả xanh mà user vẫn báo lỗi &rarr; vấn đề nằm ngoài telemetry (DNS, LAN, browser). Kiểm tra client-side / Caddy access log.</p>
+  </section>
+
+  <footer class="text-xs mut text-center py-6">
+    OneLog · Grafana Monitoring Guide · dashboards ở <span class="mono">infra/grafana/dashboards/</span> · alert rules ở <span class="mono">infra/vmalert/rules.yml</span>
+  </footer>
+</div>
+
+</body>
+</html>

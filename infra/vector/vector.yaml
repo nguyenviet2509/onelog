@@ -201,6 +201,12 @@ transforms:
         . = merge(., parsed) ?? .
       }
       .service = "litellm_cost"
+      # Force `.host = "logserver"` — docker_logs source enriches events with
+      # Vector's own container short-ID (`.host` = e.g. "fce3cf4cc5e5") which
+      # rotates every restart and pollutes VL stream cardinality. Local VPS
+      # containers all belong to logserver identity; remote fleet clients
+      # keep their real hostnames via syslog/rsyslog_json paths above.
+      .host = "logserver"
 
   # provider_cost syslog events → parse JSON body into flat fields.
   # Emitted by poll-provider-cost.sh via `logger -t provider_cost`.

@@ -3,6 +3,8 @@ infra/data/
 infra/.env
 infra/litellm/.env.llm
 infra/litellm/.env.cost
+infra/docker-compose.override.yml
+infra/victoriametrics/scrape.yml
 
 # Backups & dumps — chứa data user / hashed passwords / secrets snapshot.
 # 2026-07-13: postgres-legacy-*.sql (28KB) dumped vào backups/ khi decom PG.

@@ -97,6 +97,13 @@
         #         flush_interval -1   # streaming SSE — no buffering
         #     }
         # }
+        # Grafana at /grafana/* — requires GF_SERVER_ROOT_URL +
+        # GF_SERVER_SERVE_FROM_SUB_PATH set in docker-compose.override.yml
+        # (see docker-compose.override.yml.example). No prefix strip: Grafana
+        # itself expects to serve at the sub-path.
+        handle /grafana* {
+            reverse_proxy grafana:3000
+        }
         # Root → OpenWebUI. All more-specific handles above (/select/*, /vmui/,
         # /mcp/*, /llm/*, /insert/*, /grafana*, /health, /metrics) match first.
         # This lets ops reach chat UI at http://<vps-ip>/ without a hosts entry.

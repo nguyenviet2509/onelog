@@ -1,0 +1,20 @@
+# Copy: cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# Local-only overrides layered on top of docker-compose.yml. Docker Compose
+# auto-loads this file when present (no -f flag needed). Add site-specific
+# tweaks here so the tracked docker-compose.yml stays canonical.
+#
+# Typical uses:
+#   - Grafana sub-path deploy behind Caddy /grafana/* on a bare-IP endpoint
+#     (no `admin.webui.local` hosts entry required).
+#   - Substitute an override APP_DOMAIN / ports / image tags for one host.
+#
+# NEVER commit docker-compose.override.yml — it drifts per-host by design.
+
+services:
+  # Grafana behind Caddy at http://<vps-ip>/grafana/*
+  # Replace 10.200.0.30 with your VPS reachable IP or FQDN.
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: http://10.200.0.30/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"

@@ -207,6 +207,19 @@ transforms:
       # containers all belong to logserver identity; remote fleet clients
       # keep their real hostnames via syslog/rsyslog_json paths above.
       .host = "logserver"
+      # VL requires `_msg`; without it, VL auto-injects a placeholder warning
+      # "missing _msg field". Store the raw JSON body so downstream query can
+      # still see the full event; parsed fields live at top-level via merge.
+      ._msg = raw_msg
+      # Drop noisy docker_logs metadata — labels.com.docker.compose.* + image
+      # digests bloat VL indexes without query value. Keep container_name for
+      # provenance (in case future filter needs it).
+      del(.message)
+      del(.label)
+      del(.image)
+      del(.container_id)
+      del(.container_created_at)
+      del(.stream)
 
   # provider_cost syslog events → parse JSON body into flat fields.
   # Emitted by poll-provider-cost.sh via `logger -t provider_cost`.

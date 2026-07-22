@@ -305,15 +305,31 @@ transforms:
       .source_stream = "vector-exec-probe"
 
   redact:
-    # PII/secret redaction BEFORE log lands in VictoriaLogs
-    # Anything downstream (MCP tools, indexer, agent) reads safe data.
+    # PII/secret redaction BEFORE log lands in VictoriaLogs.
+    # Anything downstream (MCP tools, indexer, agent, VMUI) reads safe data.
     # Null-safe: nếu _msg thiếu (rare edge case từ syslog parser), fallback ""
     # để VRL không panic + drop event.
     # Performance: Vector dùng Rust `regex` crate (RE2, no backtracking → linear
     # time). ReDoS impossible; chỉ cần cap msg length để bound per-event CPU.
+    #
+    # Inputs = ALL non-final transforms. Even pipelines emitting metadata-only
+    # (probes, cost events) go through here as defense-in-depth against future
+    # schema drift (e.g. LiteLLM adds a new field, DeepSeek API error dumps key).
     type: remap
-    inputs: [enrich, rsyslog_json_normalize]
+    inputs: [enrich, rsyslog_json_normalize, tag_litellm_cost, tag_provider_cost, openwebui_db_parse, logserver_disk_parse]
     source: |
+      # Structured field denylist — top-level keys matching secret-shaped names.
+      # Complements `_msg` regex scrub below (which only sees text body).
+      # Applied first so downstream regex doesn't waste CPU on already-dropped
+      # fields. Naming variations (snake/kebab/dot) all covered.
+      del(.password); del(.passwd); del(.pwd); del(.passphrase)
+      del(.token); del(.api_key); del(.apikey); del(.api_secret)
+      del(.access_key); del(.access_token); del(.refresh_token)
+      del(.auth_token); del(.authorization); del(.auth)
+      del(.client_secret); del(.secret); del(.secret_key); del(.private_key)
+      del(.cookie); del(.session); del(.session_id); del(.session_token)
+      del(.bearer); del(.credentials)
+
       msg = string(._msg) ?? ""
       # Cap msg length BEFORE regex — chống binary blob / multi-MB stack trace
       # đốt CPU. 64KB đủ cho stack trace bình thường.
@@ -375,12 +391,10 @@ transforms:
 sinks:
   victorialogs:
     type: elasticsearch
-    # redact             = all PII-redacted syslog/rsyslog events (srv-01/02 mock-* + real services)
-    # tag_litellm_cost   = LiteLLM proxy cost records only (retagged .service=litellm_cost)
-    # openwebui_db_parse = SQLite probe metrics (no PII, exec source)
-    # tag_provider_cost  = provider balance/cost JSON from poll-provider-cost.sh cron
-    # logserver_disk_parse = disk usage probe from vector exec source
-    inputs: [redact, tag_litellm_cost, openwebui_db_parse, tag_provider_cost, logserver_disk_parse]
+    # redact = single sanitized entry point — all pipelines (syslog, docker_logs,
+    # cost events, exec probes) route through redact for uniform secret scrub +
+    # structured field denylist. Never route a raw pipeline directly to sink.
+    inputs: [redact]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

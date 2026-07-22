@@ -47,6 +47,16 @@ route:
       group_interval: 5m
       repeat_interval: 30m
 
+    # Host metric rules (vmalert-metrics instance) — all rules labelled
+    # `component: host`. Route to the same Log-Server thread so on-call sees
+    # host + data-disk alerts in one place.
+    - matchers:
+        - component="host"
+      receiver: telegram-llm-cost
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 30m
+
     # Event-style rules (OomKillEvent, DiskFullErrors, NewUserOrSudoer):
     # event đã xảy ra rồi, RESOLVED chỉ nói "không có thêm trong 5m" → noise.
     # → Client-Server topic (client fleet syslog).

@@ -1,0 +1,215 @@
+# vmalert Prometheus rules for host-level metrics from node_exporter.
+# Evaluated against VictoriaMetrics (http://victoriametrics:8428/).
+#
+# Deployed by the `vmalert-metrics` service (2nd vmalert instance) — the
+# original `vmalert` service targets VictoriaLogs and only handles vlogs rules.
+# Two instances avoid the datasource endpoint clash (VL exposes
+# /select/logsql/stats_query, VM exposes /api/v1/query — vmalert can't hit both
+# via a single -datasource.url).
+#
+# Threshold tuning protocol: observe baseline 1 week, then set threshold ~
+# 1.5× p95. Values here are initial rule-of-thumb for an 8-core / 15GB VPS.
+#
+# All rules get `component: host` label so Alertmanager can route the whole
+# group to the Log-Server Telegram thread (see alertmanager.yml).
+
+groups:
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOST CAPACITY — CPU / RAM / load / swap, sustained thresholds only.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: host-capacity
+    interval: 30s
+    rules:
+      - alert: HostCpuHigh
+        # 100 − idle% averaged across all cores. Sustained > 80% for 5m = real
+        # pressure (single-spike bursts filtered by `for`).
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{job="onelog-host", mode="idle"}[2m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Host CPU > 80% for 5m on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "Sustained CPU pressure. `docker stats --no-stream` to find the culprit container."
+
+      - alert: HostCpuCritical
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{job="onelog-host", mode="idle"}[2m])) * 100) > 92
+        for: 3m
+        labels:
+          severity: critical
+          category: capacity
+          component: host
+        annotations:
+          summary: "Host CPU > 92% for 3m on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "Near-saturation. Expect queueing latency across the stack."
+
+      - alert: HostMemoryHigh
+        # MemAvailable already accounts for reclaimable cache — used% = 1 − avail/total.
+        expr: |
+          (1 - node_memory_MemAvailable_bytes{job="onelog-host"} / node_memory_MemTotal_bytes{job="onelog-host"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Host memory > 85% for 5m on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "Approaching OOM territory. `docker stats --no-stream` for per-container use."
+
+      - alert: HostMemoryCritical
+        expr: |
+          (1 - node_memory_MemAvailable_bytes{job="onelog-host"} / node_memory_MemTotal_bytes{job="onelog-host"}) * 100 > 93
+        for: 2m
+        labels:
+          severity: critical
+          category: capacity
+          component: host
+        annotations:
+          summary: "Host memory > 93% for 2m on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "OOM imminent. Restart the heaviest container if identified."
+
+      - alert: HostLoadHigh
+        # load15 > 1.5× core count means sustained queue depth. Uses on-cpu-count
+        # calculation so VPS resize doesn't require rule tuning.
+        expr: |
+          node_load15{job="onelog-host"} > 1.5 * count without (cpu, mode) (node_cpu_seconds_total{job="onelog-host", mode="idle"})
+        for: 10m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Host load15 = {{ $value | printf \"%.1f\" }} > 1.5× cores on {{ $labels.instance }}"
+          description: "Steady queueing. Look at CPU / IO wait panels for the underlying cause."
+
+      - alert: HostSwapInUse
+        # VPS is provisioned without swap; any swap use = someone enabled it or
+        # emergency swap file created under pressure.
+        expr: |
+          (node_memory_SwapTotal_bytes{job="onelog-host"} - node_memory_SwapFree_bytes{job="onelog-host"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Swap in use on {{ $labels.instance }} ({{ $value | humanize1024 }}B)"
+          description: "VPS not provisioned with swap by design — verify. Check `free -h` and swapon --show."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOST DISK — direct probe via node_exporter (redundant with LogsQL rules
+  # but wins on latency: node_exporter refreshes at scrape interval, LogsQL
+  # rules depend on cron probes that emit every 5m).
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: host-disk
+    interval: 30s
+    rules:
+      - alert: HostDiskRootWarn
+        expr: |
+          (1 - node_filesystem_avail_bytes{job="onelog-host", mountpoint="/"} / node_filesystem_size_bytes{job="onelog-host", mountpoint="/"}) * 100 > 75
+        for: 10m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Root disk > 75% on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "Trim: `docker system df` then `docker system prune -a --volumes` carefully."
+
+      - alert: HostDiskRootCritical
+        expr: |
+          (1 - node_filesystem_avail_bytes{job="onelog-host", mountpoint="/"} / node_filesystem_size_bytes{job="onelog-host", mountpoint="/"}) * 100 > 85
+        for: 2m
+        labels:
+          severity: critical
+          category: capacity
+          component: host
+        annotations:
+          summary: "Root disk > 85% on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%) — docker daemon may fail if / fills"
+          description: "Free space urgently: prune docker, drop old VL data, or add storage."
+
+      - alert: HostDiskAnyMountCritical
+        # Catches secondary mounts (data/, backups/) added post-install.
+        expr: |
+          (1 - node_filesystem_avail_bytes{job="onelog-host", fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{job="onelog-host", fstype!~"tmpfs|overlay|squashfs"}) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          category: capacity
+          component: host
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} > 90% on {{ $labels.instance }} ({{ $value | printf \"%.0f\" }}%)"
+          description: "Check df -h and clean the offending mount."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HOST NETWORK — anomaly detection at cheap thresholds. Byte-throughput
+  # doesn't get an alert (would require baseline learning); we focus on errors
+  # and interface-down instead.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: host-network
+    interval: 30s
+    rules:
+      - alert: HostNetworkErrorsRising
+        # >5 errors/sec sustained across any physical iface = real issue.
+        expr: |
+          sum by (instance, device) (
+            rate(node_network_receive_errs_total{job="onelog-host", device!~"lo|docker.*|veth.*|br-.*"}[5m])
+            + rate(node_network_transmit_errs_total{job="onelog-host", device!~"lo|docker.*|veth.*|br-.*"}[5m])
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          category: network
+          component: host
+        annotations:
+          summary: "Network errors > 5/s on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Check `ip -s link` and dmesg for NIC / cable issues."
+
+      - alert: HostNetworkDropsRising
+        expr: |
+          sum by (instance, device) (
+            rate(node_network_receive_drop_total{job="onelog-host", device!~"lo|docker.*|veth.*|br-.*"}[5m])
+            + rate(node_network_transmit_drop_total{job="onelog-host", device!~"lo|docker.*|veth.*|br-.*"}[5m])
+          ) > 100
+        for: 10m
+        labels:
+          severity: warning
+          category: network
+          component: host
+        annotations:
+          summary: "Network drops > 100/s on {{ $labels.instance }} {{ $labels.device }}"
+          description: "Ring buffer overflow or upstream congestion. `ethtool -S {{ $labels.device }}` for detail."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SCRAPE HEALTH — anything the VM was configured to scrape but can't right
+  # now. Includes the host job itself; if it fires, dashboards go blank.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: scrape-health
+    interval: 30s
+    rules:
+      - alert: ScrapeTargetDown
+        expr: up{job=~"onelog-.*"} == 0
+        for: 3m
+        labels:
+          severity: warning
+          category: monitoring
+          component: host
+        annotations:
+          summary: "Scrape target {{ $labels.job }} down for 3m ({{ $labels.instance }})"
+          description: "VictoriaMetrics can't reach the /metrics endpoint. Check the container status and logs."
+
+      - alert: NodeExporterDown
+        # Same signal as ScrapeTargetDown but escalated because host telemetry
+        # blindness means we lose CPU/disk/network alerting entirely.
+        expr: up{job="onelog-host"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          category: monitoring
+          component: host
+        annotations:
+          summary: "node-exporter DOWN — host telemetry lost on {{ $labels.instance }}"
+          description: "All host alerts blind until this recovers. `docker restart ragstack-node-exporter`."

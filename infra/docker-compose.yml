@@ -226,6 +226,32 @@ services:
       - victorialogs
       - alertmanager
 
+  # Second vmalert instance dedicated to Prometheus-type rules against
+  # VictoriaMetrics (host metrics from node_exporter). The primary vmalert
+  # above targets VictoriaLogs (LogsQL rules) — a single vmalert cannot use
+  # both because `-datasource.url` maps to one endpoint and vlogs / prometheus
+  # rules append incompatible paths.
+  vmalert-metrics:
+    image: victoriametrics/vmalert:${VMALERT_IMAGE_TAG:-latest}
+    container_name: ragstack-vmalert-metrics
+    restart: unless-stopped
+    profiles: [alerts, monitoring]
+    command:
+      - "-datasource.url=http://victoriametrics:8428/"
+      - "-notifier.url=http://alertmanager:9093"
+      - "-rule=/etc/vmalert/metric-rules.yml"
+      - "-evaluationInterval=30s"
+      - "-rule.resendDelay=1m"
+      - "-httpListenAddr=:8881"
+      - "-external.url=${VMALERT_EXTERNAL_URL:-http://localhost:8881}"
+    ports:
+      - "127.0.0.1:8881:8881"
+    volumes:
+      - ./vmalert/metric-rules.yml:/etc/vmalert/metric-rules.yml:ro
+    depends_on:
+      - victoriametrics
+      - alertmanager
+
   # Alertmanager — dedupe / group / route fired alerts to Telegram.
   # Entrypoint renders __TELEGRAM_BOT_TOKEN__ + __TELEGRAM_CHAT_ID__ placeholders
   # from infra/.env via sed at container start. Run as root to avoid

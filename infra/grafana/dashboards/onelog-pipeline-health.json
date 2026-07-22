@@ -96,6 +96,45 @@
       "targets": [
         {"expr": "ALERTS{alertstate=\"firing\"}", "instant": true, "refId": "A"}
       ]
+    },
+    {
+      "id": 7,
+      "title": "Host CPU %",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 22, "w": 8, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "100 - (avg(rate(node_cpu_seconds_total{job=\"onelog-host\", mode=\"idle\"}[1m])) * 100)", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}},
+      "options": {"graphMode": "area"},
+      "links": [{"title": "Drill-down → OneLog VPS Host", "url": "/d/onelog-vps-host/onelog-vps-host"}]
+    },
+    {
+      "id": 8,
+      "title": "Host RAM used %",
+      "type": "stat",
+      "gridPos": {"x": 8, "y": 22, "w": 8, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "(1 - node_memory_MemAvailable_bytes{job=\"onelog-host\"} / node_memory_MemTotal_bytes{job=\"onelog-host\"}) * 100", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]}}},
+      "options": {"graphMode": "area"},
+      "links": [{"title": "Drill-down → OneLog VPS Host", "url": "/d/onelog-vps-host/onelog-vps-host"}]
+    },
+    {
+      "id": 9,
+      "title": "Host network (rx+tx bytes/s)",
+      "type": "stat",
+      "gridPos": {"x": 16, "y": 22, "w": 8, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "sum(rate(node_network_receive_bytes_total{job=\"onelog-host\", device!~\"lo|docker.*|veth.*|br-.*\"}[1m])) + sum(rate(node_network_transmit_bytes_total{job=\"onelog-host\", device!~\"lo|docker.*|veth.*|br-.*\"}[1m]))", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "Bps"}},
+      "options": {"graphMode": "area"},
+      "links": [{"title": "Drill-down → OneLog VPS Host", "url": "/d/onelog-vps-host/onelog-vps-host"}]
     }
   ]
 }

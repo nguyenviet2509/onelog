@@ -63,3 +63,12 @@ scrape_configs:
       - targets: ["victoriametrics:8428"]
         labels:
           component: victoriametrics
+
+  # node-exporter — host CPU/RAM/network/disk. Container is on the ragstack
+  # bridge network with /proc, /sys bind-mounted, so metrics reflect the real
+  # host without needing network_mode: host.
+  - job_name: onelog-host
+    static_configs:
+      - targets: ["node-exporter:9101"]
+        labels:
+          component: host

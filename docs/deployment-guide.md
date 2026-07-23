@@ -136,9 +136,13 @@ LLM_MOCK=true                    # false khi có key thật
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 
-# Telegram (optional, alerts phase)
+# Telegram (optional, alerts phase). Chi tiết topic mapping ở section "Alert
+# routing & log-rule contract" bên dưới.
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ALERT_CHAT_ID=
+TELEGRAM_ALERT_THREAD_ID=880                  # Log-Server topic (self-monitoring)
+TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER=6      # Client-Server topic (fleet syslog)
+TELEGRAM_ALERT_THREAD_ID_LLM_COST=15          # LLM-Cost topic
 TELEGRAM_MOCK=true
 
 # VictoriaLogs retention
@@ -314,6 +318,59 @@ docker compose --profile alerts restart vmalert
 # Restore:
 mv infra/vmalert/rules.yml.bak infra/vmalert/rules.yml
 docker compose --profile alerts restart vmalert
+```
+
+### Alert routing & log-rule contract (post plan 260723-0924)
+
+Telegram topics (`.env`):
+
+| Env | Topic | Nội dung |
+|---|---|---|
+| `TELEGRAM_ALERT_THREAD_ID` | Log-Server | Log-server self-monitoring (host=logserver hoặc component=host/data-disk/root-partition/disk-probe) |
+| `TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER` | Client-Server | Fleet syslog alerts (mọi host ≠ logserver) — mặc định |
+| `TELEGRAM_ALERT_THREAD_ID_LLM_COST` | LLM-Cost | Alerts có label `team=llm-cost` |
+
+Route matching (alertmanager top-down, first-match):
+1. `team="llm-cost"` → LLM-Cost
+2. `host="logserver"` → Log-Server
+3. `component="host"` → Log-Server (vmalert-metrics host CPU/RAM/disk/net)
+4. `component=~"data-disk|root-partition|disk-probe"` → Log-Server (disk probes)
+5. `notify_style="event"` → Client-Server (send_resolved=false)
+6. `severity="critical"` → Client-Server (repeat 30m thay vì 4h default)
+7. default → Client-Server
+
+**Log-rule contract** cho MỌI rule LogsQL mới thêm vào group `log-alerts-instant` / `log-alerts-burst` của `infra/vmalert/rules.yml`:
+
+- `labels.notify_style: event` — log-based rule luôn là "event đã xảy ra" → route sang receiver `telegram-event` (send_resolved=false) để không spam RESOLVED noise.
+- `for:` matching group interval (instant=0s giữ nguyên; burst=5m). Cần ≥2 consecutive windows confirm → chống flap 1 nhịp.
+- Threshold ≥ 2× baseline observed p95 fleet lành mạnh — tránh fire trên noise steady.
+
+Verify sau khi edit `rules.yml`:
+
+```bash
+# Rules loaded (không dùng HTTP /-/reload — vmalert chưa expose endpoint đó,
+# dùng docker restart, rules stateless nên OK).
+docker compose --profile alerts restart vmalert
+
+# Verify 11 burst rules có notify_style=event, for=300s (5m)
+curl -s http://127.0.0.1:8880/api/v1/rules | \
+  jq -r '.data.groups[] | select(.name | test("log-alerts")) | .rules[] |
+         "\(.name)\t\(.labels.notify_style // "-")\t\(.duration // 0)"'
+
+# Route test
+docker exec ragstack-alertmanager amtool config routes test \
+  --config.file=/tmp/alertmanager.yml \
+  alertname=SystemdServiceFailed host=onehost-x severity=warning \
+  category=availability notify_style=event
+# Expect: telegram-event
+```
+
+Alertmanager config change (`alertmanager.yml`, không phải rules) BUỘC force-recreate vì sed pipeline chạy ở entrypoint:
+
+```bash
+docker compose up -d --force-recreate alertmanager
+docker exec ragstack-alertmanager cat /tmp/alertmanager.yml | grep -E 'repeat_interval|message_thread_id'
+# Expect: root repeat_interval=4h; thread_id 880 (log-server), 6 (client-server), 15 (llm-cost)
 ```
 
 ---

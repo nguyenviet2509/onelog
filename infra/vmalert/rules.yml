@@ -98,10 +98,11 @@ groups:
       # WarnEventsStale rule ở semantic-pipeline group).
       - alert: SshBruteForce
         expr: '(service:sshd OR service:ssh) "Failed password" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>20'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: security
+          notify_style: event
         annotations:
           summary: "SSH brute force suspected on {{ $labels.host }}"
           description: "{{ $value }} failed SSH login attempts in last 5m on {{ $labels.host }}"
@@ -110,10 +111,11 @@ groups:
       # gây fire vĩnh viễn trên srv-01/02).
       - alert: MysqlErrorBurst
         expr: '(service:mysqld OR service:mysql) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>30'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: database
+          notify_style: event
         annotations:
           summary: "MySQL error burst on {{ $labels.host }}"
           description: "{{ $value }} mysql err events in last 5m on {{ $labels.host }}"
@@ -122,10 +124,11 @@ groups:
       # baseline > threshold.
       - alert: AuditLoginFailures
         expr: '(service:auditd OR service:audit) "res=failed" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: security
+          notify_style: event
         annotations:
           summary: "Audit login failures on {{ $labels.host }}"
           description: "{{ $value }} audit USER_LOGIN failures in last 5m on {{ $labels.host }}"
@@ -134,10 +137,11 @@ groups:
       # OpenLitespeed. Prod-only matcher (mock-nginx loại — anti fire vĩnh viễn).
       - alert: WebServerErrorBurst
         expr: '(service:litespeed OR service:openlitespeed OR service:nginx) severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>100'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: app
+          notify_style: event
         annotations:
           summary: "Web server 5xx burst on {{ $labels.host }}"
           description: "{{ $value }} web err events in last 5m on {{ $labels.host }} — check OLS/nginx error log"
@@ -147,10 +151,11 @@ groups:
       # Prod-only matcher (mock-sshd loại — anti fire vĩnh viễn).
       - alert: SshFailMultiHostSameIp
         expr: '(service:sshd OR service:ssh) "Failed password" | extract "from <attacker_ip> port" | stats by (attacker_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
-        for: 1m
+        for: 5m
         labels:
           severity: critical
           category: security
+          notify_style: event
         annotations:
           summary: "SSH brute force from {{ $labels.attacker_ip }}"
           description: "{{ $value }} failed SSH attempts in 5m from attacker {{ $labels.attacker_ip }} across cluster"
@@ -158,11 +163,12 @@ groups:
       # Kernel-level errs (non-OOM) — need burst pattern, single err có thể benign.
       # facility:kern dropped (forwarding remap) → match by service:kernel tag.
       - alert: KernelErrorBurst
-        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>5'
-        for: 1m
+        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>7'
+        for: 5m
         labels:
           severity: critical
           category: system
+          notify_style: event
         annotations:
           summary: "Kernel errors on {{ $labels.host }}"
           description: "{{ $value }} kern err events in 5m on {{ $labels.host }} — check dmesg / hardware"
@@ -171,21 +177,23 @@ groups:
       # facility:auth dropped (forwarding remap) → match service:sudo OR sudo msg.
       - alert: SudoEscalation
         expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: audit
+          notify_style: event
         annotations:
           summary: "Elevated sudo activity on {{ $labels.host }}"
           description: "{{ $value }} sudo commands executed in 5m on {{ $labels.host }}"
 
       # Systemd reports service failed repeatedly = crashloop.
       - alert: SystemdServiceFailed
-        expr: '_msg:"Failed with result" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>2'
-        for: 1m
+        expr: '_msg:"Failed with result" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>3'
+        for: 5m
         labels:
           severity: warning
           category: availability
+          notify_style: event
         annotations:
           summary: "Systemd service crashloop on {{ $labels.host }}"
           description: "{{ $value }} systemd 'Failed with result' events in 5m on {{ $labels.host }} — journalctl -xe"
@@ -193,10 +201,11 @@ groups:
       # DB client conn refused repeats — single blip ignored, ≥6 in 5m = real.
       - alert: DbConnectionRefused
         expr: '(_msg:"connection refused" OR _msg:"could not connect to" OR _msg:"can''t connect to MySQL" OR _msg:"FATAL: connection") | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>5'
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: availability
+          notify_style: event
         annotations:
           summary: "Repeated DB connection refused on {{ $labels.host }}"
           description: "{{ $value }} DB conn-refused events in 5m on {{ $labels.host }} — check DB liveness + network"
@@ -210,10 +219,11 @@ groups:
           (_msg:"Too many open files" OR _msg:"EMFILE" OR _msg:"open file descriptor limit") _time:5m
             | stats by (host, host_ip, service) count() as value, row_any(_msg) as sample_msg
             | filter value:>3
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: capacity
+          notify_style: event
         annotations:
           summary: "FD exhaustion {{ $labels.service }} @ {{ $labels.host }}"
           description: "Nâng ulimit -n hoặc systemd LimitNOFILE. Check /proc/<pid>/limits."
@@ -224,11 +234,12 @@ groups:
           (_msg:"server reached pm.max_children" OR _msg:"reached pm.max_children") _time:5m
             | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
             | filter value:>0
-        for: 1m
+        for: 5m
         labels:
           severity: warning
           category: capacity
           component: php-fpm
+          notify_style: event
         annotations:
           summary: "php-fpm worker exhaustion trên {{ $labels.host }}"
           description: "Pool đầy → user-facing latency spike. Nâng pm.max_children hoặc thêm pool."

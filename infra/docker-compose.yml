@@ -523,7 +523,7 @@ services:
 
       # UI
       WEBUI_NAME: "OneLog Chat"
-      DEFAULT_MODELS: "gemini-flash"
+      DEFAULT_MODELS: "deepseek"
       DEFAULT_USER_ROLE: "user"
 
       # Signup locked from boot. First-run admin is created via the

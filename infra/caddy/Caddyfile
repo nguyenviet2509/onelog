@@ -104,9 +104,19 @@
         handle /grafana* {
             reverse_proxy grafana:3000
         }
+        # mcpo bridge — OpenAPI proxy exposing MCP tools to OpenWebUI. Duplicate
+        # của webui.local block (line ~130) vì :80 catch-all serve IP thô
+        # (http://<vps-ip>/) — team không có hosts entry `webui.local` sẽ hit
+        # :80 → cần /mcpo/* ở đây, không thì frontend OpenWebUI fetch tool
+        # OpenAPI spec rơi vào default openwebui handler → nhận HTML SPA index.
+        handle_path /mcpo/* {
+            reverse_proxy mcpo:8080 {
+                flush_interval -1
+            }
+        }
         # Root → OpenWebUI. All more-specific handles above (/select/*, /vmui/,
-        # /mcp/*, /llm/*, /insert/*, /grafana*, /health, /metrics) match first.
-        # This lets ops reach chat UI at http://<vps-ip>/ without a hosts entry.
+        # /mcp/*, /mcpo/*, /llm/*, /insert/*, /grafana*, /health, /metrics)
+        # match first. Lets ops reach chat UI at http://<vps-ip>/ without hosts entry.
         handle {
             reverse_proxy openwebui:8080 {
                 flush_interval -1

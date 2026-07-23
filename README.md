@@ -40,6 +40,7 @@ RAG-powered log server + LLM chat stack. Centralizes syslog/rsyslog JSON logs fr
 | `caddy` | TLS + reverse proxy + CIDR gate | default |
 | `sqlite-web` | Read-only browser for OpenWebUI DB | `dbtools` |
 | `redis` | Agent cache | `agent` |
+| **OneMCP** (external) | KB store (search/submit/verify) — bridge qua Function+Action trong OpenWebUI | `chat` — plan `260723-1200` |
 
 ## Quick start (LAN lab)
 
@@ -55,6 +56,7 @@ Then browse `http://app.local/` — see [docs/deployment-guide.md](docs/deployme
 ## Documentation
 
 - **[docs/deployment-guide.md](docs/deployment-guide.md)** — full deploy runbook, .env template, troubleshooting, rollback.
+- **[infra/openwebui/README.md](infra/openwebui/README.md)** — OneMCP bridge (Function + Action + system prompt) install steps.
 - **[docs/deployment-fleet.md](docs/deployment-fleet.md)** — Ansible playbook for rolling out rsyslog forwarder to 50-100 clients.
 - **[docs/deployment-backup-offsite.md](docs/deployment-backup-offsite.md)** — S3/MinIO push for daily snapshots + restore drill.
 - **[docs/deployment-self-monitoring.md](docs/deployment-self-monitoring.md)** — VictoriaMetrics + Grafana + vmalert covering OneLog pipeline health.

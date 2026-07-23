@@ -4,6 +4,7 @@ title: Chat Conversations → Team KB (OpenWebUI integration)
 slug: chat-conversations-kb-search
 date: 2026-07-16
 status: superseded-2026-07-17
+supersededBy: plans/260723-1135-mcp-kb-incident-memory
 owner: trihd@inet.vn
 mode: --fast
 pivotedAt: 2026-07-16T15:54:00+07:00

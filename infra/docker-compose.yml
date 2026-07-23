@@ -280,6 +280,8 @@ services:
       # routed via receiver telegram-client-server, matcher host=~"onehost-.*"
       # + all notify_style=event rules (OomKillEvent/DiskFullErrors/…).
       TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER: ${TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER:-0}
+      # OneMCP webhook bearer (plan 260723-1200 Phase 4).
+      ONEMCP_ALERT_WEBHOOK_TOKEN: ${ONEMCP_ALERT_WEBHOOK_TOKEN:-}
       # Render .StartsAt.Local / .EndsAt.Local as Vietnam time (UTC+7) in template.
       TZ: Asia/Ho_Chi_Minh
     entrypoint: ["/bin/sh"]
@@ -291,6 +293,7 @@ services:
             -e "s|__TELEGRAM_THREAD_ID__|$$TELEGRAM_ALERT_THREAD_ID|g" \
             -e "s|__TELEGRAM_THREAD_ID_LLM_COST__|$$TELEGRAM_ALERT_THREAD_ID_LLM_COST|g" \
             -e "s|__TELEGRAM_THREAD_ID_CLIENT_SERVER__|$$TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER|g" \
+            -e "s|__ONEMCP_ALERT_WEBHOOK_TOKEN__|$$ONEMCP_ALERT_WEBHOOK_TOKEN|g" \
             /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/data
     ports:
@@ -515,6 +518,11 @@ services:
       # MCP tools wired via mcpo bridge (see mcpo service above) — registered
       # manually in OpenWebUI Admin → Tools with OpenAPI URL. OpenWebUI doesn't
       # read mcp-config.json natively.
+      # OneMCP self-signed cert (plan 260723-1200 Phase 2) — mount read-only,
+      # Function/Action pass verify=<path> vào httpx directly (không đụng system CA
+      # trust store để tránh phá image entrypoint). Path này khớp với default
+      # `ONEMCP_CA_PATH` Valve trong onemcp-tools.py + onemcp-submit-kb.py.
+      - ./openwebui/onemcp-ca.crt:/opt/onemcp-ca.crt:ro
     environment:
       # Backend LLM = LiteLLM proxy (Phase 2). One virtual key, 4 models exposed.
       OPENAI_API_BASE_URL: http://litellm-proxy:4000/v1

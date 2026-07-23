@@ -51,3 +51,6 @@ infra/ansible/tls-certs/
 infra/vector/certs/
 # Real Ansible inventory (may contain internal IPs / hostnames)
 infra/ansible/inventory.ini
+
+# OneMCP junction (read-only mirror to D:\Vietnt\Project\onemcp for cross-project context)
+/onemcp

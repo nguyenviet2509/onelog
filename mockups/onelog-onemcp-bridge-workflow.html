@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · OneMCP Bridge — Workflow Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--acc2:#a5f3fc;
+    --warn:#fbbf24;--ok:#34d399;--err:#f87171;--vio:#c4b5fd;
+    --pink:#f9a8d4;--org:#fdba74;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:'Geist',Inter,ui-sans-serif,system-ui;font-feature-settings:"ss01","cv11"}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)}
+  .acc{color:var(--acc)} .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:11px;color:var(--mut);background:#0d0d11}
+  .chip.on{color:var(--fg);background:#15151a}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+  .h-title{font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  kbd{background:#1f1f25;border:1px solid #2a2a30;border-radius:4px;padding:1px 5px;font-size:10px;font-family:ui-monospace}
+  pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .step-num{width:22px;height:22px;border-radius:6px;background:#15151a;border:1px solid var(--line);display:inline-grid;place-items:center;font-size:11px;color:var(--acc);font-weight:600}
+  hr.sep{border:0;border-top:1px dashed #1f1f25;margin:18px 0}
+  .pill{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.pink{background:#2f0f22;color:#f9a8d4}
+  .pill.org{background:#2b1808;color:#fdba74}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+  .pill.red{background:#2a0d0d;color:#f87171}
+  .arrow{color:#3a3a44}
+  table.k{width:100%;font-size:13px;border-collapse:collapse}
+  table.k th,table.k td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.k th{color:var(--mut);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.12em}
+  .fake-chat{background:#0a0a0d;border:1px solid var(--line);border-radius:14px;padding:14px;font-size:13px}
+  .msg-user{background:#0f1a24;border:1px solid #164e63;border-radius:10px;padding:10px 12px;color:#cffafe;max-width:80%;margin-left:auto}
+  .msg-bot{background:#0f0f14;border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-width:88%}
+  .tool-call{background:#100e18;border:1px dashed #4c1d95;border-radius:8px;padding:8px 10px;font-family:ui-monospace;font-size:11px;color:#c4b5fd;margin-top:6px}
+  .tool-result{background:#0a1a14;border:1px solid #14532d;border-radius:8px;padding:8px 10px;font-family:ui-monospace;font-size:11px;color:#86efac;margin-top:6px}
+  .citation{background:#0a1a14;border:1px solid #14532d;border-radius:6px;padding:2px 6px;color:#86efac;font-family:ui-monospace;font-size:10px}
+  .btn-action{background:#1a1226;border:1px solid #4c1d95;color:#c4b5fd;border-radius:8px;padding:6px 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .btn-action:hover{background:#251933}
+  .modal-mock{background:#0d0d11;border:2px solid #4c1d95;border-radius:14px;padding:16px;box-shadow:0 20px 60px -20px #4c1d95aa}
+  .form-field{background:#0a0a0d;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:ui-monospace;font-size:12px;color:#cdd2d8;width:100%;display:block}
+  .form-label{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;display:block}
+  .form-label .req{color:var(--err)}
+  .kb-card{background:#0a1a14;border:1px solid #14532d;border-radius:10px;padding:12px}
+  .diag-node{fill:#111114 !important;stroke:#3a3a44 !important}
+  .glow-vio{box-shadow:0 0 0 1px #4c1d95,0 0 40px -12px #c4b5fd44}
+  .glow-cyan{box-shadow:0 0 0 1px #164e63,0 0 40px -12px #22d3ee44}
+  .glow-lime{box-shadow:0 0 0 1px #14532d,0 0 40px -12px #86efac44}
+</style>
+</head>
+<body>
+<div class="max-w-[1280px] mx-auto p-6">
+
+<!-- HEADER -->
+<header class="mb-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="pill amber">PLANNED · post-cook preview</span>
+        <span class="pill gray">Plan 260723-1200</span>
+        <span class="pill vio">Bridge OneMCP → OpenWebUI</span>
+      </div>
+      <h1 class="text-2xl font-semibold tracking-tight">OneMCP Bridge — Workflow sau khi cook</h1>
+      <p class="mut text-sm mt-1">Mockup workflow member kỹ thuật dùng OpenWebUI chat trace log + save KB vào OneMCP. Chưa deploy — file này để review UX trước khi implement.</p>
+    </div>
+    <div class="text-right text-xs mut">
+      <div>Owner · trihd@inet.vn</div>
+      <div>Reviewed · 2026-07-23 (red-team + validate)</div>
+      <div>Effort · 2-4 ngày</div>
+    </div>
+  </div>
+</header>
+
+<!-- TOPOLOGY -->
+<section class="card p-5 mb-5">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="h-title">Topology</span>
+    <span class="pill cyan">OneLog stack</span>
+    <span class="pill vio">OneMCP VPS lab · 192.168.122.56</span>
+  </div>
+  <div class="mermaid">
+flowchart LR
+    subgraph OL["OneLog host"]
+      U[Member kỹ thuật]:::u --> OW[OpenWebUI 0.10.2]
+      OW -->|Function<br/>onemcp_search / get| FUN[onemcp-tools.py]
+      OW -->|Action button<br/>Save to KB| ACT[onemcp-submit-kb.py]
+      ACT --> RED[redact.py<br/>hard block + soft]
+      RED --> SUM[summarizer<br/>deepseek via LiteLLM]
+      SUM --> ACT
+      OW -.->|full trace fallback| VL[mcp-vl]
+      OW -.-> SEM[mcp-semantic]
+      AM[Alertmanager]:::am
+    end
+    subgraph OMH["OneMCP host · 192.168.122.56"]
+      NGINX[nginx TLS<br/>/api/mcp] --> BE[backend NestJS]
+      BE --> PG[(Postgres 16<br/>FTS + trigram)]
+      BE --> MINIO[(MinIO)]
+      BE --> PORT[Portal Next.js<br/>verify UI]
+    end
+    FUN -->|X-Onemcp-User: openwebui-bot<br/>Verify TLS + CA| NGINX
+    ACT --> NGINX
+    AM -->|webhook P7| NGINX
+    classDef u fill:#082f3f,stroke:#7dd3fc,color:#7dd3fc
+    classDef am fill:#2a1f06,stroke:#fbbf24,color:#fbbf24
+  </div>
+  <div class="mt-3 text-xs mut">
+    Bot user chung <code>openwebui-bot</code> (role contributor) · TLS + CA verify · FTS+trigram VN unaccent-aware · Escalate pgvector nếu miss rate &gt; 40% sau 4 tuần.
+  </div>
+</section>
+
+<!-- SCENARIOS -->
+<h2 class="text-lg font-semibold tracking-tight mb-3">🎬 3 kịch bản chính</h2>
+
+<!-- SCENARIO 1: HIT -->
+<section class="card p-5 mb-5 glow-lime">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="pill lime">SCENARIO 1</span>
+    <span class="pill gray">KB HIT · tiết kiệm quota + thời gian</span>
+    <span class="mut text-xs">~30s · ~500 tokens (thay vì ~2000)</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="fake-chat">
+      <div class="chip on mb-3">💬 OpenWebUI chat</div>
+      <div class="msg-user mb-2">nginx trả 502 hàng loạt từ 3h sáng, làm sao fix?</div>
+      <div class="msg-bot mb-2">
+        <div class="text-xs mut mb-1">🤖 assistant · thinking...</div>
+        <div class="tool-call">→ onemcp_search(q="nginx 502 3am upstream", limit=5)</div>
+        <div class="tool-call">→ onemcp_search(q="nginx bad gateway timeout", limit=5)</div>
+        <div class="tool-call">→ onemcp_search(q="nginx quá tải php-fpm", limit=5)</div>
+        <div class="tool-result">✓ 1 published hit · score 0.87 · kb-042</div>
+      </div>
+      <div class="msg-bot">
+        <div class="kb-card mb-2">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="pill lime">verified · 4 hits</span>
+            <span class="pill gray">2026-07-16</span>
+          </div>
+          <div class="font-semibold mb-1">nginx 502 upstream php-fpm pool exhaust</div>
+          <div class="text-xs mut mb-2">tags: nginx, php-fpm, timeout</div>
+          <div class="text-sm">
+            <strong class="ok">Root cause:</strong> pm.max_children=32 quá thấp cho traffic 3am peak.<br/>
+            <strong class="ok">Fix:</strong> đổi pm.max_children=64 trong <code>/etc/php/fpm/pool.d/www.conf</code>, <code>systemctl reload php-fpm</code>.<br/>
+            <strong class="ok">Verify:</strong> <code>_stream:&#123;app="nginx"&#125; status:502 | stats count()</code>
+          </div>
+          <div class="text-xs mt-2"><a class="acc" href="#">🔗 portal.onemcp.local/artifacts/kb-042</a></div>
+        </div>
+        <div class="text-sm">👉 KB này còn đúng không?</div>
+        <div class="flex gap-2 mt-2">
+          <button class="btn-action" style="border-color:#14532d;color:#86efac">✅ Yes, đã fix xong</button>
+          <button class="btn-action">❌ No, trace lại</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="h-title mb-2">Diễn giải</div>
+      <ol class="text-sm space-y-2">
+        <li><span class="step-num">1</span> System prompt ép LLM gọi <code>onemcp_search</code> <b>trước tiên</b>.</li>
+        <li><span class="step-num">2</span> LLM sinh 2-3 query candidate (VN + EN) để tăng recall FTS.</li>
+        <li><span class="step-num">3</span> Function trả top-N kết quả với score, filter <code>status=published</code>.</li>
+        <li><span class="step-num">4</span> LLM present KB card + hỏi user confirm.</li>
+        <li><span class="step-num">5</span> User Yes → dừng. <b>KHÔNG</b> gọi <code>mcp-vl</code> / <code>mcp-semantic</code>.</li>
+      </ol>
+      <hr class="sep"/>
+      <div class="h-title mb-2">Prompt rule kích hoạt scenario này</div>
+      <pre class="text-[11px] card2 p-3 leading-relaxed"><span class="mut"># infra/openwebui/system-prompt-ops.md</span>
+1. Với MỌI câu hỏi về lỗi/incident/log/service down,
+   BẮT BUỘC gọi <span class="vio">onemcp_search</span> TRƯỚC TIÊN.
+   Sinh 2-3 query candidate (VN + EN).
+
+2. Nếu có kết quả (published), present:
+   Title + tags + resolution 100-200 từ + link portal.
+   Hỏi: "KB này còn đúng không? Yes / No"
+
+3. User Yes → DỪNG.</pre>
+    </div>
+  </div>
+</section>
+
+<!-- SCENARIO 2: MISS + SAVE -->
+<section class="card p-5 mb-5 glow-vio">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="pill vio">SCENARIO 2</span>
+    <span class="pill gray">KB MISS · full trace + save qua nút</span>
+    <span class="mut text-xs">User chủ động click Save, không auto-submit</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="fake-chat">
+      <div class="chip on mb-3">💬 OpenWebUI chat</div>
+      <div class="msg-user mb-2">Redis latency tăng đột biến, response time 2s</div>
+      <div class="msg-bot mb-2">
+        <div class="tool-call">→ onemcp_search(q="redis latency spike slow 2s")</div>
+        <div class="tool-result">⚠ 0 published hits</div>
+        <div class="tool-call">→ mcp-semantic.search_log_templates("redis slow")</div>
+        <div class="tool-call">→ mcp-vl.query('_stream:&#123;app="redis"&#125; | stats by(op) avg(dur_ms)')</div>
+        <div class="tool-result">✓ top op = "KEYS *" (avg 1800ms)</div>
+      </div>
+      <div class="msg-bot mb-2">
+        <div class="text-sm">🔍 SLOWLOG chỉ ra <code>KEYS *</code> đang block event loop (O(N)). Bạn nên:</div>
+        <ol class="text-sm mt-1 space-y-1 pl-5 list-decimal">
+          <li>Grep code service X tìm <code>KEYS *</code></li>
+          <li>Replace bằng <code>SCAN</code> cursor pattern, batch 100</li>
+          <li>Verify: <code>_stream:&#123;app="redis"&#125; slowlog | stats count()</code></li>
+        </ol>
+      </div>
+      <div class="msg-user mb-2">OK apply xong, latency về 20ms 🎉</div>
+      <div class="msg-bot mb-2">
+        <div class="text-sm">🎉 Fix work rồi. Chat này có problem+solution rõ ràng.</div>
+        <div class="text-sm mt-1">💡 Click nút bên dưới để lưu vào OneMCP KB cho team.</div>
+        <div class="mt-2 flex gap-2">
+          <button class="btn-action">📚 Save to KB</button>
+          <span class="text-xs mut self-center">← User click nút này</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="h-title mb-2">Prompt rule kích hoạt Save</div>
+      <pre class="text-[11px] card2 p-3 leading-relaxed"><span class="mut"># Rule 5 — system-prompt-ops.md</span>
+Khi conversation kết thúc, ĐÁNH GIÁ "KB-worthy":
+ • Problem rõ (error/symptom cụ thể) ✓
+ • Solution xác định (command/config cụ thể) ✓
+ • User đã confirm fix work ✓
+
+Nếu KB-worthy → nhắc 1 câu:
+  "💡 Click 📚 Save to KB để lưu cho team."
+
+TUYỆT ĐỐI KHÔNG tự gọi tool submit.
+Chỉ user chủ động click nút.</pre>
+
+      <hr class="sep"/>
+      <div class="h-title mb-2">Vì sao nút thay vì auto-detect?</div>
+      <ul class="text-sm space-y-1 list-disc pl-5">
+        <li>User giữ 100% control — không LLM tự submit oan</li>
+        <li>Modal preview cho phép edit trước khi submit</li>
+        <li>KHÔNG phụ thuộc prompt gap "detect fixed"</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- MODAL FLOW -->
+  <hr class="sep"/>
+  <div class="flex items-center gap-2 mb-3">
+    <span class="h-title">Sau khi user click 📚</span>
+    <span class="pill vio">Modal flow · OpenWebUI Action</span>
+  </div>
+  <div class="grid md:grid-cols-3 gap-4">
+    <!-- Step 1 -->
+    <div class="modal-mock">
+      <div class="text-xs mut mb-2">Step 1 — Summarizing...</div>
+      <div class="text-sm">🔄 Đang tóm tắt chat...</div>
+      <div class="mt-3 text-xs mut">deepseek qua LiteLLM · timeout 30s · loading state disable button (H2 fix)</div>
+    </div>
+    <!-- Step 2 -->
+    <div class="modal-mock">
+      <div class="text-xs vio mb-2 font-semibold">Step 2 — Preview form (editable)</div>
+      <span class="form-label">Title <span class="req">*</span></span>
+      <input class="form-field mb-2" value="redis latency spike do KEYS * blocking event loop"/>
+      <span class="form-label">Problem / symptoms <span class="req">*</span></span>
+      <textarea class="form-field mb-2" rows="2">Response time redis 2s (bình thường 20ms). SLOWLOG top op = KEYS *</textarea>
+      <span class="form-label">Solution <span class="req">*</span></span>
+      <textarea class="form-field mb-2" rows="3">Replace KEYS * bằng SCAN cursor pattern, batch 100.
+Verify: _stream:&#123;app="redis"&#125; slowlog | stats count()</textarea>
+      <span class="form-label">Tags</span>
+      <input class="form-field mb-2" value="redis, performance, slowlog"/>
+      <div class="flex gap-2 mt-3">
+        <button class="btn-action" style="border-color:#14532d;color:#86efac">✓ Submit</button>
+        <button class="btn-action">Cancel</button>
+      </div>
+    </div>
+    <!-- Step 3 -->
+    <div class="modal-mock">
+      <div class="text-xs ok mb-2 font-semibold">Step 3 — Submitted</div>
+      <div class="text-sm">✅ KB #127 <span class="pill amber">pending</span></div>
+      <div class="text-xs mut mt-2">Contributor: openwebui-bot</div>
+      <div class="text-xs mut">Verify tại portal:</div>
+      <a class="text-xs acc" href="#">🔗 portal.onemcp.local/artifacts/127</a>
+      <hr class="sep"/>
+      <div class="text-xs mut">
+        Maintainer review → publish → status <span class="pill lime">published</span> → xuất hiện trong Scenario 1 next time.
+      </div>
+    </div>
+  </div>
+  <div class="mt-3 text-xs mut">
+    Trước Step 2: <code>redact.py</code> chạy hard-block (private key, sk-*, JWT) + soft redact (IPs, emails ngoài @inet.vn, path chứa .env). Fail hard-block → submit bị chặn với error rõ.
+  </div>
+</section>
+
+<!-- SCENARIO 3: ALERT -->
+<section class="card p-5 mb-5 glow-cyan">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="pill amber">SCENARIO 3</span>
+    <span class="pill gray">Alertmanager auto-hint runbook</span>
+    <span class="mut text-xs">P7 OneMCP webhook (đã ship) · reuse toàn phần</span>
+  </div>
+  <div class="mermaid">
+sequenceDiagram
+    participant VMA as vmalert
+    participant AM as Alertmanager
+    participant TG as Telegram
+    participant OMCP as OneMCP webhook<br/>/api/webhooks/alerts
+    participant SL as Slack (optional)
+    participant OC as On-call member
+    VMA->>AM: fire NginxHigh5xxRate (critical)
+    par
+      AM->>TG: notify (như hiện tại)
+    and
+      AM->>OMCP: POST alert
+      OMCP->>OMCP: match runbook (service=nginx)
+      OMCP->>SL: notify + link portal runbook
+    end
+    OC->>SL: click link
+    SL->>OC: runbook-nginx-triage.md<br/>(symptoms/verify/mitigate/escalate)
+    Note over OC: MTTR ↓
+  </div>
+  <div class="mt-3 text-xs mut">
+    Alertmanager route <code>continue:true</code> để gửi song song 2 receivers (Telegram giữ nguyên, OneMCP thêm). Bearer token trong receiver config.
+  </div>
+</section>
+
+<!-- COMPONENT MAP -->
+<h2 class="text-lg font-semibold tracking-tight mb-3">🧩 Component map</h2>
+<section class="card p-5 mb-5">
+  <table class="k">
+    <thead><tr>
+      <th>Component</th><th>File / Location</th><th>Trách nhiệm</th><th>Trạng thái</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><code>onemcp-tools.py</code></td>
+        <td class="mut">infra/openwebui/functions/</td>
+        <td>Function LLM-callable: search / get / list_skills / load_skill / get_template</td>
+        <td><span class="pill amber">to build</span></td>
+      </tr>
+      <tr>
+        <td><code>onemcp-submit-kb.py</code></td>
+        <td class="mut">infra/openwebui/actions/</td>
+        <td>Action button 📚 · summarizer + modal + submit</td>
+        <td><span class="pill amber">to build</span></td>
+      </tr>
+      <tr>
+        <td><code>redact.py</code></td>
+        <td class="mut">infra/openwebui/actions/</td>
+        <td>Hard-block private key/tokens · soft redact IPs/emails · BEFORE summarizer</td>
+        <td><span class="pill amber">to build</span></td>
+      </tr>
+      <tr>
+        <td><code>system-prompt-ops.md</code></td>
+        <td class="mut">infra/openwebui/</td>
+        <td>Canonical prompt · admin paste vào OpenWebUI settings</td>
+        <td><span class="pill amber">to write</span></td>
+      </tr>
+      <tr>
+        <td><code>onemcp-ca.crt</code></td>
+        <td class="mut">infra/openwebui/</td>
+        <td>OneMCP CA cert · mount vào container để VERIFY_TLS=true</td>
+        <td><span class="pill amber">to fetch</span></td>
+      </tr>
+      <tr>
+        <td><code>alertmanager/config.yml</code></td>
+        <td class="mut">infra/alertmanager/</td>
+        <td>Thêm receiver <code>onemcp-webhook</code> parallel Telegram</td>
+        <td><span class="pill amber">to patch</span></td>
+      </tr>
+      <tr>
+        <td><code>OneMCP backend</code></td>
+        <td class="mut">192.168.122.56 (external)</td>
+        <td>8 MCP tools ready · portal verify UI · Alertmanager P7</td>
+        <td><span class="pill lime">shipped</span></td>
+      </tr>
+      <tr>
+        <td>Seed 15-25 entries</td>
+        <td class="mut">plans/reports/journal-* + audit-* + vps-*.sh</td>
+        <td>Claude extract → user review → publish trước go-live</td>
+        <td><span class="pill amber">to seed</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- PHASE TIMELINE -->
+<h2 class="text-lg font-semibold tracking-tight mb-3">📅 Phase timeline</h2>
+<section class="card p-5 mb-5">
+  <div class="grid md:grid-cols-5 gap-3">
+    <div class="card2 p-3">
+      <div class="pill cyan mb-2">PHASE 1</div>
+      <div class="text-sm font-semibold mb-1">Compat + Network + Auth</div>
+      <div class="text-xs mut">0.5-1 ngày</div>
+      <hr class="sep"/>
+      <ul class="text-[11px] space-y-1">
+        <li>✓ Verify ONEMCP_URL reachable</li>
+        <li>✓ <span class="warn">STOP-gate</span>: Action modal API</li>
+        <li>✓ CIDR whitelist verify</li>
+        <li>✓ Bot user contributor</li>
+        <li>✓ Fetch OneMCP CA cert</li>
+      </ul>
+    </div>
+    <div class="card2 p-3">
+      <div class="pill vio mb-2">PHASE 2</div>
+      <div class="text-sm font-semibold mb-1">Function + Action</div>
+      <div class="text-xs mut">1-1.5 ngày</div>
+      <hr class="sep"/>
+      <ul class="text-[11px] space-y-1">
+        <li>✓ onemcp-tools.py (search/get/…)</li>
+        <li>✓ onemcp-submit-kb.py</li>
+        <li>✓ redact.py hard+soft + tests</li>
+        <li>✓ VERIFY_TLS=true default</li>
+        <li>✓ Modal preview UX</li>
+      </ul>
+    </div>
+    <div class="card2 p-3">
+      <div class="pill pink mb-2">PHASE 3</div>
+      <div class="text-sm font-semibold mb-1">System prompt</div>
+      <div class="text-xs mut">0.5 ngày</div>
+      <hr class="sep"/>
+      <ul class="text-[11px] space-y-1">
+        <li>✓ system-prompt-ops.md</li>
+        <li>✓ KB-worthy detection rule</li>
+        <li>✓ Admin paste OpenWebUI</li>
+        <li>✓ Setup screenshot doc</li>
+      </ul>
+    </div>
+    <div class="card2 p-3">
+      <div class="pill org mb-2">PHASE 4</div>
+      <div class="text-sm font-semibold mb-1">Alertmanager webhook</div>
+      <div class="text-xs mut">0.5 ngày</div>
+      <hr class="sep"/>
+      <ul class="text-[11px] space-y-1">
+        <li>✓ receiver onemcp-webhook</li>
+        <li>✓ route continue:true parallel</li>
+        <li>✓ End-to-end alert test</li>
+      </ul>
+    </div>
+    <div class="card2 p-3">
+      <div class="pill lime mb-2">PHASE 5</div>
+      <div class="text-sm font-semibold mb-1">Seed + smoke + docs</div>
+      <div class="text-xs mut">0.5-1 ngày</div>
+      <hr class="sep"/>
+      <ul class="text-[11px] space-y-1">
+        <li>✓ Seed 15-25 entries</li>
+        <li>✓ 9 smoke scenarios</li>
+        <li>✓ Staged rollout (admin→team)</li>
+        <li>✓ Docs update README + guides</li>
+      </ul>
+    </div>
+  </div>
+  <div class="mt-3 text-xs mut">
+    <b>Tổng: 2-4 ngày · single dev.</b> Sau go-live: 4 tuần đo hit rate · nếu &lt; 40% → escalate P4.2 pgvector semantic (Option B, contribute vào OneMCP).
+  </div>
+</section>
+
+<!-- VALIDATION + RISKS -->
+<div class="grid md:grid-cols-2 gap-5 mb-6">
+  <section class="card p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="h-title">Validation decisions</span>
+      <span class="pill lime">6/6 recommended</span>
+    </div>
+    <table class="k">
+      <tbody>
+        <tr><td>V1 · Action modal fail</td><td>STOP + replan UX</td></tr>
+        <tr><td>V2 · TLS</td><td>Verify + mount CA</td></tr>
+        <tr><td>V3 · Redact</td><td>Hard block + soft, BEFORE summarizer</td></tr>
+        <tr><td>V4 · Seed count</td><td>15-25 covering 6-8 services</td></tr>
+        <tr><td>V5 · Rollout</td><td>Staged admin → team</td></tr>
+        <tr><td>V6 · Decision horizon</td><td>4 tuần đo hit rate</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="h-title">Risks còn theo dõi</span>
+      <span class="pill amber">defer, not applied</span>
+    </div>
+    <table class="k">
+      <tbody>
+        <tr><td>H2 · double-click submit</td><td>debounce + signature dedup 5min</td></tr>
+        <tr><td>H3 · stale KB &gt;90d trusted mù</td><td>prompt tag "verified N ngày trước"</td></tr>
+        <tr><td>H5 · search-first drift</td><td>weekly parse audit log tính rate</td></tr>
+        <tr><td>M2 · CIDR /24 quá rộng</td><td>tighten /32 OneLog host IP</td></tr>
+      </tbody>
+    </table>
+    <div class="mt-3 text-[11px] mut">Cân nhắc apply khi cook nếu cost &lt; value tại thời điểm implement.</div>
+  </section>
+</div>
+
+<!-- SUCCESS METRICS -->
+<section class="card p-5 mb-5">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="h-title">Success metrics</span>
+    <span class="pill gray">4-tuần baseline</span>
+  </div>
+  <div class="grid md:grid-cols-4 gap-3">
+    <div class="card2 p-3">
+      <div class="text-xs mut">Bridge live</div>
+      <div class="text-lg font-semibold">3 Function tools</div>
+      <div class="text-xs ok">OpenWebUI thấy search/get/get_template</div>
+    </div>
+    <div class="card2 p-3">
+      <div class="text-xs mut">2 tuần đầu</div>
+      <div class="text-lg font-semibold">≥ 5 sessions hit</div>
+      <div class="text-xs mut">chat có onemcp_search hit ≥ 1</div>
+    </div>
+    <div class="card2 p-3">
+      <div class="text-xs mut">4 tuần</div>
+      <div class="text-lg font-semibold">≥ 10 published</div>
+      <div class="text-xs mut">nguồn từ chat submit + verify</div>
+    </div>
+    <div class="card2 p-3">
+      <div class="text-xs mut">Escalate trigger</div>
+      <div class="text-lg font-semibold">FTS hit &lt; 40%</div>
+      <div class="text-xs warn">→ contribute pgvector P4.2</div>
+    </div>
+  </div>
+</section>
+
+<footer class="text-xs mut text-center py-4 border-t border-[var(--line)]">
+  Plan: <code>plans/260723-1200-onemcp-openwebui-bridge/</code> · Related: brainstorms 260723-1200, 260723-1411 · Superseded plans: 260716-1422, 260723-1135
+</footer>
+
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad:true,
+  theme:'dark',
+  themeVariables:{
+    darkMode:true, background:'#0a0a0b',
+    primaryColor:'#111114', primaryTextColor:'#ededf0', primaryBorderColor:'#3a3a44',
+    lineColor:'#3a3a44', textColor:'#cdd2d8',
+    actorBkg:'#111114', actorBorder:'#3a3a44', actorTextColor:'#ededf0',
+    noteBkgColor:'#100e18', noteBorderColor:'#4c1d95', noteTextColor:'#c4b5fd'
+  }
+});
+</script>
+</body>
+</html>

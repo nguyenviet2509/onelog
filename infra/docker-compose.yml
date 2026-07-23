@@ -276,6 +276,10 @@ services:
       # Separate topic for LLM cost/quota alerts (Quota alert topic) — routed
       # via receiver telegram-llm-cost, matcher team="llm-cost".
       TELEGRAM_ALERT_THREAD_ID_LLM_COST: ${TELEGRAM_ALERT_THREAD_ID_LLM_COST:-0}
+      # Separate topic for fleet client syslog alerts (Client-Server topic) —
+      # routed via receiver telegram-client-server, matcher host=~"onehost-.*"
+      # + all notify_style=event rules (OomKillEvent/DiskFullErrors/…).
+      TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER: ${TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER:-0}
       # Render .StartsAt.Local / .EndsAt.Local as Vietnam time (UTC+7) in template.
       TZ: Asia/Ho_Chi_Minh
     entrypoint: ["/bin/sh"]
@@ -286,6 +290,7 @@ services:
             -e "s|__TELEGRAM_CHAT_ID__|$$TELEGRAM_ALERT_CHAT_ID|g" \
             -e "s|__TELEGRAM_THREAD_ID__|$$TELEGRAM_ALERT_THREAD_ID|g" \
             -e "s|__TELEGRAM_THREAD_ID_LLM_COST__|$$TELEGRAM_ALERT_THREAD_ID_LLM_COST|g" \
+            -e "s|__TELEGRAM_THREAD_ID_CLIENT_SERVER__|$$TELEGRAM_ALERT_THREAD_ID_CLIENT_SERVER|g" \
             /etc/alertmanager/alertmanager.yml > /tmp/alertmanager.yml
         exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/data
     ports:

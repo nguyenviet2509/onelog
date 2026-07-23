@@ -1,0 +1,7 @@
+# OneLog backup master public key
+# Private key location:
+#   - Local:     %USERPROFILE%\.secrets\onelog-backup-master.key  (ACL: current user only)
+#   - Bitwarden: TODO — user needs to paste full private key into Secure Note "onelog-backup-master.key"
+#   - QR paper:  TODO — user needs to `qrencode` and store printed QR in safe
+# Generated: 2026-07-23
+age1hpzwtunxr5puydfukt42t2fvr3gm3hz5d44smtxkynhxrglltsmscj0mcj

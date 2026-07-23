@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Daily snapshot of ragstack data: VictoriaLogs + Qdrant + Postgres
+# Daily snapshot of ragstack data: VictoriaLogs + Qdrant + Postgres + secrets.
+# Output is age-encrypted (asymmetric) so leaking S3 creds does NOT expose data.
 # Usage:  bash snapshot-daily.sh [BACKUP_DIR]
 #   BACKUP_DIR default: /opt/onelog/backup
 # Cron:   0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/ragstack-snapshot.log 2>&1
-# Retention: keep last 7 days.
+# Retention: keep last 3 days locally (S3 has its own lifecycle).
+# Prereq: age binary + infra/backup/backup-age.pub committed. See infra/backup/README.md.
 
 set -euo pipefail
 
@@ -12,7 +14,7 @@ INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BACKUP_DIR="${1:-${BACKUP_DIR:-$INFRA_DIR/../backup}}"
 DATE="$(date +%Y%m%d-%H%M)"
 STAGE="$(mktemp -d -t ragsnap.XXXXXX)"
-KEEP_DAYS="${KEEP_DAYS:-7}"
+KEEP_DAYS="${KEEP_DAYS:-3}"
 
 cleanup() { rm -rf "$STAGE"; }
 trap cleanup EXIT
@@ -28,7 +30,7 @@ echo "[snapshot] $(date -Is) start → $BACKUP_DIR"
 
 # --- 1. Postgres logical dump — only when container is running ---
 # Postgres is opt-in (profile: kb). Skip cleanly on stacks that don't run it.
-echo "[1/3] pg_dump"
+echo "[1/5] pg_dump"
 if docker inspect -f '{{.State.Running}}' ragstack-postgres 2>/dev/null | grep -q true; then
   docker exec ragstack-postgres sh -c \
     "pg_dump -U '${POSTGRES_USER:-rag}' -d rag -f /tmp/postgres-rag.sql"
@@ -45,7 +47,7 @@ fi
 # --- 2. Qdrant snapshot API ---
 # Dùng jq nếu có; fallback sed cho list collection thô. Mỗi collection lưu vào subdir
 # riêng để restore phân biệt được tên collection chứa dấu '-'.
-echo "[2/3] qdrant snapshots"
+echo "[2/5] qdrant snapshots"
 QDRANT_URL="http://127.0.0.1:6333"
 COLS_JSON=$(curl -fsS -H "api-key: ${QDRANT_API_KEY:-}" "$QDRANT_URL/collections" || echo '')
 if command -v jq >/dev/null 2>&1; then
@@ -80,20 +82,64 @@ fi
 # `--warning=no-file-changed` chấp nhận file mutate giữa lúc tar (log đang ghi).
 # Nightly snapshot 02:00 thường low-traffic, sai sót nhỏ chấp nhận được.
 # Trade-off: muốn consistency tuyệt đối → stop container vài giây trước khi tar.
-echo "[3/3] victorialogs data copy"
+echo "[3/5] victorialogs data copy"
 if [[ -d "$INFRA_DIR/data/victorialogs" ]]; then
   tar --warning=no-file-changed --ignore-failed-read \
     -C "$INFRA_DIR/data" -cf "$STAGE/victorialogs.tar" victorialogs \
     || echo "[snapshot] warn: tar reported file changed (acceptable for hot copy)"
 fi
 
-# --- Pack ---
-ARCHIVE="$BACKUP_DIR/onelog-${DATE}.tar.gz"
-tar -C "$STAGE" -czf "$ARCHIVE" .
+# --- 4. Secrets bundle (for portability to another VPS) ---
+# Bundle .env + caddy TLS certs + alertmanager config into secrets/ so a fresh
+# VPS can restore the archive and boot the stack immediately, without an
+# out-of-band copy of secrets. Whole archive is age-encrypted below.
+echo "[4/5] secrets bundle"
+mkdir -p "$STAGE/secrets"
+[[ -f "$INFRA_DIR/.env" ]] && cp -p "$INFRA_DIR/.env" "$STAGE/secrets/env"
+for d in caddy/data caddy/config alertmanager mcp-tokens; do
+  if [[ -d "$INFRA_DIR/$d" ]]; then
+    # Flatten path separator so restore can iterate *.tar without ambiguity.
+    tar -C "$INFRA_DIR" -cf "$STAGE/secrets/${d//\//_}.tar" "$d" 2>/dev/null || true
+  fi
+done
+
+# --- 5. MANIFEST + SHA256SUMS (integrity + provenance) ---
+echo "[5/5] manifest"
+GIT_COMMIT=$(cd "$INFRA_DIR/.." && git rev-parse HEAD 2>/dev/null || echo unknown)
+IMAGE_TAGS=$(cd "$INFRA_DIR" && docker compose config --images 2>/dev/null | sort -u | paste -sd, - || echo unknown)
+HAS_SECRETS=$([[ -f "$STAGE/secrets/env" ]] && echo true || echo false)
+cat > "$STAGE/MANIFEST.json" <<EOF
+{
+  "version": 1,
+  "created": "$(date -Iseconds)",
+  "hostname": "$(hostname)",
+  "git_commit": "$GIT_COMMIT",
+  "image_tags": "$IMAGE_TAGS",
+  "has_secrets": $HAS_SECRETS
+}
+EOF
+# SHA256SUMS lists every blob in the stage dir except itself.
+(cd "$STAGE" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+
+# --- Pack + age encrypt ---
+# Asymmetric encryption: VPS only holds public key; leaking VPS or S3 creds does
+# NOT expose historical backups (private key stays on operator laptop).
+ARCHIVE="$BACKUP_DIR/onelog-${DATE}.tar.gz.age"
+AGE_PUB="${BACKUP_AGE_PUB:-$INFRA_DIR/backup/backup-age.pub}"
+if [[ ! -f "$AGE_PUB" ]]; then
+  echo "[snapshot] ERROR age public key missing: $AGE_PUB" >&2
+  echo "[snapshot] see infra/backup/README.md for setup" >&2
+  exit 5
+fi
+if ! command -v age >/dev/null 2>&1; then
+  echo "[snapshot] ERROR age binary missing (apt install age)" >&2
+  exit 6
+fi
+tar -C "$STAGE" -czf - . | age -R "$AGE_PUB" -o "$ARCHIVE"
 echo "[snapshot] wrote $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 
 # --- Retention (local) ---
-find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz' -mtime "+${KEEP_DAYS}" -print -delete || true
+find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -mtime "+${KEEP_DAYS}" -print -delete || true
 
 # --- S3 offsite push (optional) ---
 # Config via infra/.env:
@@ -119,7 +165,7 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
   # Normalize bucket URI — accept both `mybucket` and `s3://mybucket`.
   BUCKET_URI="$BACKUP_S3_BUCKET"
   [[ "$BUCKET_URI" != s3://* ]] && BUCKET_URI="s3://$BUCKET_URI"
-  S3_KEY="${BUCKET_URI%/}/${BACKUP_S3_PREFIX:-}onelog-${DATE}.tar.gz"
+  S3_KEY="${BUCKET_URI%/}/${BACKUP_S3_PREFIX:-}onelog-${DATE}.tar.gz.age"
 
   echo "[snapshot] s3 upload → $S3_KEY"
   aws "${S3_ENDPOINT_ARG[@]}" s3 cp "$ARCHIVE" "$S3_KEY" \
@@ -133,7 +179,7 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
     aws "${S3_ENDPOINT_ARG[@]}" s3 ls "${BUCKET_URI%/}/${BACKUP_S3_PREFIX:-}" 2>/dev/null \
       | awk '{print $1" "$2" "$NF}' \
       | while read -r d t f; do
-          [[ "$f" =~ ^onelog-.*\.tar\.gz$ ]] || continue
+          [[ "$f" =~ ^onelog-.*\.tar\.gz\.age$ ]] || continue
           FILE_EPOCH=$(date -d "$d $t" +%s 2>/dev/null || echo 0)
           if [[ "$FILE_EPOCH" -gt 0 && "$FILE_EPOCH" -lt "$CUTOFF_EPOCH" ]]; then
             echo "  purge remote: $f"

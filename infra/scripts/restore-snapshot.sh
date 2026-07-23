@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
 # Restore ragstack data from a snapshot archive produced by snapshot-daily.sh
-# Usage: bash restore-snapshot.sh <archive.tar.gz>
-# WARNING: stops services + overwrites data dirs. Run only when intentional.
+# Usage: bash restore-snapshot.sh [--no-secrets] <archive.tar.gz.age | s3://bucket/key>
+# Env:   BACKUP_AGE_KEY=/path/to/onelog-backup-master.key   (required for .age input)
+#        FORCE=1                                            (skip confirm prompt)
+#        RESTORE_SECRETS=0                                  (same as --no-secrets)
+# WARNING: stops services + overwrites data dirs + overwrites .env. Run only when intentional.
 
 set -euo pipefail
 
-ARCHIVE="${1:?usage: restore-snapshot.sh <archive.tar.gz | s3://bucket/key>  (set FORCE=1 to skip prompt)}"
+# CLI flags — must come before the archive path.
+RESTORE_SECRETS="${RESTORE_SECRETS:-1}"
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --no-secrets) RESTORE_SECRETS=0; shift ;;
+    -h|--help)
+      sed -n '2,7p' "$0"; exit 0 ;;
+    *) echo "unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+ARCHIVE="${1:?usage: restore-snapshot.sh [--no-secrets] <archive.tar.gz.age | s3://bucket/key>  (set FORCE=1 to skip prompt)}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STAGE="$(mktemp -d -t ragrestore.XXXXXX)"
@@ -40,8 +54,29 @@ if [[ -f "$INFRA_DIR/.env" ]]; then
   set -a; . "$INFRA_DIR/.env"; set +a
 fi
 
+# --- Age decrypt (if .age extension) ---
+# Archives from snapshot-daily.sh are age-encrypted for portability + safety.
+if [[ "$ARCHIVE" == *.age ]]; then
+  : "${BACKUP_AGE_KEY:?Set BACKUP_AGE_KEY=/path/to/onelog-backup-master.key}"
+  if ! command -v age >/dev/null 2>&1; then
+    echo "[restore] ERROR age missing (apt install age)" >&2; exit 6
+  fi
+  DECRYPTED="$STAGE/archive.tar.gz"
+  echo "[restore] age decrypt → $DECRYPTED"
+  age -d -i "$BACKUP_AGE_KEY" -o "$DECRYPTED" "$ARCHIVE"
+  ARCHIVE="$DECRYPTED"
+fi
+
 echo "[restore] unpack $ARCHIVE → $STAGE"
 tar -C "$STAGE" -xzf "$ARCHIVE"
+
+# --- Integrity check ---
+if [[ -f "$STAGE/SHA256SUMS" ]]; then
+  echo "[restore] verify SHA256SUMS"
+  (cd "$STAGE" && sha256sum -c SHA256SUMS --quiet) || {
+    echo "[restore] ERROR checksum mismatch — archive corrupted" >&2; exit 7
+  }
+fi
 
 cd "$INFRA_DIR"
 
@@ -95,7 +130,29 @@ if [[ -f "$STAGE/postgres-rag.sql" ]]; then
   docker exec -i ragstack-postgres psql -U "${POSTGRES_USER:-rag}" -d rag < "$STAGE/postgres-rag.sql"
 fi
 
-# --- 5. Restart everything ---
+# --- 5. Secrets restore (opt-out via --no-secrets / RESTORE_SECRETS=0) ---
+# Portability: archive carries .env + caddy TLS + alertmanager config so a fresh
+# VPS can boot the stack without an out-of-band secret transfer.
+if [[ -d "$STAGE/secrets" && "$RESTORE_SECRETS" == "1" ]]; then
+  echo "[restore] secrets bundle detected"
+  # Backup existing .env so we can roll back if the new one is wrong.
+  if [[ -f "$INFRA_DIR/.env" ]]; then
+    BACKUP_ENV="$INFRA_DIR/.env.pre-restore-$(date +%Y%m%d-%H%M%S)"
+    cp -p "$INFRA_DIR/.env" "$BACKUP_ENV"
+    echo "  saved existing .env → $BACKUP_ENV"
+  fi
+  if [[ -f "$STAGE/secrets/env" ]]; then
+    install -m 600 "$STAGE/secrets/env" "$INFRA_DIR/.env"
+    echo "  restored .env"
+  fi
+  for t in "$STAGE"/secrets/*.tar; do
+    [[ -f "$t" ]] || continue
+    echo "  extract $(basename "$t")"
+    tar -C "$INFRA_DIR" -xf "$t"
+  done
+fi
+
+# --- 6. Restart everything ---
 echo "[restore] docker compose up -d"
 docker compose up -d
 

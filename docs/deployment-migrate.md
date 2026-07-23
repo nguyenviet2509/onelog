@@ -66,15 +66,13 @@ docker compose version
 
 ## 6. Import .env
 
-**Kịch bản B (giữ data cũ)** — copy từ source:
+**Kịch bản B (giữ data cũ)** — SKIP: `.env` sẽ được restore tự động từ S3 backup ở step 8. Chỉ cần chuẩn bị AWS creds tạm để `aws s3 cp` chạy được:
 
 ```bash
-mv /tmp/onelog.env.migrate ~/onelog/infra/.env
-chmod 600 ~/onelog/infra/.env
-
-# Verify secrets present
-grep -cE '^(POSTGRES_PASSWORD|QDRANT_API_KEY|REDIS_PASSWORD)=' ~/onelog/infra/.env
-# → phải in ra "3"
+# Tạm export creds — chỉ đủ để pull backup, sẽ bị .env restore đè lại
+export AWS_ACCESS_KEY_ID=AKIA...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION=ap-southeast-1
 ```
 
 **Kịch bản A (fresh start)** — gen secrets mới:
@@ -100,16 +98,25 @@ docker compose --profile agent --profile mcp --profile alerts --profile indexer 
 
 **Kịch bản A (fresh start)** — SKIP step 8, nhảy thẳng step 9.
 
-**Kịch bản B (giữ data cũ)**:
+**Kịch bản B (giữ data cũ)** — pull backup mới nhất từ S3 + restore data + secrets trong 1 lệnh:
 
 ```bash
 cd ~/onelog/infra
-ls -lht ~/onelog/backup/
-ARCHIVE=$(ls -t ~/onelog/backup/onelog-*.tar.gz | head -1)
-echo "Restoring from: $ARCHIVE"
 
-# Script tự stop victorialogs/qdrant/postgres, xả data, restore, up stack
-FORCE=1 bash scripts/restore-snapshot.sh "$ARCHIVE"
+# Age private key từ Bitwarden — scp từ laptop hoặc paste tay
+scp ~/.secrets/onelog-backup-master.key vietnt@192.168.122.56:/tmp/
+export BACKUP_AGE_KEY=/tmp/onelog-backup-master.key
+chmod 600 "$BACKUP_AGE_KEY"
+
+# Locate latest backup
+LATEST=$(aws s3 ls s3://<bucket>/daily/ | tail -1 | awk '{print $NF}')
+echo "Restoring from: s3://<bucket>/daily/$LATEST"
+
+# Script tự: pull từ S3 → age decrypt → verify SHA256 → restore data + .env + caddy TLS + alertmanager
+FORCE=1 bash scripts/restore-snapshot.sh "s3://<bucket>/daily/$LATEST"
+
+# Cleanup key file khỏi VPS
+shred -u "$BACKUP_AGE_KEY"
 ```
 
 ## 9. Up toàn stack

@@ -1,0 +1,527 @@
+﻿<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"/>
+<title>OneLog · VMUI Query Cookbook</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --bg:#0a0a0b;--card:#111114;--card2:#0e0e12;--line:#1f1f25;
+    --mut:#8a8a96;--fg:#ededf0;--acc:#7dd3fc;--warn:#fbbf24;
+    --ok:#34d399;--err:#f87171;--vio:#c4b5fd;--lime:#86efac;
+  }
+  html,body{background:var(--bg);color:var(--fg);font-family:Inter,ui-sans-serif,system-ui}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+  .card2{background:var(--card2);border:1px solid var(--line);border-radius:10px}
+  .mut{color:var(--mut)} .acc{color:var(--acc)} .ok{color:var(--ok)}
+  .warn{color:var(--warn)} .err{color:var(--err)} .vio{color:var(--vio)} .lime{color:var(--lime)}
+  .h-title{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut)}
+  pre,code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.04em}
+  .pill.cyan{background:#082f3f;color:#7dd3fc}
+  .pill.lime{background:#0c2a12;color:#86efac}
+  .pill.amber{background:#2a1f06;color:#fbbf24}
+  .pill.vio{background:#1f1a3a;color:#c4b5fd}
+  .pill.err{background:#3a0f0f;color:#f87171}
+  .pill.gray{background:#15151a;color:#cdd2d8}
+
+  /* Query block */
+  .q{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;
+     transition:border-color .15s}
+  .q:hover{border-color:#3a3a4a}
+  .q .title{font-weight:600;font-size:14px;margin-bottom:2px}
+  .q .desc{color:var(--mut);font-size:12.5px;line-height:1.4;margin-bottom:10px}
+  .q .code{position:relative;background:#0a0a0d;border:1px solid #1f1f25;border-radius:8px;
+           padding:10px 42px 10px 12px;font-family:ui-monospace;font-size:12.5px;
+           color:#cffafe;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+  .q .btn-copy{position:absolute;top:8px;right:8px;background:#15151a;color:#8a8a96;
+              border:1px solid #2a2a35;border-radius:6px;padding:3px 8px;font-size:11px;
+              cursor:pointer;font-family:inherit;transition:all .15s}
+  .q .btn-copy:hover{background:#1f1f25;color:#7dd3fc;border-color:#3a3a4a}
+  .q .btn-copy.ok{background:#0c2a12;color:#86efac;border-color:#34d399}
+  .q .meta{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+
+  /* Sticky TOC right */
+  .toc{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;
+       background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .toc h5{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut);margin:0 0 10px}
+  .toc a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;
+         font-size:12.5px;color:#cdd2d8;text-decoration:none;line-height:1.3}
+  .toc a:hover{background:#15151a;color:var(--acc)}
+  .toc a.active{background:#082f3f;color:var(--acc)}
+  .toc a .n{display:inline-flex;width:18px;height:18px;border-radius:50%;
+            background:#1f1a3a;color:#c4b5fd;font-size:10px;font-weight:700;
+            align-items:center;justify-content:center;flex-shrink:0}
+  .toc-wrap{display:none}
+  @media (min-width:1180px){
+    .toc-wrap{display:block;position:fixed;right:16px;top:16px;width:220px;z-index:20}
+  }
+
+  .anchor{scroll-margin-top:24px}
+  .num-pill{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+    border-radius:50%;background:#1f1a3a;color:#c4b5fd;font-size:11px;font-weight:700}
+
+  /* Search */
+  .search{background:var(--card);border:1px solid var(--line);border-radius:10px;
+          padding:10px 14px;color:var(--fg);width:100%;font-size:14px;outline:none}
+  .search:focus{border-color:var(--acc)}
+  .q.hidden{display:none}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Sticky TOC -->
+<aside class="toc-wrap">
+  <nav class="toc" id="toc">
+    <h5>Mục lục</h5>
+    <a href="#discovery"><span class="n">1</span>Discovery</a>
+    <a href="#errors"><span class="n">2</span>Errors &amp; Critical</a>
+    <a href="#security"><span class="n">3</span>Security &amp; Auth</a>
+    <a href="#host-drill"><span class="n">4</span>Per-host drill</a>
+    <a href="#volume"><span class="n">5</span>Volume &amp; noise</a>
+    <a href="#llm"><span class="n">6</span>LLM cost</a>
+    <a href="#system"><span class="n">7</span>System &amp; kernel</a>
+    <a href="#pipeline"><span class="n">8</span>Pipeline health</a>
+    <a href="#tips"><span class="n">9</span>LogsQL tips</a>
+  </nav>
+</aside>
+
+<div class="max-w-6xl mx-auto p-6">
+
+  <!-- Header -->
+  <header class="mb-6">
+    <div class="h-title">OneLog · Ops Cookbook</div>
+    <h1 class="text-3xl font-black tracking-tight mt-1">VMUI Query Cookbook</h1>
+    <p class="mut text-sm mt-2 max-w-3xl">Bộ query LogsQL sẵn dùng cho vận hành hàng ngày trên <a class="acc underline" href="http://10.200.0.30/vmui">VMUI</a>. Click nút <b>Copy</b> ở góc phải mỗi query rồi paste vào ô Query. <b class="acc">Time range</b> chọn từ dropdown góc trên phải VMUI (Last 5 min / 1 hour / 24h / Custom) — không set trong query để tránh conflict.</p>
+    <div class="flex gap-2 mt-3 flex-wrap items-center">
+      <input type="search" id="search" placeholder="Lọc query theo từ khoá (VD: error, cost, sshd)…" class="search" style="max-width:420px" />
+      <span class="pill cyan">30+ queries</span>
+      <span class="pill lime">click Copy để dán</span>
+    </div>
+  </header>
+
+  <!-- Quick access -->
+  <section class="card p-4 mb-6">
+    <div class="h-title mb-2">Truy cập nhanh</div>
+    <div class="grid md:grid-cols-2 gap-3 text-sm">
+      <div>VMUI: <a class="acc mono" href="http://10.200.0.30/vmui">http://10.200.0.30/vmui</a></div>
+      <div>Grafana: <a class="acc mono" href="http://10.200.0.30/grafana">http://10.200.0.30/grafana</a></div>
+    </div>
+    <div class="mut text-xs mt-3">Tips: dùng <b>Autocomplete: On</b> để VMUI gợi ý field tên; đổi <b>Last 5 minutes</b> → <b>Last 1 hour</b> khi cần lịch sử dài hơn.</div>
+  </section>
+
+  <!-- SECTION 1 — DISCOVERY -->
+  <section class="mb-6 anchor" id="discovery">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">1</span>
+      <h2 class="text-xl font-bold">Discovery — máy nào, service nào đang gửi log</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Tất cả host đang gửi log (5 phút)</div>
+        <div class="desc">Inventory nhanh — biết đủ số client server không.</div>
+        <div class="code" data-q="* | stats by (host) count()">* | stats by (host) count()<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Tất cả service theo count</div>
+        <div class="desc">Xem service nào đang chảy nhiều nhất — spot rare/silent service.</div>
+        <div class="code" data-q="* | stats by (service) count() as n | sort by (n desc) | limit 30">* | stats by (service) count() as n | sort by (n desc) | limit 30<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Ma trận host × service</div>
+        <div class="desc">Bảng tổng: mỗi host gửi service nào bao nhiêu. Dùng để phát hiện service thiếu.</div>
+        <div class="code" data-q="* | stats by (host, service) count() | sort by (count() desc) | limit 100">* | stats by (host, service) count() | sort by (count() desc) | limit 100<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Host im lặng — kiểm tra client mất kết nối</div>
+        <div class="desc">Nếu bạn kỳ vọng có N client → xem con số này có đủ không. Số 0 = client đó chết.</div>
+        <div class="code" data-q="* | stats by (host) count() as events | sort by (events)">* | stats by (host) count() as events | sort by (events)<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 2 — ERRORS -->
+  <section class="mb-6 anchor" id="errors">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">2</span>
+      <h2 class="text-xl font-bold">Errors &amp; Critical — cái gì đang cháy</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Mọi log err+ (15 phút gần nhất)</div>
+        <div class="desc">Query mở màn triage — nhìn 1 lượt các event nặng.</div>
+        <div class="code" data-q="severity:(err OR crit OR alert OR emerg)">severity:(err OR crit OR alert OR emerg)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Error rate theo service (1h)</div>
+        <div class="desc">Xếp hạng service nào đang ném error nhiều. Top là ứng viên điều tra.</div>
+        <div class="code" data-q="severity:err | stats by (service, host) count() as errors | sort by (errors desc) | limit 20">severity:err | stats by (service, host) count() as errors | sort by (errors desc) | limit 20<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Top error message</div>
+        <div class="desc">Message nào lặp nhiều nhất → cụm bug cần fix ưu tiên.</div>
+        <div class="code" data-q='severity:err | stats by (_msg) count() as n | sort by (n desc) | limit 20'>severity:err | stats by (_msg) count() as n | sort by (n desc) | limit 20<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Panic / Fatal / Segfault</div>
+        <div class="desc">Sự kiện app chết bất thường — cần root cause ngay.</div>
+        <div class="code" data-q='_msg:(panic OR fatal OR segfault OR "core dumped")'>_msg:(panic OR fatal OR segfault OR "core dumped")<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Connection refused / timeout</div>
+        <div class="desc">Bắt cả 2 pattern phổ biến của outage giữa các service.</div>
+        <div class="code" data-q='_msg:("connection refused" OR "connection timed out" OR "no route to host")'>_msg:("connection refused" OR "connection timed out" OR "no route to host")<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Restart loop detector</div>
+        <div class="desc">Service systemd bị restart liên tục → thường là crash + auto-restart. &gt; 3 lần trong 5m là bất thường.</div>
+        <div class="code" data-q='_msg:"Started" | stats by (service, host) count() as restarts | filter restarts:>3'>_msg:"Started" | stats by (service, host) count() as restarts | filter restarts:&gt;3<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 3 — SECURITY -->
+  <section class="mb-6 anchor" id="security">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">3</span>
+      <h2 class="text-xl font-bold">Security &amp; Auth</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">SSH login FAIL</div>
+        <div class="desc">Bruteforce detection. Nhìn tần suất theo user + src IP.</div>
+        <div class="code" data-q='service:sshd _msg:("Failed password" OR "Invalid user")'>service:sshd _msg:("Failed password" OR "Invalid user")<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">SSH login SUCCESS</div>
+        <div class="desc">Xem ai vừa login vào host nào. Correlation lúc có sự cố.</div>
+        <div class="code" data-q='service:sshd _msg:"Accepted"'>service:sshd _msg:"Accepted"<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Sudo events — chạy quyền root</div>
+        <div class="desc">Ai chạy sudo, lệnh gì. Audit trail cơ bản.</div>
+        <div class="code" data-q='service:sudo'>service:sudo<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">User account creation / mod</div>
+        <div class="desc">Bất kỳ event tạo/sửa user, group → có alert riêng nhưng vẫn nên spot check.</div>
+        <div class="code" data-q='service:(useradd OR usermod OR groupadd OR userdel)'>service:(useradd OR usermod OR groupadd OR userdel)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Redacted events — sensor scrub</div>
+        <div class="desc">Sự kiện có token/password bị redact. Service nào leak nhiều nhất = ứng viên fix log format.</div>
+        <div class="code" data-q='redacted:true | stats by (service, host) count() as leaks | sort by (leaks desc)'>redacted:true | stats by (service, host) count() as leaks | sort by (leaks desc)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Firewall drops (nếu có iptables log)</div>
+        <div class="desc">Chỉ chảy khi iptables/nftables được cấu hình log rule.</div>
+        <div class="code" data-q='service:kernel _msg:("IN=" AND "DROP")'>service:kernel _msg:("IN=" AND "DROP")<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 4 — PER HOST -->
+  <section class="mb-6 anchor" id="host-drill">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">4</span>
+      <h2 class="text-xl font-bold">Per-host drill down</h2>
+    </div>
+    <p class="mut text-sm mb-3">Thay <code>onehost-webhn072301</code> thành hostname client cần điều tra.</p>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Toàn bộ log 1 host (30 phút)</div>
+        <div class="desc">Timeline chi tiết của 1 máy. Đủ để tra tay quanh incident time.</div>
+        <div class="code" data-q='host:onehost-webhn072301'>host:onehost-webhn072301<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Error của 1 host (1h)</div>
+        <div class="desc">Zoom vào error của 1 máy — bỏ nhiễu host khác.</div>
+        <div class="code" data-q='host:onehost-webhn072301 severity:err'>host:onehost-webhn072301 severity:err<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Service phân bố trên 1 host</div>
+        <div class="desc">Xem host đang chạy các service nào — sanity check sau khi onboard.</div>
+        <div class="code" data-q='host:onehost-webhn072301 | stats by (service) count() as n | sort by (n desc)'>host:onehost-webhn072301 | stats by (service) count() as n | sort by (n desc)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Live tail 1 host</div>
+        <div class="desc">Dán query rồi nhấn nút <b>Live</b> trong VMUI để stream realtime.</div>
+        <div class="code" data-q='host:onehost-webhn072301'>host:onehost-webhn072301<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 5 — VOLUME -->
+  <section class="mb-6 anchor" id="volume">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">5</span>
+      <h2 class="text-xl font-bold">Volume &amp; noise — ai spam log</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Top talker host</div>
+        <div class="desc">Host nào gửi nhiều log nhất. Spike bất thường = spam từ 1 máy.</div>
+        <div class="code" data-q='* | stats by (host) count() as n | sort by (n desc) | limit 10'>* | stats by (host) count() as n | sort by (n desc) | limit 10<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Top talker service</div>
+        <div class="desc">Service nào đổ log nhiều nhất. Service log DEBUG có thể là ứng viên tune.</div>
+        <div class="code" data-q='* | stats by (service) count() as n | sort by (n desc) | limit 15'>* | stats by (service) count() as n | sort by (n desc) | limit 15<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Log rate theo phút (histogram nhỏ)</div>
+        <div class="desc">Xem trend ingest — spike/drop bất thường không?</div>
+        <div class="code" data-q='* | stats by (_time:1m) count() as n | sort by (_time)'>* | stats by (_time:1m) count() as n | sort by (_time)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Message dài bất thường (&gt; 8 KB)</div>
+        <div class="desc">Stack trace nhiều KB / binary blob có thể lãng phí storage.</div>
+        <div class="code" data-q='* | filter len(_msg):>8192 | stats by (service, host) count()'>* | filter len(_msg):&gt;8192 | stats by (service, host) count()<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 6 — LLM COST -->
+  <section class="mb-6 anchor" id="llm">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">6</span>
+      <h2 class="text-xl font-bold">LLM cost &amp; usage</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Tổng chi phí 24h</div>
+        <div class="desc">Cộng dồn cost mọi request qua LiteLLM. Đối chiếu với budget.</div>
+        <div class="code" data-q='service:litellm_cost | stats sum(response_cost) as total_usd'>service:litellm_cost | stats sum(response_cost) as total_usd<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Chi phí theo model</div>
+        <div class="desc">Model nào đang ăn nhiều $ — quyết định tune fallback/downgrade.</div>
+        <div class="code" data-q='service:litellm_cost | stats by (model) sum(response_cost) as cost, count() as calls | sort by (cost desc)'>service:litellm_cost | stats by (model) sum(response_cost) as cost, count() as calls | sort by (cost desc)<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Request chậm nhất (latency)</div>
+        <div class="desc">Top 20 request có duration cao nhất — spot timeout / thundering herd.</div>
+        <div class="code" data-q='service:litellm_cost | sort by (duration_ms desc) | limit 20'>service:litellm_cost | sort by (duration_ms desc) | limit 20<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Fallback đã trigger</div>
+        <div class="desc">Request nào phải fallback sang model dự phòng → primary provider có vấn đề.</div>
+        <div class="code" data-q='service:litellm_cost fallback:true'>service:litellm_cost fallback:true<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Provider balance snapshot</div>
+        <div class="desc">Số dư gần nhất từng provider (DeepSeek, OpenAI, Anthropic). Cron poll mỗi 15m.</div>
+        <div class="code" data-q='service:provider_cost'>service:provider_cost<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Token consumption theo model</div>
+        <div class="desc">Prompt vs completion tokens per model — tune prompt hoặc downgrade.</div>
+        <div class="code" data-q='service:litellm_cost | stats by (model) sum(prompt_tokens) as prompt, sum(completion_tokens) as completion'>service:litellm_cost | stats by (model) sum(prompt_tokens) as prompt, sum(completion_tokens) as completion<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 7 — SYSTEM -->
+  <section class="mb-6 anchor" id="system">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">7</span>
+      <h2 class="text-xl font-bold">System &amp; kernel</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">OOM kill events</div>
+        <div class="desc">Kernel killed 1 process do hết RAM. Cần check container/process nào và tune limit.</div>
+        <div class="code" data-q='_msg:("Out of memory" OR oom-killer OR "Killed process")'>_msg:("Out of memory" OR oom-killer OR "Killed process")<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Disk I/O errors</div>
+        <div class="desc">SMART / block layer error — dấu hiệu disk sắp chết.</div>
+        <div class="code" data-q='service:kernel _msg:("I/O error" OR "Buffer I/O" OR "medium error")'>service:kernel _msg:("I/O error" OR "Buffer I/O" OR "medium error")<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Filesystem read-only remount</div>
+        <div class="desc">Kernel remount FS thành RO khi phát hiện lỗi. App sẽ crash ngay sau đó.</div>
+        <div class="code" data-q='_msg:("read-only" AND ("Remounting" OR "EXT4-fs"))'>_msg:("read-only" AND ("Remounting" OR "EXT4-fs"))<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Systemd unit failure</div>
+        <div class="desc">Bất kỳ unit nào entered "failed" state trong 1h.</div>
+        <div class="code" data-q='service:systemd _msg:("Failed" AND ".service")'>service:systemd _msg:("Failed" AND ".service")<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 8 — PIPELINE HEALTH -->
+  <section class="mb-6 anchor" id="pipeline">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">8</span>
+      <h2 class="text-xl font-bold">Pipeline &amp; probe health</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-3">
+
+      <div class="q">
+        <div class="title">Disk usage probe (logserver)</div>
+        <div class="desc">Log của cron probe check disk /opt/onelog/data. Alert khi &gt; 75%.</div>
+        <div class="code" data-q='service:logserver-disk-monitor'>service:logserver-disk-monitor<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">OpenWebUI SQLite size probe</div>
+        <div class="desc">Log của cron probe check webui.db. Alert khi &gt; 500 MB (VACUUM cần thiết).</div>
+        <div class="code" data-q='service:openwebui-db-monitor'>service:openwebui-db-monitor<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Vector self-log (chạy trong docker)</div>
+        <div class="desc">Nhìn tổng hợp — Vector KHÔNG tự log ra VL để tránh loop. Chỉ có source_stream="vector-exec-probe".</div>
+        <div class="code" data-q='source_stream:vector-exec-probe'>source_stream:vector-exec-probe<button class="btn-copy">Copy</button></div>
+      </div>
+
+      <div class="q">
+        <div class="title">Ingest rate — tất cả nguồn</div>
+        <div class="desc">Kiểm tra pipeline đang thực sự nhận log không.</div>
+        <div class="code" data-q='* | stats count() as events, count_uniq(host) as hosts'>* | stats count() as events, count_uniq(host) as hosts<button class="btn-copy">Copy</button></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECTION 9 — TIPS -->
+  <section class="card p-5 mb-6 anchor" id="tips">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">9</span>
+      <h2 class="text-xl font-bold">LogsQL — cheatsheet nhanh</h2>
+    </div>
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="text-left">
+          <th class="pb-2 pr-4 text-xs uppercase tracking-wider mut font-medium">Cú pháp</th>
+          <th class="pb-2 text-xs uppercase tracking-wider mut font-medium">Ý nghĩa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>*</code></td><td>Match mọi event</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>host:web-01</code></td><td>Filter field host = web-01</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>service:(sshd OR cron)</code></td><td>OR nhiều value</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>_time:5m</code></td><td>5 phút gần nhất (auto sliding window)</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>_time:2026-07-22T09:00Z</code></td><td>Chỉ định time cụ thể (RFC3339 UTC)</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>_msg:"connection refused"</code></td><td>Full-text search trong message</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>_msg:~"failed to.*"</code></td><td>Regex match</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>severity:err OR severity:crit</code></td><td>Kết hợp condition</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>| stats by (field) count()</code></td><td>Group + count</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>| stats sum(response_cost) as total</code></td><td>Aggregate + alias</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>| sort by (n desc)</code></td><td>Sort descending</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>| filter n:&gt;5</code></td><td>Filter sau stats</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>| limit 20</code></td><td>Giới hạn số row</td></tr>
+        <tr class="border-t border-[var(--line)]"><td class="py-2 pr-4"><code>NOT service:cron</code></td><td>Loại trừ</td></tr>
+      </tbody>
+    </table>
+    <p class="text-xs mut mt-3">Docs đầy đủ: <a class="acc underline" href="https://docs.victoriametrics.com/victorialogs/logsql/">docs.victoriametrics.com/victorialogs/logsql</a></p>
+  </section>
+
+  <footer class="text-xs mut text-center py-6">
+    OneLog · VMUI Query Cookbook · Copy nút → paste vào VMUI Query · Sacrifice grammar for concision
+  </footer>
+</div>
+
+<script>
+  // Copy-to-clipboard
+  document.querySelectorAll('.q .code').forEach(code => {
+    const btn = code.querySelector('.btn-copy');
+    const q = code.getAttribute('data-q');
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const done = (ok) => {
+        btn.textContent = ok ? '✓ Copied' : 'Fail';
+        if (ok) btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1500);
+      };
+      // Prefer async clipboard when available (HTTPS / localhost)
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(q); return done(true); }
+        catch (_) { /* fall through to legacy */ }
+      }
+      // Legacy fallback for http:// origins
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = q;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        done(ok);
+      } catch (err) { done(false); }
+    });
+  });
+
+  // Live filter
+  const search = document.getElementById('search');
+  const cards = document.querySelectorAll('.q');
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase().trim();
+    cards.forEach(c => {
+      const text = c.textContent.toLowerCase();
+      c.classList.toggle('hidden', q && !text.includes(q));
+    });
+  });
+
+  // TOC active highlight
+  const links = document.querySelectorAll('#toc a');
+  const sections = [...links].map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = '#' + e.target.id;
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === id));
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+  sections.forEach(s => io.observe(s));
+</script>
+</body>
+</html>

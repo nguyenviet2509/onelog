@@ -1,22 +1,27 @@
 """
 title: Save to OneMCP KB
 author: onelog
-version: 0.1.0
-description: Action button 📚 — two-click submit KB. Click 1 = AI draft emit ra chat (edit in-place, full-width). Click 2 = submit draft đã edit.
+version: 0.2.0
+description: Action button 📚 — one-click submit KB entry vào OneMCP. Auto-detect: nếu message user cuối là KB markdown (# Title + ## Problem) → parse & submit user version (full control title/content). Ngược lại → AI (deepseek) summarize chat rồi submit direct (nếu qua double-gate validation).
+
 requirements: httpx
 
-Flow (two-click, không dùng modal):
-  Click 1 trên LLM message:
-    1. Hard-block check trên transcript
-    2. Summarize bằng LLM → {problem, solution, related, title, tags}
-    3. Emit draft markdown như 1 assistant message mới (user edit tại chỗ)
-    4. Kết thúc, hint user edit + click 📚 lần 2
+Flow (one-click, không dùng modal):
+  Path A — User đã type KB markdown trong chat input:
+    1. Detect `# Title` + `## Problem` trong user message cuối
+    2. Parse markdown ngược lại structured fields
+    3. Soft redact → submit qua OneMCP submit_artifact(type=kb)
+    4. Toast success với link portal
 
-  Click 2 trên DRAFT message (đã edit hoặc chưa):
-    1. Detect DRAFT_MARKER → parse markdown ngược lại structured
-    2. Soft redact fields
-    3. Submit qua OneMCP submit_artifact(type=kb) → nhận artifact ID
-    4. Toast link portal
+  Path B — Auto AI summarize từ transcript:
+    1. Hard-block check secrets (raise nếu có private key/token)
+    2. LLM (deepseek) gatekeeper role — reject investigation/question/hypothesis
+    3. Server strict validate (title/problem/solution length + error indicator + concrete fix)
+    4. Soft redact → submit
+    5. Toast success / warning / error
+
+Notification: single-channel toast góc màn hình cho mọi outcome (success/warning/error)
++ status header cho progress. Không emit inline messages (giữ chat sạch).
 
 Plan 260723-1200 Phase 2. Bot user openwebui-bot, contributor role.
 """

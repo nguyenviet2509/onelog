@@ -175,6 +175,30 @@ http://sqliteui.local {
     }
 }
 
+# OneMCP dashboard — team access qua onelog-vps edge (private-only OneMCP).
+# Team thêm hosts entry (mỗi máy 1 lần):
+#   10.200.0.30  onemcp.local
+# OneMCP nginx phía sau tự có RBAC (X-Onemcp-User header + CIDR 10.200.0.0/24).
+# Caddy strip X-Forwarded-For → OneMCP thấy $remote_addr = 10.200.0.30 (in CIDR).
+# tls_insecure_skip_verify vì OneMCP dùng self-signed cert nội bộ.
+http://onemcp.local {
+    @allowed remote_ip 192.168.122.0/24 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12 127.0.0.1
+    handle @allowed {
+        reverse_proxy https://10.200.0.44 {
+            header_up Host onemcp.internal
+            header_up -X-Forwarded-For
+            header_up -X-Real-IP
+            transport http {
+                tls
+                tls_insecure_skip_verify
+            }
+        }
+    }
+    handle {
+        respond "Forbidden — IP not in allow list" 403
+    }
+}
+
 # Grafana cost dashboard — strict CIDR + Grafana login (2 layers).
 # Bearer layer removed: browsers can't send Authorization header on navigation
 # without extensions (ModHeader) → poor UX for 5 ops. Grafana's built-in login

@@ -233,3 +233,39 @@ groups:
           summary: "CRITICAL: {{ $labels.job }} DOWN > 1m ({{ $labels.instance }})"
           description: "Data-path service unavailable — user-facing impact. `docker ps | grep {{ $labels.job }}` and `docker logs` immediately."
           description: "All host alerts blind until this recovers. `docker restart ragstack-node-exporter`."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # QDRANT log_templates — capacity heads-up alerts. KISS: 2 rules, warning-
+  # only, `for` dài để không spam. Route → Log-Server topic (thread 880) qua
+  # host="logserver". RAM math: 1536-dim × ~13 KB/point → 500k ≈ 6.5 GB.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: qdrant-log-templates
+    interval: 5m
+    rules:
+      - alert: QdrantTemplateGrowthHigh
+        # Growth rate cao kéo dài 12h → drain3 không hội tụ (sim_th quá chặt
+        # hoặc log format churn). Threshold 1000/day = ~3× baseline healthy.
+        expr: increase(collection_points{id="log_templates"}[24h]) > 1000
+        for: 12h
+        labels:
+          severity: warning
+          category: capacity
+          component: qdrant
+          host: logserver
+        annotations:
+          summary: "Qdrant log_templates growth > 1000/day sustained 12h"
+          description: "Drain3 dedup không hội tụ. Check indexer + drain3 sim_th. Current: {{ $value | humanize }}/24h."
+
+      - alert: QdrantTemplateHardCap
+        # Ngưỡng dung lượng — 500k points ≈ 6.5 GB RAM. Cảnh báo trước để bật
+        # scalar quantization (int8) hoặc on-disk HNSW.
+        expr: collection_points{id="log_templates"} > 500000
+        for: 1h
+        labels:
+          severity: warning
+          category: capacity
+          component: qdrant
+          host: logserver
+        annotations:
+          summary: "Qdrant log_templates > 500k points ({{ $value | humanize }})"
+          description: "~6.5 GB RAM footprint. Enable scalar quantization (int8) hoặc on-disk HNSW."

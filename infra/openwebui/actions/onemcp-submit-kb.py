@@ -269,12 +269,33 @@ class Action:
                     await status("Đã huỷ submit", done=True)
                     return "Cancelled."
 
+            # OpenWebUI 0.10.x __event_call__ đôi khi trả str (single-field), đôi khi
+            # trả dict (multi-field). Nếu str: parse JSON hoặc fallback về draft.
+            if isinstance(edited, str):
+                try:
+                    edited = json.loads(edited)
+                except (json.JSONDecodeError, ValueError):
+                    edited = draft
+                    await status("(Modal trả string không parse được — dùng draft gốc)")
+            if not isinstance(edited, dict):
+                edited = draft
+
+            def _field(key: str, default: Any = "") -> str:
+                val = edited.get(key, default)
+                if isinstance(val, list):
+                    return ",".join(str(v) for v in val)
+                return str(val) if val is not None else ""
+
             # Stage 4 — soft redact final fields trước submit
-            title = soft_redact(edited.get("title", "")).text
-            problem = soft_redact(edited.get("problem", "")).text
-            solution = soft_redact(edited.get("solution", "")).text
-            related = soft_redact(edited.get("related", "")).text
-            tags = [t.strip() for t in edited.get("tags", "").split(",") if t.strip()]
+            title = soft_redact(_field("title")).text
+            problem = soft_redact(_field("problem")).text
+            solution = soft_redact(_field("solution")).text
+            related = soft_redact(_field("related")).text
+            tags_raw = edited.get("tags", "")
+            if isinstance(tags_raw, list):
+                tags = [str(t).strip() for t in tags_raw if str(t).strip()]
+            else:
+                tags = [t.strip() for t in str(tags_raw).split(",") if t.strip()]
 
             # Stage 5 — submit
             await status("Submit vào OneMCP...")

@@ -396,6 +396,29 @@ class Action:
             )
             return has_h1 and has_section
 
+        def _extract_title_override(text: str) -> str | None:
+            """Detect user chỉ muốn override title mà không nhập full markdown.
+            Patterns:
+              - `!title: My Title`
+              - `!kb: My Title`
+              - `# My Title` (H1 only, không có `## Problem`)
+            Return title string hoặc None."""
+            if not text:
+                return None
+            text = text.strip()
+            # !title: hoặc !kb: prefix
+            m = re.match(r"^!(?:title|kb)\s*[:：]\s*(.+)$", text, re.IGNORECASE)
+            if m:
+                title = m.group(1).strip()
+                return title if len(title) >= 5 else None
+            # H1 only (không có ## section)
+            if re.match(r"^#\s+\S", text) and not re.search(r"^##\s+\w", text, re.MULTILINE):
+                m2 = re.match(r"^#\s+(.+?)\s*$", text, re.MULTILINE)
+                if m2:
+                    title = m2.group(1).strip()
+                    return title if len(title) >= 5 else None
+            return None
+
         try:
             transcript = self._transcript_from_body(body)
             msgs = body.get("messages", [])
@@ -413,6 +436,7 @@ class Action:
                     break
 
             edited: dict[str, Any] | None = None
+            title_override: str | None = None
 
             if _looks_like_kb_markdown(last_user_content):
                 await status("Parse KB từ message user...")
@@ -423,6 +447,7 @@ class Action:
                     await toast("error", "KB markdown không hợp lệ — cần `# Title` + `## Problem` + `## Solution`")
                     return "KB markdown không hợp lệ."
             else:
+                title_override = _extract_title_override(last_user_content)
                 await status("Kiểm tra secrets...")
                 try:
                     check_hard_block(transcript)
@@ -447,6 +472,11 @@ class Action:
                     await status("⚠️ Chat chưa đủ nội dung cho KB", done=True)
                     await toast("warning", warn_msg)
                     return "Not KB-worthy."
+
+                # Apply title override nếu user đã specify
+                if title_override:
+                    edited["title"] = title_override
+                    await status(f"Override title: {title_override}")
 
                 # Strict server-side validation — không tin LLM 100%.
                 ok, reason = self._validate_kb_draft(edited)

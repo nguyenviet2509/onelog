@@ -353,9 +353,42 @@ class Action:
                     return f"Summarizer error: {e}"
 
                 if edited.get("error") == "not_kb_worthy":
-                    await status(
-                        "⚠️ Chat không đủ nội dung cho KB (chưa fix xong / mơ hồ)", done=True
-                    )
+                    warn_msg = "⚠️ Chat chưa đủ nội dung cho KB (chưa fix xong hoặc còn mơ hồ)"
+                    await status(warn_msg, done=True)
+                    if __event_emitter__:
+                        # Toast (best-effort, silent nếu OpenWebUI không support)
+                        for notif in (
+                            {"type": "notification", "data": {"type": "warning", "content": warn_msg}},
+                            {"type": "toast", "data": {"type": "warning", "content": warn_msg}},
+                        ):
+                            try:
+                                await __event_emitter__(notif)
+                            except Exception:
+                                pass
+                        # Inline message với hint bypass
+                        await __event_emitter__(
+                            {
+                                "type": "message",
+                                "data": {
+                                    "content": (
+                                        f"\n\n---\n\n"
+                                        f"### {warn_msg}\n\n"
+                                        f"AI đánh giá chat này chưa có problem cụ thể + solution actionable đã verify. "
+                                        f"Nếu bạn vẫn muốn lưu (VD: WIP investigation notes, snippet debug hữu ích):\n\n"
+                                        f"1. Type nội dung KB vào ô chat theo format bên dưới\n"
+                                        f"2. Nhấn Send\n"
+                                        f"3. Click 📚 lần nữa\n\n"
+                                        f"```markdown\n"
+                                        f"# <Title 1 dòng - service + triệu chứng>\n\n"
+                                        f"## Problem\n<Error/symptom cụ thể>\n\n"
+                                        f"## Solution\n<Steps + commands>\n\n"
+                                        f"## Related\n<Optional links>\n\n"
+                                        f"## Tags\n<tag1, tag2>\n"
+                                        f"```"
+                                    )
+                                },
+                            }
+                        )
                     return "Not KB-worthy: chat chưa có problem+solution rõ."
 
             # Stage 4 — soft redact final fields trước submit

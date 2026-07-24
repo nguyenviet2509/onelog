@@ -367,19 +367,16 @@ class Action:
                 )
 
         async def toast(kind: str, msg: str) -> None:
-            """Emit toast góc màn hình (best-effort, thử nhiều event schema).
+            """Emit toast góc màn hình (OpenWebUI 0.10.x schema).
             kind: success | warning | error | info."""
             if not __event_emitter__:
                 return
-            for payload in (
-                {"type": "notification", "data": {"type": kind, "content": msg}},
-                {"type": "toast", "data": {"type": kind, "content": msg}},
-                {"type": "notification", "data": {"type": kind, "message": msg}},
-            ):
-                try:
-                    await __event_emitter__(payload)
-                except Exception:
-                    pass
+            try:
+                await __event_emitter__(
+                    {"type": "notification", "data": {"type": kind, "content": msg}}
+                )
+            except Exception:
+                pass
 
         # One-click workflow (KISS):
         #   Nếu user message cuối là KB markdown (`# Title` + `## Problem`) → submit user version

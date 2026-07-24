@@ -180,12 +180,50 @@ class Action:
         self.valves = self.Valves()
         # icon hiển thị trên nút (OpenWebUI convention)
         self.icon_url = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='20' font-size='20'>📚</text></svg>"
+        # Phase 1C: in-session cache email → username to avoid repeated ensure calls.
+        self._user_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------ helpers
 
-    async def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    async def _resolve_username(self, body: dict[str, Any]) -> tuple[str, str]:
+        """Resolve OneMCP username from OpenWebUI user context.
+        Returns (username, attribution_source) where source is 'user' or 'bot'.
+        Phase 1C: reads body['user']['email'], calls /api/users/ensure for @inet.vn emails.
+        Falls back to BOT_USER when email absent, non-@inet.vn, or ensure call fails."""
+        email: str = ""
+        try:
+            user_ctx = body.get("user") or {}
+            email = str(user_ctx.get("email") or "").strip().lower()
+        except Exception:
+            pass
+
+        if not email or not email.endswith("@inet.vn"):
+            return self.valves.BOT_USER, "bot"
+
+        # Check in-session cache first.
+        if email in self._user_cache:
+            return self._user_cache[email], "user"
+
+        # Call /api/users/ensure to auto-provision or retrieve username.
+        try:
+            ensure_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/users/ensure"
+            verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
+            async with httpx.AsyncClient(verify=verify_arg, timeout=self.valves.TIMEOUT_SEC) as c:
+                r = await c.post(ensure_url, json={"email": email})
+                r.raise_for_status()
+                data = r.json()
+            username: str = str(data.get("username") or "").strip()
+            if not username:
+                raise ValueError("ensure returned empty username")
+            self._user_cache[email] = username
+            return username, "user"
+        except Exception as exc:
+            print(f"[onemcp-submit-kb] _resolve_username ensure failed for {email}: {exc}", flush=True)
+            return self.valves.BOT_USER, "bot"
+
+    async def _rpc(self, method: str, params: dict[str, Any], username: str) -> dict[str, Any]:
         url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
-        headers = {"X-Onemcp-User": self.valves.BOT_USER, "Content-Type": "application/json"}
+        headers = {"X-Onemcp-User": username, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
         async with httpx.AsyncClient(
@@ -464,6 +502,9 @@ class Action:
             return None
 
         try:
+            # Phase 1C: resolve per-user attribution before any network calls.
+            onemcp_user, attribution = await self._resolve_username(body)
+
             transcript = self._transcript_from_body(body)
             msgs = body.get("messages", [])
 
@@ -564,8 +605,13 @@ class Action:
                         "tags": tags,
                     },
                 },
+                onemcp_user,
             )
-            print(f"[onemcp-submit-kb] submit response: {json.dumps(result)[:500]}", flush=True)
+            print(
+                f"[onemcp-submit-kb] submit response: {json.dumps(result)[:500]}"
+                f" attribution={attribution} user={onemcp_user}",
+                flush=True,
+            )
             aid: str = self._extract_artifact_id(result)
             portal_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/artifacts/{aid}"
             success_msg = f"✅ KB #{aid} submit thành công (pending). {portal_url}"

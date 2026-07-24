@@ -192,6 +192,53 @@ class Action:
         return f"{s}-{int(time.time())}"
 
     @staticmethod
+    def _draft_to_markdown(draft: dict[str, Any]) -> str:
+        """Pack AI draft thành single markdown editable trong modal input."""
+        title = str(draft.get("title", "")).strip() or "Untitled"
+        problem = str(draft.get("problem", "")).strip()
+        solution = str(draft.get("solution", "")).strip()
+        related = str(draft.get("related", "")).strip()
+        tags_val = draft.get("tags", [])
+        if isinstance(tags_val, list):
+            tags_str = ", ".join(str(t) for t in tags_val)
+        else:
+            tags_str = str(tags_val)
+        return (
+            f"# {title}\n\n"
+            f"## Problem\n{problem}\n\n"
+            f"## Solution\n{solution}\n\n"
+            f"## Related\n{related}\n\n"
+            f"## Tags\n{tags_str}\n"
+        )
+
+    @staticmethod
+    def _parse_kb_markdown(text: str, fallback: dict[str, Any]) -> dict[str, Any]:
+        """Parse markdown user-edited ngược lại structured KB fields.
+        H1 = title. `## Problem/Solution/Related/Tags` = section content.
+        Section thiếu → fallback về AI draft."""
+        result: dict[str, Any] = {}
+        # Title từ H1 đầu tiên
+        title_m = re.search(r"^#\s+(.+?)\s*$", text, re.MULTILINE)
+        result["title"] = title_m.group(1).strip() if title_m else str(fallback.get("title", ""))
+        # Sections: ## Section\n<content>...</content until next ##>
+        sections: dict[str, str] = {}
+        for m in re.finditer(
+            r"^##\s+(\w+)\s*\n(.*?)(?=^##\s+\w+|\Z)",
+            text,
+            re.MULTILINE | re.DOTALL,
+        ):
+            sections[m.group(1).lower()] = m.group(2).strip()
+        result["problem"] = sections.get("problem") or str(fallback.get("problem", ""))
+        result["solution"] = sections.get("solution") or str(fallback.get("solution", ""))
+        result["related"] = sections.get("related") or str(fallback.get("related", ""))
+        tags_raw = sections.get("tags", "")
+        if tags_raw:
+            result["tags"] = [t.strip() for t in re.split(r"[,\n]", tags_raw) if t.strip()]
+        else:
+            result["tags"] = fallback.get("tags", [])
+        return result
+
+    @staticmethod
     def _transcript_from_body(body: dict[str, Any]) -> str:
         msgs = body.get("messages", [])
         lines = []
@@ -241,52 +288,66 @@ class Action:
                 await status("⚠️ Chat không đủ nội dung cho KB (chưa fix xong / mơ hồ)", done=True)
                 return "Not KB-worthy: chat chưa có problem+solution rõ."
 
-            # Stage 3 — modal preview (OpenWebUI __event_call__ type:input, V1 dependency)
+            # Stage 3 — pack draft thành markdown editable trong single textarea.
+            # OpenWebUI 0.10.x `__event_call__ type:input` chỉ support single-input,
+            # không support `fields[]` array. Workaround: dùng markdown với H1 = title
+            # + `## Problem/Solution/Related/Tags` sections → user edit → parse ngược.
+            draft_md = self._draft_to_markdown(draft)
+
+            # Emit draft vào chat message trước → user thấy được nội dung dù modal render fail
+            if __event_emitter__:
+                await __event_emitter__(
+                    {"type": "message", "data": {"content": f"\n\n📝 **KB Draft (preview):**\n\n{draft_md}\n"}}
+                )
+
             if not __event_call__:
-                # Fallback: submit không preview (nếu OpenWebUI version cũ)
                 edited = draft
                 await status("(Không có modal API — submit direct)")
             else:
-                await status("Mở modal preview...")
-                edited = await __event_call__(
+                await status("Mở modal edit...")
+                # Nhiều OpenWebUI version dùng key khác nhau cho prefill value.
+                # Pass cả `placeholder` + `value` + `default` để tăng khả năng render.
+                event_result = await __event_call__(
                     {
                         "type": "input",
                         "data": {
-                            "title": "📚 Save to OneMCP KB",
-                            "message": "Chỉnh lại nội dung trước khi submit. Entry sẽ ở pending — maintainer verify trong portal.",
-                            "placeholder": "",
-                            "fields": [
-                                {"name": "title", "value": draft.get("title", ""), "multiline": False},
-                                {"name": "problem", "value": draft.get("problem", ""), "multiline": True},
-                                {"name": "solution", "value": draft.get("solution", ""), "multiline": True},
-                                {"name": "related", "value": draft.get("related", ""), "multiline": True},
-                                {"name": "tags", "value": ",".join(draft.get("tags", [])), "multiline": False},
-                            ],
+                            "title": "📚 Edit KB before submit",
+                            "message": (
+                                "Chỉnh markdown bên dưới rồi bấm OK để submit. "
+                                "Giữ format: `# Title` + `## Problem/Solution/Related/Tags` sections."
+                            ),
+                            "placeholder": draft_md,
+                            "value": draft_md,
+                            "default": draft_md,
                         },
                     }
                 )
-                if not edited:
+                if event_result is None or event_result is False:
                     await status("Đã huỷ submit", done=True)
                     return "Cancelled."
 
-            # OpenWebUI 0.10.x __event_call__ đôi khi trả str (single-field), đôi khi
-            # trả dict (multi-field). Nếu str: parse JSON hoặc fallback về draft.
-            if isinstance(edited, str):
-                try:
-                    edited = json.loads(edited)
-                except (json.JSONDecodeError, ValueError):
+                # Parse: event_result có thể là str (single-field 0.10.x) hoặc dict.
+                if isinstance(event_result, str):
+                    text_input = event_result.strip()
+                    # Nếu user không sửa gì (empty return) → dùng draft
+                    edited = self._parse_kb_markdown(text_input, draft) if text_input else draft
+                elif isinstance(event_result, dict):
+                    # Dict format: có thể có "content" key hoặc structured fields
+                    text_input = str(event_result.get("content", "")).strip()
+                    if text_input:
+                        edited = self._parse_kb_markdown(text_input, draft)
+                    else:
+                        edited = {**draft, **{k: v for k, v in event_result.items() if v}}
+                else:
                     edited = draft
-                    await status("(Modal trả string không parse được — dùng draft gốc)")
-            if not isinstance(edited, dict):
-                edited = draft
 
+            # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:
                 val = edited.get(key, default)
                 if isinstance(val, list):
                     return ",".join(str(v) for v in val)
                 return str(val) if val is not None else ""
 
-            # Stage 4 — soft redact final fields trước submit
             title = soft_redact(_field("title")).text
             problem = soft_redact(_field("problem")).text
             solution = soft_redact(_field("solution")).text

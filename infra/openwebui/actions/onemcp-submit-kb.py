@@ -292,10 +292,26 @@ class Action:
         __event_call__: Callable[[dict], Awaitable[Any]] | None = None,
     ) -> str | None:
         async def status(msg: str, done: bool = False) -> None:
+            """Update status ở header (progress indicator)."""
             if __event_emitter__:
                 await __event_emitter__(
                     {"type": "status", "data": {"description": msg, "done": done}}
                 )
+
+        async def toast(kind: str, msg: str) -> None:
+            """Emit toast góc màn hình (best-effort, thử nhiều event schema).
+            kind: success | warning | error | info."""
+            if not __event_emitter__:
+                return
+            for payload in (
+                {"type": "notification", "data": {"type": kind, "content": msg}},
+                {"type": "toast", "data": {"type": kind, "content": msg}},
+                {"type": "notification", "data": {"type": kind, "message": msg}},
+            ):
+                try:
+                    await __event_emitter__(payload)
+                except Exception:
+                    pass
 
         # One-click workflow (KISS):
         #   Nếu user message cuối là KB markdown (`# Title` + `## Problem`) → submit user version
@@ -329,67 +345,38 @@ class Action:
             edited: dict[str, Any] | None = None
 
             if _looks_like_kb_markdown(last_user_content):
-                # User đã type KB markdown → parse + submit
                 await status("Parse KB từ message user...")
                 edited = self._parse_kb_markdown(last_user_content, {})
                 if not edited.get("title") or not edited.get("problem"):
-                    await status("⛔ KB markdown thiếu title/problem", done=True)
-                    return "KB markdown không hợp lệ. Cần `# Title` + `## Problem` + `## Solution`."
+                    err_msg = "⛔ KB markdown thiếu title hoặc problem"
+                    await status(err_msg, done=True)
+                    await toast("error", "KB markdown không hợp lệ — cần `# Title` + `## Problem` + `## Solution`")
+                    return "KB markdown không hợp lệ."
             else:
-                # AI summarize từ chat → submit direct (không emit trung gian, không modal)
                 await status("Kiểm tra secrets...")
                 try:
                     check_hard_block(transcript)
                 except RedactBlocked as e:
-                    await status(f"⛔ Từ chối submit: {e.pattern_name} phát hiện", done=True)
-                    return f"Blocked: transcript chứa {e.pattern_name}. Xoá secret khỏi chat rồi thử lại."
+                    err_msg = f"⛔ Từ chối submit: phát hiện {e.pattern_name}"
+                    await status(err_msg, done=True)
+                    await toast("error", f"KB blocked: transcript chứa {e.pattern_name}. Xoá secret rồi thử lại.")
+                    return f"Blocked: transcript chứa {e.pattern_name}."
 
                 await status("Đang tóm tắt chat (deepseek)...")
                 redacted_input = soft_redact(transcript).text
                 try:
                     edited = await self._summarize(redacted_input)
                 except Exception as e:
-                    await status(f"⛔ Summarizer fail: {e}", done=True)
+                    err_msg = f"⛔ Summarizer fail: {e}"
+                    await status(err_msg, done=True)
+                    await toast("error", f"Summarizer lỗi: {type(e).__name__}")
                     return f"Summarizer error: {e}"
 
                 if edited.get("error") == "not_kb_worthy":
-                    warn_msg = "⚠️ Chat chưa đủ nội dung cho KB (chưa fix xong hoặc còn mơ hồ)"
-                    await status(warn_msg, done=True)
-                    if __event_emitter__:
-                        # Toast (best-effort, silent nếu OpenWebUI không support)
-                        for notif in (
-                            {"type": "notification", "data": {"type": "warning", "content": warn_msg}},
-                            {"type": "toast", "data": {"type": "warning", "content": warn_msg}},
-                        ):
-                            try:
-                                await __event_emitter__(notif)
-                            except Exception:
-                                pass
-                        # Inline message với hint bypass
-                        await __event_emitter__(
-                            {
-                                "type": "message",
-                                "data": {
-                                    "content": (
-                                        f"\n\n---\n\n"
-                                        f"### {warn_msg}\n\n"
-                                        f"AI đánh giá chat này chưa có problem cụ thể + solution actionable đã verify. "
-                                        f"Nếu bạn vẫn muốn lưu (VD: WIP investigation notes, snippet debug hữu ích):\n\n"
-                                        f"1. Type nội dung KB vào ô chat theo format bên dưới\n"
-                                        f"2. Nhấn Send\n"
-                                        f"3. Click 📚 lần nữa\n\n"
-                                        f"```markdown\n"
-                                        f"# <Title 1 dòng - service + triệu chứng>\n\n"
-                                        f"## Problem\n<Error/symptom cụ thể>\n\n"
-                                        f"## Solution\n<Steps + commands>\n\n"
-                                        f"## Related\n<Optional links>\n\n"
-                                        f"## Tags\n<tag1, tag2>\n"
-                                        f"```"
-                                    )
-                                },
-                            }
-                        )
-                    return "Not KB-worthy: chat chưa có problem+solution rõ."
+                    warn_msg = "⚠️ Chat chưa đủ nội dung KB (chưa fix xong hoặc mơ hồ). Type markdown vào chat rồi click 📚 lần nữa để bypass."
+                    await status("⚠️ Chat chưa đủ nội dung cho KB", done=True)
+                    await toast("warning", warn_msg)
+                    return "Not KB-worthy."
 
             # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:
@@ -426,40 +413,14 @@ class Action:
             print(f"[onemcp-submit-kb] submit response: {json.dumps(result)[:500]}", flush=True)
             aid: str = self._extract_artifact_id(result)
             portal_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/artifacts/{aid}"
-            success_msg = f"✅ KB #{aid} đã submit thành công (pending review)"
+            success_msg = f"✅ KB #{aid} submit thành công (pending). {portal_url}"
 
-            # 1) Status update ở header
             await status(f"✅ KB #{aid} pending — {portal_url}", done=True)
-
-            # 2) Toast notification (góc màn hình) — nhiều OpenWebUI version support
-            if __event_emitter__:
-                for notif_payload in (
-                    {"type": "notification", "data": {"type": "success", "content": success_msg}},
-                    {"type": "toast", "data": {"type": "success", "content": success_msg}},
-                ):
-                    try:
-                        await __event_emitter__(notif_payload)
-                    except Exception:
-                        pass
-
-                # 3) Inline message trong chat flow — luôn visible không cần scroll
-                await __event_emitter__(
-                    {
-                        "type": "message",
-                        "data": {
-                            "content": (
-                                f"\n\n---\n\n"
-                                f"### {success_msg}\n\n"
-                                f"🔗 **Xem/edit KB:** [artifacts/{aid}]({portal_url})\n\n"
-                                f"Maintainer sẽ review + publish. Sau khi publish, chat khác gọi "
-                                f"`onemcp_search` sẽ trả entry này."
-                            )
-                        },
-                    }
-                )
-
+            await toast("success", success_msg)
             return f"Submitted KB #{aid} (pending). Verify: {portal_url}"
 
         except Exception as e:
-            await status(f"⛔ Error: {type(e).__name__}: {e}", done=True)
+            err = f"{type(e).__name__}: {e}"
+            await status(f"⛔ Error: {err}", done=True)
+            await toast("error", f"KB submit lỗi: {err}")
             return f"Error: {e}"

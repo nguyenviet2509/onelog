@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OneMCP Portal v1.5 — Mockup review</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #12151a;
+    --panel-2: #171b22;
+    --border: #23272f;
+    --border-strong: #2f343c;
+    --text: #e6e8eb;
+    --text-dim: #9aa1a9;
+    --text-mute: #6b7280;
+    --brand: #7c9cff;
+    --brand-2: #5eead4;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --ok: #34d399;
+  }
+  html, body { background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+  .panel-2 { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+  .border-b1 { border-bottom: 1px solid var(--border); }
+  .border-r1 { border-right: 1px solid var(--border); }
+  .chip { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--border-strong); color:var(--text-dim); background:var(--panel-2); }
+  .chip-ok { border-color:#1e4d3d; color:#6ee7b7; background:#0e2b23; }
+  .chip-warn { border-color:#4d3d1e; color:#fbbf24; background:#2b230e; }
+  .chip-danger { border-color:#4d1e1e; color:#f87171; background:#2b0e0e; }
+  .chip-brand { border-color:#2e3c73; color:#a5b8ff; background:#141a2e; }
+  .kbd { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; padding: 1px 6px; border:1px solid var(--border-strong); border-radius:4px; background:var(--panel-2); color:var(--text-dim); }
+  .nav-item { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; color:var(--text-dim); font-size:13px; cursor:pointer; }
+  .nav-item:hover { background: var(--panel-2); color: var(--text); }
+  .nav-item.active { background: #1a2035; color: #c7d0ff; }
+  .tab-btn { padding: 6px 12px; border-radius: 6px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+  .tab-btn.active { background: var(--panel-2); color: var(--text); border: 1px solid var(--border-strong); }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:6px; font-size:13px; border:1px solid var(--border-strong); background:var(--panel-2); color:var(--text); cursor:pointer; }
+  .btn:hover { background:#1e232c; }
+  .btn-primary { background:#2e3c73; border-color:#3f52a3; color:#dbe3ff; }
+  .btn-primary:hover { background:#3a4a8a; }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+  .btn-ghost:hover { background: var(--panel-2); color: var(--text); }
+  .input, .select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; color: var(--text); }
+  .input:focus, .select:focus { outline: none; border-color: var(--brand); }
+  .divider { height: 1px; background: var(--border); margin: 8px 0; }
+  .icon { width: 16px; height: 16px; display:inline-block; }
+  .snippet mark { background: #4d3d1e; color: #fde68a; padding: 0 2px; border-radius: 2px; }
+  .diff-add { background: #0e2b23; color: #6ee7b7; }
+  .diff-del { background: #2b0e0e; color: #f87171; }
+  .grid-templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .tpl-card { padding: 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); cursor: pointer; transition: all .15s; }
+  .tpl-card:hover { border-color: var(--brand); transform: translateY(-1px); }
+  .tpl-card .tpl-icon { font-size: 24px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, monospace; }
+  .review-banner { background: linear-gradient(90deg, #2e3c73 0%, #1a2035 100%); border: 1px solid #3f52a3; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- REVIEW HEADER -->
+<div class="review-banner px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-lg font-semibold">OneMCP Portal v1.5</span>
+    <span class="chip chip-brand">MOCKUP — REVIEW BEFORE COOK</span>
+    <span class="text-xs text-slate-400">plan: <code>260724-0821-onemcp-multidept-v1-5</code></span>
+  </div>
+  <div class="flex items-center gap-2 text-xs text-slate-400">
+    <span>Không có backend thật · click các tab để xem từng screen</span>
+  </div>
+</div>
+
+<!-- SCREEN NAV -->
+<div class="border-b1 px-6 py-2 flex items-center gap-1 flex-wrap bg-[#0f1216]">
+  <button class="tab-btn active" data-target="dashboard">🏠 Dashboard</button>
+  <button class="tab-btn" data-target="artifacts">📚 Artifacts list</button>
+  <button class="tab-btn" data-target="artifact-detail">📄 Artifact detail</button>
+  <button class="tab-btn" data-target="new-artifact">✨ New (template picker)</button>
+  <button class="tab-btn" data-target="search">🔍 Hybrid search</button>
+  <button class="tab-btn" data-target="api-keys">🔑 API keys</button>
+  <button class="tab-btn" data-target="spaces">🗂️ Spaces admin</button>
+  <button class="tab-btn" data-target="onboarding">🧭 Onboarding Ops</button>
+  <button class="tab-btn" data-target="version-diff">📜 Version diff</button>
+</div>
+
+<!-- APP CHROME -->
+<div class="flex" style="min-height: calc(100vh - 96px);">
+
+  <!-- SIDEBAR -->
+  <aside class="w-64 shrink-0 border-r1 bg-[#0e1116] px-4 py-4">
+    <div class="flex items-center gap-2 mb-4">
+      <div class="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center font-bold">1M</div>
+      <div>
+        <div class="font-semibold text-sm">OneMCP</div>
+        <div class="text-[11px] text-slate-500">v1.5 · trihd@inet.vn</div>
+      </div>
+    </div>
+
+    <!-- SPACE SWITCHER -->
+    <div class="mb-3">
+      <div class="text-[10px] uppercase tracking-wider text-slate-500 mb-1 px-2">Space</div>
+      <button class="w-full flex items-center justify-between panel-2 px-2 py-2 text-sm">
+        <span class="flex items-center gap-2">
+          <span>🛠️</span>
+          <span>ops-runbook</span>
+        </span>
+        <span class="text-slate-500">▾</span>
+      </button>
+    </div>
+
+    <nav class="flex flex-col gap-0.5 mt-2">
+      <div class="nav-item active">🏠 <span>Dashboard</span></div>
+      <div class="nav-item">📚 <span>Artifacts</span></div>
+      <div class="nav-item">🔍 <span>Search</span></div>
+      <div class="nav-item">🧰 <span>Skills</span></div>
+      <div class="nav-item">🔄 <span>Review queue</span><span class="ml-auto chip chip-warn">3</span></div>
+      <div class="divider"></div>
+      <div class="text-[10px] uppercase tracking-wider text-slate-500 mb-1 px-2 mt-2">Saved searches</div>
+      <div class="nav-item text-[12px]">⭐ VMAlert firing</div>
+      <div class="nav-item text-[12px]">⭐ SEPay webhook 500</div>
+      <div class="nav-item text-[12px]">⭐ Support billing FAQ</div>
+      <div class="divider"></div>
+      <div class="nav-item">👤 <span>Profile</span></div>
+      <div class="nav-item">🔑 <span>API keys</span></div>
+      <div class="nav-item">🗂️ <span>Spaces</span><span class="ml-auto chip">admin</span></div>
+      <div class="nav-item">🧭 <span>Onboarding</span></div>
+    </nav>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="flex-1 px-8 py-6 overflow-y-auto">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="screen-dashboard" class="screen active">
+      <div class="flex items-baseline justify-between mb-4">
+        <div>
+          <h1 class="text-2xl font-semibold">Chào tri,</h1>
+          <p class="text-slate-400 text-sm mt-1">Space hiện tại: <b>ops-runbook</b> · 47 artifacts published · 12 pending review</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn">📤 Import</button>
+          <div class="relative">
+            <button class="btn btn-primary">✨ Submit new <span class="text-slate-300">▾</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATS ROW -->
+      <div class="grid grid-cols-4 gap-3 mb-6">
+        <div class="panel p-3">
+          <div class="text-[11px] uppercase tracking-wider text-slate-500">Total KB (space)</div>
+          <div class="text-2xl font-semibold mt-1">47</div>
+          <div class="text-[11px] text-emerald-400 mt-0.5">↑ 8 tuần này</div>
+        </div>
+        <div class="panel p-3">
+          <div class="text-[11px] uppercase tracking-wider text-slate-500">Pending review</div>
+          <div class="text-2xl font-semibold mt-1 text-amber-400">3</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">≥ 2h chờ</div>
+        </div>
+        <div class="panel p-3">
+          <div class="text-[11px] uppercase tracking-wider text-slate-500">My drafts</div>
+          <div class="text-2xl font-semibold mt-1">2</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">last edit 34m</div>
+        </div>
+        <div class="panel p-3">
+          <div class="text-[11px] uppercase tracking-wider text-slate-500">Search hit rate 7d</div>
+          <div class="text-2xl font-semibold mt-1 text-cyan-300">68%</div>
+          <div class="text-[11px] text-emerald-400 mt-0.5">target ≥60% ✓</div>
+        </div>
+      </div>
+
+      <!-- WIDGETS -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="panel p-4 col-span-2">
+          <div class="flex items-center justify-between mb-3">
+            <div class="font-semibold text-sm">📡 Recent activity</div>
+            <a class="text-xs">Xem tất cả →</a>
+          </div>
+          <div class="space-y-2 text-sm">
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-[#171b22]">
+              <span class="chip chip-ok">published</span>
+              <span class="chip">runbook</span>
+              <span class="flex-1 truncate">SEPay webhook 500 — restart worker + check DLQ</span>
+              <span class="text-slate-500 text-xs">tri · 34m</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-[#171b22]">
+              <span class="chip chip-warn">pending</span>
+              <span class="chip">sop</span>
+              <span class="flex-1 truncate">Escalation P1 → SRE oncall</span>
+              <span class="text-slate-500 text-xs">huong · 2h</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-[#171b22]">
+              <span class="chip chip-ok">published</span>
+              <span class="chip">faq</span>
+              <span class="flex-1 truncate">Khách hỏi "sao chưa nhận được hoá đơn?" — mẫu trả lời</span>
+              <span class="text-slate-500 text-xs">minh · 4h</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-[#171b22]">
+              <span class="chip chip-danger">rejected</span>
+              <span class="chip">kb</span>
+              <span class="flex-1 truncate">Log rotation — thiếu example, cần bổ sung</span>
+              <span class="text-slate-500 text-xs">tri · 1d</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 rounded hover:bg-[#171b22]">
+              <span class="chip chip-ok">published</span>
+              <span class="chip">ticket_playbook</span>
+              <span class="flex-1 truncate">Ticket "không login được" — 5 bước chẩn đoán</span>
+              <span class="text-slate-500 text-xs">nam · 1d</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="panel p-4">
+            <div class="font-semibold text-sm mb-2">🔥 Top viewed 7d</div>
+            <ol class="text-sm space-y-1.5 text-slate-300">
+              <li>1. Restart caddy edge — <span class="text-slate-500">42 views</span></li>
+              <li>2. VMAlert firing checklist — <span class="text-slate-500">28</span></li>
+              <li>3. Backup restore SOP — <span class="text-slate-500">19</span></li>
+              <li>4. FAQ billing khách VN — <span class="text-slate-500">15</span></li>
+            </ol>
+          </div>
+          <div class="panel p-4">
+            <div class="font-semibold text-sm mb-2">🏷️ Top tags</div>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="chip">caddy</span>
+              <span class="chip">sepay</span>
+              <span class="chip">vmalert</span>
+              <span class="chip">backup</span>
+              <span class="chip">billing</span>
+              <span class="chip">postgres</span>
+              <span class="chip">docker</span>
+              <span class="chip">ops</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ARTIFACTS LIST ============ -->
+    <section id="screen-artifacts" class="screen">
+      <div class="flex items-baseline justify-between mb-4">
+        <h1 class="text-2xl font-semibold">Artifacts</h1>
+        <div class="flex gap-2">
+          <button class="btn">⬇️ Export CSV</button>
+          <button class="btn btn-primary">✨ New</button>
+        </div>
+      </div>
+
+      <div class="flex gap-4">
+        <!-- FILTER PANEL -->
+        <aside class="w-56 shrink-0 panel p-4 h-fit">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold">Filters</div>
+            <a class="text-[11px]">Clear</a>
+          </div>
+          <div class="space-y-3">
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Space</div>
+              <select class="select w-full">
+                <option>ops-runbook</option>
+                <option>ops-oncall</option>
+                <option>support-faq</option>
+                <option>tech-kb</option>
+              </select>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Template</div>
+              <div class="space-y-1 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" checked> runbook <span class="text-slate-500 text-[11px]">(18)</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" checked> sop <span class="text-slate-500 text-[11px]">(9)</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox"> faq <span class="text-slate-500 text-[11px]">(6)</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox"> ticket_playbook <span class="text-slate-500 text-[11px]">(4)</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox"> kb <span class="text-slate-500 text-[11px]">(7)</span></label>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Status</div>
+              <div class="space-y-1 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" checked> published</label>
+                <label class="flex items-center gap-2"><input type="checkbox"> pending</label>
+                <label class="flex items-center gap-2"><input type="checkbox"> rejected</label>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Tags</div>
+              <input class="input w-full" placeholder="caddy, sepay..." />
+            </div>
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Date</div>
+              <select class="select w-full">
+                <option>Any time</option>
+                <option>Last 7 days</option>
+                <option>Last 30 days</option>
+              </select>
+            </div>
+          </div>
+        </aside>
+
+        <!-- LIST -->
+        <div class="flex-1">
+          <!-- BULK ACTION BAR -->
+          <div class="panel-2 flex items-center justify-between px-3 py-2 mb-3">
+            <div class="flex items-center gap-3 text-sm">
+              <input type="checkbox" checked />
+              <span><b>3</b> selected · 30 total</span>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn text-[12px]">✓ Approve</button>
+              <button class="btn text-[12px]">📥 Archive</button>
+              <button class="btn text-[12px]">⬇️ Export</button>
+              <button class="btn text-[12px]">🗑️ Delete</button>
+            </div>
+          </div>
+
+          <!-- HEADER -->
+          <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2 text-[11px] uppercase tracking-wider text-slate-500 border-b1">
+            <div></div>
+            <div>Title</div>
+            <div>Template</div>
+            <div>Tags</div>
+            <div>Author</div>
+            <div>Updated</div>
+          </div>
+
+          <!-- ROWS -->
+          <div class="divide-y divide-[#23272f]">
+            <!-- row selected -->
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" checked />
+              <div>
+                <div class="text-sm">SEPay webhook 500 — restart worker + check DLQ</div>
+                <div class="text-[11px] text-slate-500 mono">sepay-webhook-500-restart-1721795234</div>
+              </div>
+              <span class="chip chip-brand">runbook</span>
+              <div class="text-[11px] text-slate-400">sepay · webhook</div>
+              <div class="text-[11px] text-slate-400">tri</div>
+              <div class="text-[11px] text-slate-500">34m</div>
+            </div>
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" checked />
+              <div>
+                <div class="text-sm">Escalation P1 khách VIP → SRE oncall</div>
+                <div class="text-[11px] text-slate-500 mono">escalation-p1-vip-sre-1721792000</div>
+              </div>
+              <span class="chip">sop</span>
+              <div class="text-[11px] text-slate-400">escalation · p1</div>
+              <div class="text-[11px] text-slate-400">huong</div>
+              <div class="text-[11px] text-amber-400">pending 2h</div>
+            </div>
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" checked />
+              <div>
+                <div class="text-sm">Ticket "không login được" — 5 bước chẩn đoán</div>
+                <div class="text-[11px] text-slate-500 mono">ticket-login-fail-5steps-1721780000</div>
+              </div>
+              <span class="chip">ticket_playbook</span>
+              <div class="text-[11px] text-slate-400">login · support</div>
+              <div class="text-[11px] text-slate-400">nam</div>
+              <div class="text-[11px] text-slate-500">1d</div>
+            </div>
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" />
+              <div>
+                <div class="text-sm">Khách hỏi "sao chưa nhận được hoá đơn?" — mẫu trả lời</div>
+                <div class="text-[11px] text-slate-500 mono">faq-invoice-not-received-1721776000</div>
+              </div>
+              <span class="chip">faq</span>
+              <div class="text-[11px] text-slate-400">billing · invoice</div>
+              <div class="text-[11px] text-slate-400">minh</div>
+              <div class="text-[11px] text-slate-500">4h</div>
+            </div>
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" />
+              <div>
+                <div class="text-sm">Restart caddy edge — không mất TLS session</div>
+                <div class="text-[11px] text-slate-500 mono">restart-caddy-edge-1721650000</div>
+              </div>
+              <span class="chip chip-brand">runbook</span>
+              <div class="text-[11px] text-slate-400">caddy · tls</div>
+              <div class="text-[11px] text-slate-400">tri</div>
+              <div class="text-[11px] text-slate-500">3d</div>
+            </div>
+            <div class="grid grid-cols-[24px_2fr_100px_120px_100px_100px] gap-3 px-3 py-2.5 hover:bg-[#171b22] items-center">
+              <input type="checkbox" />
+              <div>
+                <div class="text-sm">VMAlert firing checklist — 4 bước xác minh</div>
+                <div class="text-[11px] text-slate-500 mono">vmalert-firing-checklist-1721550000</div>
+              </div>
+              <span class="chip chip-brand">runbook</span>
+              <div class="text-[11px] text-slate-400">vmalert · alert</div>
+              <div class="text-[11px] text-slate-400">tri</div>
+              <div class="text-[11px] text-slate-500">5d</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ARTIFACT DETAIL ============ -->
+    <section id="screen-artifact-detail" class="screen">
+      <div class="text-xs text-slate-500 mb-2">
+        <a>Artifacts</a> · <a>ops-runbook</a> · <span class="text-slate-400">SEPay webhook 500...</span>
+      </div>
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <h1 class="text-2xl font-semibold">SEPay webhook 500 — restart worker + check DLQ</h1>
+          <div class="mt-2 flex items-center gap-2 text-sm text-slate-400">
+            <span class="chip chip-brand">runbook</span>
+            <span class="chip chip-ok">published</span>
+            <span>·</span>
+            <span>author <b>tri</b></span>
+            <span>·</span>
+            <span>v3 · updated 34m ago</span>
+            <span>·</span>
+            <span>👁️ 42 views</span>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn">📋 Copy MCP link</button>
+          <button class="btn">⬇️ Export .md</button>
+          <button class="btn btn-primary">✏️ Edit</button>
+        </div>
+      </div>
+
+      <!-- TABS -->
+      <div class="flex items-center gap-1 border-b1 mb-4">
+        <button class="tab-btn active">👁 View</button>
+        <button class="tab-btn">✏️ Edit</button>
+        <button class="tab-btn">📜 History <span class="chip ml-1">3</span></button>
+        <button class="tab-btn">📎 Attachments <span class="chip ml-1">1</span></button>
+      </div>
+
+      <div class="grid grid-cols-[1fr_260px] gap-6">
+        <article class="prose prose-invert max-w-none text-sm">
+          <h2 class="text-lg font-semibold mt-0">Symptoms</h2>
+          <ul class="list-disc list-inside text-slate-300">
+            <li>SEPay webhook trả 500 rải rác từ 09:00</li>
+            <li>Alertmanager firing <code>sepay_webhook_5xx_ratio &gt; 0.1</code></li>
+            <li>Worker log <code>ECONNREFUSED redis:6379</code></li>
+          </ul>
+          <h2 class="text-lg font-semibold">Verify</h2>
+          <pre class="bg-[#0e1116] p-3 rounded border border-[#23272f] text-[12px] text-slate-300">docker ps | grep sepay-worker
+docker logs --tail 50 sepay-worker
+redis-cli -h redis ping</pre>
+          <h2 class="text-lg font-semibold">Mitigation</h2>
+          <ol class="list-decimal list-inside text-slate-300">
+            <li>Restart worker: <code>docker restart sepay-worker</code></li>
+            <li>Kiểm tra DLQ: <code>redis-cli LLEN sepay:dlq</code></li>
+            <li>Nếu DLQ &gt; 100: replay bằng <code>node scripts/dlq-replay.js</code></li>
+          </ol>
+          <h2 class="text-lg font-semibold">Verification</h2>
+          <p class="text-slate-300">Sau 5 phút: <code>curl -s https://onelog/api/sepay/health</code> phải trả 200. Metric <code>sepay_webhook_5xx_ratio</code> về &lt; 0.01.</p>
+          <h2 class="text-lg font-semibold">Escalation</h2>
+          <p class="text-slate-300">Nếu DLQ &gt; 500 hoặc replay fail → SRE oncall (@sre-p1 Slack).</p>
+        </article>
+
+        <aside class="space-y-3">
+          <div class="panel p-3">
+            <div class="text-[11px] uppercase text-slate-500 mb-2">Metadata</div>
+            <div class="text-xs space-y-1.5">
+              <div><span class="text-slate-500">Service:</span> sepay</div>
+              <div><span class="text-slate-500">Severity:</span> P2</div>
+              <div><span class="text-slate-500">Slug:</span> <code class="text-[10px]">sepay-webhook-500-restart</code></div>
+              <div><span class="text-slate-500">Space:</span> ops-runbook</div>
+              <div><span class="text-slate-500">Reviewed by:</span> huong (34m ago)</div>
+            </div>
+          </div>
+          <div class="panel p-3">
+            <div class="text-[11px] uppercase text-slate-500 mb-2">Tags</div>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="chip">sepay</span>
+              <span class="chip">webhook</span>
+              <span class="chip">dlq</span>
+              <span class="chip">redis</span>
+            </div>
+          </div>
+          <div class="panel p-3">
+            <div class="text-[11px] uppercase text-slate-500 mb-2">Related</div>
+            <div class="text-xs space-y-1">
+              <a class="block">→ Restart caddy edge</a>
+              <a class="block">→ Redis DLQ overview</a>
+              <a class="block">→ Alertmanager routing</a>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ NEW ARTIFACT ============ -->
+    <section id="screen-new-artifact" class="screen">
+      <h1 class="text-2xl font-semibold mb-1">Submit new artifact</h1>
+      <p class="text-slate-400 text-sm mb-6">Chọn template phù hợp với nội dung bạn muốn lưu</p>
+
+      <div class="mb-6">
+        <div class="text-[11px] uppercase text-slate-500 mb-2">Step 1 — Chọn template</div>
+        <div class="grid-templates">
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">🛠️</div>
+            <div class="font-semibold text-sm">Runbook</div>
+            <div class="text-[11px] text-slate-400 mt-1">Playbook xử lý sự cố kỹ thuật: symptoms → verify → mitigation</div>
+          </div>
+          <div class="tpl-card" style="border-color:#3f52a3">
+            <div class="tpl-icon mb-2">📋</div>
+            <div class="font-semibold text-sm">SOP</div>
+            <div class="text-[11px] text-slate-400 mt-1">Quy trình chuẩn: đối tượng → mục đích → các bước</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">❓</div>
+            <div class="font-semibold text-sm">FAQ</div>
+            <div class="text-[11px] text-slate-400 mt-1">Câu hỏi khách + câu trả lời chuẩn</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">🎫</div>
+            <div class="font-semibold text-sm">Ticket playbook</div>
+            <div class="text-[11px] text-slate-400 mt-1">Loại ticket → chẩn đoán → phương án xử lý</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">📚</div>
+            <div class="font-semibold text-sm">KB (bug fix)</div>
+            <div class="text-[11px] text-slate-400 mt-1">Vấn đề gặp phải + giải pháp áp dụng</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">🔬</div>
+            <div class="font-semibold text-sm">Research</div>
+            <div class="text-[11px] text-slate-400 mt-1">Câu hỏi → phương pháp → kết luận</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">📊</div>
+            <div class="font-semibold text-sm">Report</div>
+            <div class="text-[11px] text-slate-400 mt-1">Tóm tắt → timeline → root cause → remediation</div>
+          </div>
+          <div class="tpl-card">
+            <div class="tpl-icon mb-2">💥</div>
+            <div class="font-semibold text-sm">Postmortem</div>
+            <div class="text-[11px] text-slate-400 mt-1">Sự cố production: severity, blast radius, lessons</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected template SOP form + editor -->
+      <div class="panel p-5">
+        <div class="text-[11px] uppercase text-slate-500 mb-3">Step 2 — SOP form</div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400">Title *</label>
+            <input class="input w-full mt-1" value="Escalation P1 khách VIP → SRE oncall" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Space *</label>
+            <select class="select w-full mt-1">
+              <option>ops-runbook</option>
+              <option selected>ops-oncall</option>
+              <option>support-faq</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Audience *</label>
+            <input class="input w-full mt-1" value="Ops L1, Support L2" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Owner</label>
+            <input class="input w-full mt-1" value="huong" />
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-slate-400">Purpose *</label>
+            <input class="input w-full mt-1" value="Đảm bảo ticket P1 khách VIP được escalate SRE oncall trong 5 phút" />
+          </div>
+          <div class="col-span-2">
+            <label class="text-xs text-slate-400">Tags</label>
+            <input class="input w-full mt-1" value="escalation, p1, vip, sre" />
+          </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-slate-400">Steps * (markdown)</label>
+            <textarea class="input w-full mt-1 font-mono text-[12px]" rows="12">1. Xác nhận severity qua Slack #incident
+2. Ping @sre-oncall (không dùng email)
+3. Tạo warroom Zoom, share link vào ticket
+4. Update customer trong 10 phút đầu
+5. Handoff SRE lead sau 30 phút nếu chưa resolve</textarea>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Preview</label>
+            <div class="panel-2 p-3 mt-1 text-sm text-slate-300" style="min-height: 260px;">
+              <ol class="list-decimal list-inside space-y-1.5">
+                <li>Xác nhận severity qua Slack #incident</li>
+                <li>Ping <b>@sre-oncall</b> (không dùng email)</li>
+                <li>Tạo warroom Zoom, share link vào ticket</li>
+                <li>Update customer trong 10 phút đầu</li>
+                <li>Handoff SRE lead sau 30 phút nếu chưa resolve</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 flex items-center justify-between">
+          <div class="text-xs text-slate-500">📎 Attachments: kéo thả file (max 100MB)</div>
+          <div class="flex gap-2">
+            <button class="btn">💾 Save draft</button>
+            <button class="btn btn-primary">📤 Submit for review</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SEARCH ============ -->
+    <section id="screen-search" class="screen">
+      <h1 class="text-2xl font-semibold mb-3">Search</h1>
+
+      <div class="flex gap-2 mb-4">
+        <input class="input flex-1" placeholder="Tìm kiếm KB..." value="làm sao restart worker khi webhook lỗi 500" />
+        <div class="btn-group flex items-center panel-2 rounded-md overflow-hidden">
+          <button class="px-3 py-1.5 text-xs bg-[#2e3c73] text-slate-100">Hybrid</button>
+          <button class="px-3 py-1.5 text-xs text-slate-400">FTS</button>
+          <button class="px-3 py-1.5 text-xs text-slate-400">Semantic</button>
+        </div>
+        <button class="btn btn-primary">🔍 Search</button>
+        <button class="btn">⭐ Save</button>
+      </div>
+
+      <div class="flex gap-4">
+        <aside class="w-56 shrink-0 panel p-4 h-fit">
+          <div class="text-sm font-semibold mb-2">Filters</div>
+          <div class="space-y-3">
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Space</div>
+              <select class="select w-full">
+                <option>Tất cả (visible)</option>
+                <option>ops-runbook</option>
+                <option>ops-oncall</option>
+                <option>support-faq</option>
+              </select>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase text-slate-500 mb-1">Template</div>
+              <div class="space-y-1 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" checked> runbook</label>
+                <label class="flex items-center gap-2"><input type="checkbox" checked> sop</label>
+                <label class="flex items-center gap-2"><input type="checkbox"> faq</label>
+                <label class="flex items-center gap-2"><input type="checkbox"> kb</label>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <div class="flex-1">
+          <div class="text-xs text-slate-500 mb-3">
+            <b>7</b> kết quả · mode <b>hybrid</b> (BM25 + bge-m3 · RRF k=60) · 187ms
+          </div>
+
+          <div class="space-y-2">
+            <div class="panel p-4 hover:border-[#2e3c73] cursor-pointer">
+              <div class="flex items-baseline justify-between">
+                <a class="font-semibold text-[15px]">SEPay webhook 500 — restart worker + check DLQ</a>
+                <div class="flex gap-1 text-[10px]">
+                  <span class="chip chip-brand">runbook</span>
+                  <span class="chip">ops-runbook</span>
+                  <span class="chip">rank 0.87</span>
+                </div>
+              </div>
+              <p class="text-[13px] text-slate-400 mt-1 snippet">
+                ...restart <mark>worker</mark>: <code>docker restart sepay-worker</code>. Kiểm tra DLQ nếu <mark>webhook</mark> <mark>500</mark> rải rác từ 09:00...
+              </p>
+              <div class="text-[11px] text-slate-500 mt-1">FTS 0.72 + semantic 0.91 · tri · 34m ago</div>
+            </div>
+
+            <div class="panel p-4 hover:border-[#2e3c73] cursor-pointer">
+              <div class="flex items-baseline justify-between">
+                <a class="font-semibold text-[15px]">Redis DLQ overview — replay + monitor</a>
+                <div class="flex gap-1 text-[10px]">
+                  <span class="chip chip-brand">runbook</span>
+                  <span class="chip">ops-runbook</span>
+                  <span class="chip">rank 0.71</span>
+                </div>
+              </div>
+              <p class="text-[13px] text-slate-400 mt-1 snippet">
+                ...DLQ (Dead Letter Queue) chứa message <mark>lỗi</mark> chưa xử lý được. Replay: <code>node scripts/dlq-replay.js</code>...
+              </p>
+              <div class="text-[11px] text-slate-500 mt-1">semantic only 0.83 · tri · 3d ago</div>
+            </div>
+
+            <div class="panel p-4 hover:border-[#2e3c73] cursor-pointer">
+              <div class="flex items-baseline justify-between">
+                <a class="font-semibold text-[15px]">Docker restart safe practices</a>
+                <div class="flex gap-1 text-[10px]">
+                  <span class="chip">kb</span>
+                  <span class="chip">tech-kb</span>
+                  <span class="chip">rank 0.62</span>
+                </div>
+              </div>
+              <p class="text-[13px] text-slate-400 mt-1 snippet">
+                ...<mark>restart</mark> container mà không mất log: dùng <code>docker restart --time=30</code> để graceful shutdown...
+              </p>
+              <div class="text-[11px] text-slate-500 mt-1">FTS 0.65 + semantic 0.60 · nam · 8d ago</div>
+            </div>
+
+            <div class="panel p-4 hover:border-[#2e3c73] cursor-pointer">
+              <div class="flex items-baseline justify-between">
+                <a class="font-semibold text-[15px]">Escalation P1 khách VIP → SRE oncall</a>
+                <div class="flex gap-1 text-[10px]">
+                  <span class="chip">sop</span>
+                  <span class="chip">ops-oncall</span>
+                  <span class="chip chip-warn">pending</span>
+                  <span class="chip">rank 0.55</span>
+                </div>
+              </div>
+              <p class="text-[13px] text-slate-400 mt-1 snippet">
+                ...ticket P1 khách VIP được escalate SRE oncall trong 5 phút. Ping @sre-oncall (không dùng email)...
+              </p>
+              <div class="text-[11px] text-slate-500 mt-1">semantic 0.72 · huong · 2h ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ API KEYS ============ -->
+    <section id="screen-api-keys" class="screen">
+      <h1 class="text-2xl font-semibold mb-1">API Keys</h1>
+      <p class="text-slate-400 text-sm mb-5">Dùng cho MCP client, script tự động, integration.</p>
+
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-sm text-slate-400">3 keys active · 1 revoked</div>
+        <button class="btn btn-primary">➕ Create new key</button>
+      </div>
+
+      <div class="panel">
+        <div class="grid grid-cols-[1fr_140px_140px_120px_100px] gap-3 px-4 py-2.5 text-[11px] uppercase text-slate-500 border-b1">
+          <div>Label · Prefix</div>
+          <div>Last used</div>
+          <div>Expires</div>
+          <div>Rate limit</div>
+          <div class="text-right">Action</div>
+        </div>
+        <div class="divide-y divide-[#23272f]">
+          <div class="grid grid-cols-[1fr_140px_140px_120px_100px] gap-3 px-4 py-3 items-center">
+            <div>
+              <div class="text-sm">Claude Desktop laptop</div>
+              <div class="text-[11px] text-slate-500 mono">omk_a1b2c3d4•••••••</div>
+            </div>
+            <div class="text-xs text-slate-400">12m ago</div>
+            <div class="text-xs text-slate-400">2026-10-22</div>
+            <div class="text-xs">60 req/min</div>
+            <div class="text-right"><button class="btn text-[11px]">Revoke</button></div>
+          </div>
+          <div class="grid grid-cols-[1fr_140px_140px_120px_100px] gap-3 px-4 py-3 items-center">
+            <div>
+              <div class="text-sm">OpenWebUI bridge (bot)</div>
+              <div class="text-[11px] text-slate-500 mono">omk_ff11e2••••••••</div>
+            </div>
+            <div class="text-xs text-slate-400">3m ago</div>
+            <div class="text-xs text-slate-400">2026-12-31</div>
+            <div class="text-xs">200 req/min</div>
+            <div class="text-right"><button class="btn text-[11px]">Revoke</button></div>
+          </div>
+          <div class="grid grid-cols-[1fr_140px_140px_120px_100px] gap-3 px-4 py-3 items-center">
+            <div>
+              <div class="text-sm">CI script auto-submit</div>
+              <div class="text-[11px] text-slate-500 mono">omk_9a8b7c••••••••</div>
+            </div>
+            <div class="text-xs text-slate-400">2h ago</div>
+            <div class="text-xs text-slate-400">2026-09-15</div>
+            <div class="text-xs">30 req/min</div>
+            <div class="text-right"><button class="btn text-[11px]">Revoke</button></div>
+          </div>
+          <div class="grid grid-cols-[1fr_140px_140px_120px_100px] gap-3 px-4 py-3 items-center opacity-50">
+            <div>
+              <div class="text-sm line-through">Old dev laptop</div>
+              <div class="text-[11px] text-slate-500 mono">omk_ee44dd••••••••</div>
+            </div>
+            <div class="text-xs text-slate-400">15d ago</div>
+            <div class="text-xs text-red-400">revoked</div>
+            <div class="text-xs">—</div>
+            <div class="text-right text-xs text-slate-500">revoked</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CREATE DIALOG MOCK -->
+      <div class="mt-6 panel p-5" style="border-color:#3f52a3; background:#131928;">
+        <div class="text-sm font-semibold mb-3">🔐 Key vừa tạo — copy ngay, chỉ hiển thị 1 lần!</div>
+        <div class="flex items-center gap-2">
+          <input class="input flex-1 mono text-[13px]" readonly value="omk_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0" />
+          <button class="btn">📋 Copy</button>
+        </div>
+        <div class="text-[11px] text-amber-400 mt-2">⚠️ Sau khi đóng dialog, chỉ prefix (omk_a1b2c3d4) còn hiển thị. Không thể xem lại full key.</div>
+      </div>
+    </section>
+
+    <!-- ============ SPACES ADMIN ============ -->
+    <section id="screen-spaces" class="screen">
+      <div class="flex items-baseline justify-between mb-4">
+        <div>
+          <h1 class="text-2xl font-semibold">Spaces <span class="chip ml-2">admin</span></h1>
+          <p class="text-slate-400 text-sm mt-1">Quản lý namespace của KB theo team/dept</p>
+        </div>
+        <button class="btn btn-primary">➕ New space</button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4">
+        <div class="panel p-4">
+          <div class="flex items-start justify-between mb-2">
+            <div class="text-3xl">🛠️</div>
+            <span class="chip">dept</span>
+          </div>
+          <div class="font-semibold">Ops — Runbook</div>
+          <div class="text-[11px] text-slate-500 mono mb-2">ops-runbook</div>
+          <div class="text-xs text-slate-400 mb-3">Playbook xử lý sự cố, restart service, verify metrics</div>
+          <div class="text-xs text-slate-500 flex gap-3">
+            <span>📄 47 artifacts</span>
+            <span>👥 8 members</span>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="flex items-start justify-between mb-2">
+            <div class="text-3xl">📞</div>
+            <span class="chip">dept</span>
+          </div>
+          <div class="font-semibold">Ops — Oncall</div>
+          <div class="text-[11px] text-slate-500 mono mb-2">ops-oncall</div>
+          <div class="text-xs text-slate-400 mb-3">SOP handoff, escalation matrix, warroom playbook</div>
+          <div class="text-xs text-slate-500 flex gap-3">
+            <span>📄 9 artifacts</span>
+            <span>👥 5 members</span>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="flex items-start justify-between mb-2">
+            <div class="text-3xl">💬</div>
+            <span class="chip">dept</span>
+          </div>
+          <div class="font-semibold">Support — FAQ</div>
+          <div class="text-[11px] text-slate-500 mono mb-2">support-faq</div>
+          <div class="text-xs text-slate-400 mb-3">Câu hỏi khách hàng, mẫu trả lời, ticket playbook</div>
+          <div class="text-xs text-slate-500 flex gap-3">
+            <span>📄 22 artifacts</span>
+            <span>👥 12 members</span>
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="flex items-start justify-between mb-2">
+            <div class="text-3xl">🧪</div>
+            <span class="chip">dept</span>
+          </div>
+          <div class="font-semibold">Tech — KB</div>
+          <div class="text-[11px] text-slate-500 mono mb-2">tech-kb</div>
+          <div class="text-xs text-slate-400 mb-3">Bug fix, workaround, technical notes</div>
+          <div class="text-xs text-slate-500 flex gap-3">
+            <span>📄 73 artifacts</span>
+            <span>👥 15 members</span>
+          </div>
+        </div>
+        <div class="panel p-4 border-dashed" style="border-style:dashed;">
+          <div class="text-3xl mb-2 opacity-40">➕</div>
+          <div class="text-slate-400 text-sm">Tạo space mới cho team khác (HR, Sales, Finance...)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ONBOARDING ============ -->
+    <section id="screen-onboarding" class="screen">
+      <div class="max-w-3xl mx-auto">
+        <div class="text-xs text-slate-500 mb-2">Onboarding · Ops team</div>
+        <h1 class="text-3xl font-bold mb-1">👋 Chào Ops team!</h1>
+        <p class="text-slate-400 mb-6">OneMCP giúp bạn lưu và tìm lại các playbook, SOP, runbook một cách nhanh chóng — không cần Confluence.</p>
+
+        <div class="panel p-5 mb-4 flex gap-4">
+          <div class="text-4xl">🎥</div>
+          <div class="flex-1">
+            <div class="font-semibold mb-1">Xem demo 5 phút</div>
+            <p class="text-sm text-slate-400 mb-2">Video hướng dẫn: paste transcript từ OpenWebUI → submit KB → search lần sau</p>
+            <button class="btn">▶️ Xem trên Drive</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <a class="panel p-4 hover:border-[#2e3c73]">
+            <div class="text-3xl mb-2">📋</div>
+            <div class="font-semibold text-sm">SOP mẫu</div>
+            <div class="text-[12px] text-slate-400 mt-1">3 SOP có sẵn để tham khảo cấu trúc</div>
+          </a>
+          <a class="panel p-4 hover:border-[#2e3c73]">
+            <div class="text-3xl mb-2">🤖</div>
+            <div class="font-semibold text-sm">OpenWebUI Ops</div>
+            <div class="text-[12px] text-slate-400 mt-1">Chat AI đã scoped Ops KB, gõ câu hỏi tiếng Việt tự nhiên</div>
+          </a>
+          <a class="panel p-4 hover:border-[#2e3c73]">
+            <div class="text-3xl mb-2">🔑</div>
+            <div class="font-semibold text-sm">Tạo API key</div>
+            <div class="text-[12px] text-slate-400 mt-1">Nếu bạn muốn dùng qua Claude Desktop</div>
+          </a>
+        </div>
+
+        <h2 class="text-xl font-semibold mb-3">3 cách sử dụng phổ biến</h2>
+
+        <div class="panel p-5 mb-3">
+          <div class="text-sm font-semibold mb-1">1️⃣ Fix xong 1 lỗi lạ → lưu lại để lần sau tìm được</div>
+          <p class="text-sm text-slate-400 mb-2">Ngay trong chat OpenWebUI, ấn nút 📚 dưới message → OneMCP tự tóm tắt thành KB → bạn review → submit.</p>
+          <div class="text-xs text-slate-500">Tương ứng template: <span class="chip">kb</span> hoặc <span class="chip">runbook</span></div>
+        </div>
+
+        <div class="panel p-5 mb-3">
+          <div class="text-sm font-semibold mb-1">2️⃣ Viết quy trình chuẩn (SOP) cho team L1</div>
+          <p class="text-sm text-slate-400 mb-2">Vào <a>Submit new</a> → chọn template <b>SOP</b> → điền audience/purpose/steps → submit for review.</p>
+          <div class="text-xs text-slate-500">Tương ứng template: <span class="chip">sop</span></div>
+        </div>
+
+        <div class="panel p-5 mb-3">
+          <div class="text-sm font-semibold mb-1">3️⃣ Search KB khi gặp sự cố</div>
+          <p class="text-sm text-slate-400 mb-2">Vào <a>Search</a> hoặc hỏi thẳng chatbot Ops trên OpenWebUI. Search hybrid tự tìm cả từ khoá + ngữ nghĩa (không cần đúng chính xác).</p>
+          <div class="text-xs text-slate-500">Ví dụ query: "làm sao restart caddy mà không mất TLS session"</div>
+        </div>
+
+        <div class="mt-6 p-4 rounded panel-2 border" style="border-color:#3f52a3;">
+          <div class="text-sm font-semibold mb-1">Hỗ trợ</div>
+          <p class="text-sm text-slate-400">Có vấn đề? Ping <b>@tri</b> hoặc <b>#onelog-support</b> trên Slack. Feedback nào cũng welcome — team đang iterate v1.5.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VERSION DIFF ============ -->
+    <section id="screen-version-diff" class="screen">
+      <div class="text-xs text-slate-500 mb-2">
+        <a>Artifact</a> · SEPay webhook 500... · <span class="text-slate-400">History</span>
+      </div>
+      <h1 class="text-2xl font-semibold mb-3">📜 Version diff</h1>
+
+      <div class="flex items-center gap-3 mb-4">
+        <select class="select">
+          <option>v2 — 3d ago, tri</option>
+        </select>
+        <span class="text-slate-500">↔</span>
+        <select class="select">
+          <option>v3 — 34m ago, tri (current)</option>
+        </select>
+        <button class="btn">🔄 Compare</button>
+        <div class="ml-auto text-xs text-slate-400">
+          <span class="chip chip-danger">-5 lines</span>
+          <span class="chip chip-ok ml-1">+12 lines</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="panel">
+          <div class="border-b1 px-4 py-2 text-xs font-semibold text-slate-400">v2 (3d ago)</div>
+          <pre class="p-4 text-[12px] leading-relaxed mono whitespace-pre-wrap">## Mitigation
+1. Restart worker
+<span class="diff-del">2. Check logs manually</span>
+3. Escalate if not resolved
+
+## Verification
+<span class="diff-del">Check the service is up.</span></pre>
+        </div>
+        <div class="panel">
+          <div class="border-b1 px-4 py-2 text-xs font-semibold text-slate-400">v3 (34m ago, current)</div>
+          <pre class="p-4 text-[12px] leading-relaxed mono whitespace-pre-wrap">## Mitigation
+1. Restart worker: <code>docker restart sepay-worker</code>
+<span class="diff-add">2. Kiểm tra DLQ: <code>redis-cli LLEN sepay:dlq</code></span>
+<span class="diff-add">3. Nếu DLQ > 100: replay bằng <code>node scripts/dlq-replay.js</code></span>
+4. Escalate if not resolved
+
+## Verification
+<span class="diff-add">Sau 5 phút: <code>curl -s https://onelog/api/sepay/health</code> phải trả 200.</span>
+<span class="diff-add">Metric <code>sepay_webhook_5xx_ratio</code> về &lt; 0.01.</span></pre>
+        </div>
+      </div>
+
+      <div class="mt-4 panel p-4">
+        <div class="text-xs text-slate-500 uppercase mb-1">Change note</div>
+        <p class="text-sm text-slate-300">Bổ sung command cụ thể cho DLQ check và replay. Thêm verification metric.</p>
+        <div class="text-xs text-slate-500 mt-2">by <b>tri</b> · reviewed by <b>huong</b></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab-btn[data-target]');
+  const screens = document.querySelectorAll('.screen');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    screens.forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + t.dataset.target).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }));
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Policy routing for eth1 (10.200.0.30) - CONNMARK-based to survive docker DNAT
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# No RemainAfterExit so eth1-policy-routing.timer can re-invoke this unit
+# to re-apply rules if docker/network reload flushes them.
+ExecStart=/usr/local/sbin/eth1-policy-routing-apply.sh
+
+[Install]
+WantedBy=multi-user.target

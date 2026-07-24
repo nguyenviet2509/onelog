@@ -1,0 +1,12 @@
+[Unit]
+Description=Re-apply eth1 policy routing every 5 minutes (self-heal after docker/network reload)
+Requires=eth1-policy-routing.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=eth1-policy-routing.service
+
+[Install]
+WantedBy=timers.target

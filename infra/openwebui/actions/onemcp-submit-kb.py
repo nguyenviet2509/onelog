@@ -2,23 +2,67 @@
 title: Save to OneMCP KB
 author: onelog
 version: 0.2.0
-description: Action button 📚 — one-click submit KB entry vào OneMCP. Auto-detect: nếu message user cuối là KB markdown (# Title + ## Problem) → parse & submit user version (full control title/content). Ngược lại → AI (deepseek) summarize chat rồi submit direct (nếu qua double-gate validation).
+description: Action button 📚 — one-click submit KB entry vào OneMCP. 3 cách dùng (xem HƯỚNG DẪN NGƯỜI DÙNG bên dưới).
 
 requirements: httpx
 
-Flow (one-click, không dùng modal):
-  Path A — User đã type KB markdown trong chat input:
-    1. Detect `# Title` + `## Problem` trong user message cuối
-    2. Parse markdown ngược lại structured fields
-    3. Soft redact → submit qua OneMCP submit_artifact(type=kb)
-    4. Toast success với link portal
+═══════════════════════════════════════════════════════════════════════════════
+HƯỚNG DẪN NGƯỜI DÙNG — 3 cách submit KB
+═══════════════════════════════════════════════════════════════════════════════
 
-  Path B — Auto AI summarize từ transcript:
-    1. Hard-block check secrets (raise nếu có private key/token)
-    2. LLM (deepseek) gatekeeper role — reject investigation/question/hypothesis
-    3. Server strict validate (title/problem/solution length + error indicator + concrete fix)
-    4. Soft redact → submit
-    5. Toast success / warning / error
+CÁCH 1 — Auto (AI tóm tắt hết):
+  Chỉ cần click 📚 dưới message của assistant. AI (deepseek) tự sinh title +
+  problem + solution + tags từ chat. Phù hợp khi chat đã có bug fixed rõ ràng.
+
+CÁCH 2 — Override title, giữ AI cho phần còn lại:
+  Trước khi click 📚, gửi 1 message với 1 trong 3 format sau vào chat input:
+    • `!title: nginx 502 - proxy timeout increase to 300s`
+    • `!kb: nginx 502 - proxy timeout increase to 300s`
+    • `# nginx 502 - proxy timeout increase to 300s`  (H1 only, không có ##)
+  → Send → click 📚. Title dùng của user, AI generate rest.
+
+CÁCH 3 — Full control (user tự viết toàn bộ):
+  Gửi message vào chat input với KB markdown đầy đủ:
+    ```markdown
+    # nginx 502 timeout - fix proxy_read_timeout
+
+    ## Problem
+    Nginx trả 502 sau khi upstream backend chậm hơn 60s.
+
+    ## Solution
+    1. Edit `nginx.conf`, tăng `proxy_read_timeout 300s`
+    2. `nginx -t && nginx -s reload`
+    3. Verify curl không còn timeout
+
+    ## Related
+    - Cookbook query: upstream errors
+
+    ## Tags
+    nginx, http_502, timeout, proxy
+    ```
+  → Send → click 📚. Bypass AI + strict validation, user chịu trách nhiệm.
+
+Ưu tiên detect: CÁCH 3 (full markdown có ## Problem) > CÁCH 2 (title override)
+> CÁCH 1 (auto).
+
+═══════════════════════════════════════════════════════════════════════════════
+INTERNAL FLOW (dev reference)
+═══════════════════════════════════════════════════════════════════════════════
+
+Path A — User đã type KB markdown (CÁCH 3):
+  1. Detect `# Title` + `## Problem` trong user message cuối
+  2. Parse markdown ngược lại structured fields
+  3. Soft redact → submit qua OneMCP submit_artifact(type=kb)
+  4. Toast success với link portal
+
+Path B — AI summarize (CÁCH 1 + 2):
+  1. Hard-block check secrets (raise nếu có private key/token)
+  2. Detect title override (CÁCH 2) qua _extract_title_override()
+  3. LLM (deepseek) gatekeeper role — reject investigation/question/hypothesis
+  4. Apply title_override lên draft nếu có
+  5. Server strict validate (title/problem/solution length + error indicator + concrete fix)
+  6. Soft redact → submit
+  7. Toast success / warning / error
 
 Notification: single-channel toast góc màn hình cho mọi outcome (success/warning/error)
 + status header cho progress. Không emit inline messages (giữ chat sạch).

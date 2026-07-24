@@ -196,6 +196,34 @@ class Action:
         return f"{s}-{int(time.time())}"
 
     @staticmethod
+    def _extract_artifact_id(result: Any) -> str:
+        """Trích ID từ mọi format MCP tools/call có thể trả về."""
+        if not isinstance(result, dict):
+            return "?"
+        # Flat: {id: N} hoặc {artifact_id: N}
+        for k in ("id", "artifact_id", "artifactId"):
+            if result.get(k):
+                return str(result[k])
+        # Nested: {artifact: {id: N}}
+        art = result.get("artifact")
+        if isinstance(art, dict) and art.get("id"):
+            return str(art["id"])
+        # MCP content array: [{type: text, text: "Submitted artifact #N ..."}]
+        content = result.get("content", [])
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict):
+                    text_body = str(item.get("text", ""))
+                    m = re.search(r"artifact\s*#(\d+)", text_body, re.IGNORECASE)
+                    if m:
+                        return m.group(1)
+                    # Regex khác: id: N | ID: N
+                    m2 = re.search(r"\bid[:\s#]+(\d+)", text_body, re.IGNORECASE)
+                    if m2:
+                        return m2.group(1)
+        return "?"
+
+    @staticmethod
     def _draft_to_markdown(draft: dict[str, Any]) -> str:
         """Pack AI draft thành single markdown editable trong modal input."""
         title = str(draft.get("title", "")).strip() or "Untitled"
@@ -269,67 +297,46 @@ class Action:
                     {"type": "status", "data": {"description": msg, "done": done}}
                 )
 
-        # Two-click workflow:
-        #   Click 1: gen draft từ chat, emit vào assistant message
-        #   User: copy draft → paste vào chat input (full-width) → edit → send
-        #   Click 2: detect user message có KB markdown → submit; hoặc submit draft as-is
-        DRAFT_MARKER = "📝 **KB Draft"
-
+        # One-click workflow (KISS):
+        #   Nếu user message cuối là KB markdown (`# Title` + `## Problem`) → submit user version
+        #   Ngược lại → AI generate + submit direct
+        # User muốn edit: type markdown vào chat input (full-width native), send, click 📚
         def _looks_like_kb_markdown(text: str) -> bool:
-            """Heuristic: có H1 (#) và ít nhất section ## Problem hoặc ## Solution."""
             if not text or len(text) < 30:
                 return False
             has_h1 = bool(re.search(r"^#\s+\S", text, re.MULTILINE))
-            has_section = bool(re.search(r"^##\s+(Problem|Solution)", text, re.MULTILINE | re.IGNORECASE))
+            has_section = bool(
+                re.search(r"^##\s+(Problem|Solution)", text, re.MULTILINE | re.IGNORECASE)
+            )
             return has_h1 and has_section
 
         try:
             transcript = self._transcript_from_body(body)
             msgs = body.get("messages", [])
 
-            # Tìm message user cuối và message assistant cuối
+            # Lấy message user cuối cùng
             last_user_content = ""
-            last_assistant_content = ""
             for m in reversed(msgs):
-                content = m.get("content", "")
-                if isinstance(content, list):
-                    content = " ".join(
-                        c.get("text", "") for c in content if isinstance(c, dict)
-                    )
-                content = str(content)
-                if m.get("role") == "user" and not last_user_content:
-                    last_user_content = content
-                elif m.get("role") == "assistant" and not last_assistant_content:
-                    last_assistant_content = content
-                if last_user_content and last_assistant_content:
+                if m.get("role") == "user":
+                    content = m.get("content", "")
+                    if isinstance(content, list):
+                        content = " ".join(
+                            c.get("text", "") for c in content if isinstance(c, dict)
+                        )
+                    last_user_content = str(content)
                     break
 
             edited: dict[str, Any] | None = None
 
-            # Path A: user đã edit + gửi KB markdown làm message mới → submit user version
             if _looks_like_kb_markdown(last_user_content):
+                # User đã type KB markdown → parse + submit
                 await status("Parse KB từ message user...")
                 edited = self._parse_kb_markdown(last_user_content, {})
                 if not edited.get("title") or not edited.get("problem"):
                     await status("⛔ KB markdown thiếu title/problem", done=True)
                     return "KB markdown không hợp lệ. Cần `# Title` + `## Problem` + `## Solution`."
-
-            # Path B: click lại trên assistant draft không edit → submit draft as-is
-            elif DRAFT_MARKER in last_assistant_content:
-                await status("Submit draft as-is (chưa edit)...")
-                draft_text = last_assistant_content.split(DRAFT_MARKER, 1)[1].strip()
-                # Bỏ header line + trailing hint
-                draft_text = re.sub(r"^[^\n]*\n", "", draft_text, count=1)
-                for hint in ("---\n👆", "👆 Edit"):
-                    if hint in draft_text:
-                        draft_text = draft_text.split(hint, 1)[0].strip()
-                edited = self._parse_kb_markdown(draft_text, {})
-                if not edited.get("title") or not edited.get("problem"):
-                    await status("⛔ Draft thiếu title/problem", done=True)
-                    return "Draft không hợp lệ."
-
-            # Path C: click lần đầu → generate draft và emit
             else:
+                # AI summarize từ chat → submit direct (không emit trung gian, không modal)
                 await status("Kiểm tra secrets...")
                 try:
                     check_hard_block(transcript)
@@ -340,34 +347,16 @@ class Action:
                 await status("Đang tóm tắt chat (deepseek)...")
                 redacted_input = soft_redact(transcript).text
                 try:
-                    draft = await self._summarize(redacted_input)
+                    edited = await self._summarize(redacted_input)
                 except Exception as e:
                     await status(f"⛔ Summarizer fail: {e}", done=True)
                     return f"Summarizer error: {e}"
 
-                if draft.get("error") == "not_kb_worthy":
+                if edited.get("error") == "not_kb_worthy":
                     await status(
                         "⚠️ Chat không đủ nội dung cho KB (chưa fix xong / mơ hồ)", done=True
                     )
                     return "Not KB-worthy: chat chưa có problem+solution rõ."
-
-                draft_md = self._draft_to_markdown(draft)
-                if __event_emitter__:
-                    await __event_emitter__(
-                        {
-                            "type": "message",
-                            "data": {
-                                "content": (
-                                    f"\n\n{DRAFT_MARKER} — copy nội dung dưới, paste vào ô chat, edit rồi Send + click 📚 lần nữa:**\n\n"
-                                    f"```markdown\n{draft_md}\n```\n\n"
-                                    f"**Hoặc submit as-is:** click 📚 dưới message này (không cần edit).\n"
-                                    f"Giữ format: `# Title` + `## Problem/Solution/Related/Tags` khi edit."
-                                )
-                            },
-                        }
-                    )
-                await status("✏️ Draft ready — xem hướng dẫn 2 cách submit", done=True)
-                return None
 
             # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:
@@ -402,18 +391,9 @@ class Action:
                 },
             )
             # MCP tools/call trả {content: [{type: "text", text: "Submitted artifact #N ..."}]}
-            # Không phải flat {id: N} — extract ID từ text.
-            aid: str = "?"
-            if isinstance(result, dict):
-                aid = str(result.get("id") or result.get("artifact_id") or "") or "?"
-                if aid == "?":
-                    content = result.get("content", [])
-                    if isinstance(content, list) and content:
-                        first = content[0] if isinstance(content[0], dict) else {}
-                        text_body = str(first.get("text", ""))
-                        m = re.search(r"artifact\s*#(\d+)", text_body, re.IGNORECASE)
-                        if m:
-                            aid = m.group(1)
+            # Log response để debug nếu ID parse fail.
+            print(f"[onemcp-submit-kb] submit response: {json.dumps(result)[:500]}", flush=True)
+            aid: str = self._extract_artifact_id(result)
             portal_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/artifacts/{aid}"
             await status(f"✅ KB #{aid} pending — {portal_url}", done=True)
             return f"Submitted KB #{aid} (pending). Verify tại: {portal_url}"

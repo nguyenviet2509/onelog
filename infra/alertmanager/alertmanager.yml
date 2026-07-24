@@ -153,7 +153,7 @@ receivers:
   # Nếu OneMCP down, alertmanager retry 1 lần rồi bỏ — Telegram vẫn nhận.
   - name: onemcp-webhook
     webhook_configs:
-      - url: https://10.200.0.44/api/webhooks/alerts
+      - url: https://10.200.0.44/api/webhooks/alertmanager
         http_config:
           authorization:
             type: Bearer

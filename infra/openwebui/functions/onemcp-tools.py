@@ -23,8 +23,8 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         ONEMCP_URL: str = Field(
-            default="https://192.168.122.56",
-            description="Base URL của OneMCP nginx (không kèm /api/mcp).",
+            default="https://10.200.0.44",
+            description="Base URL của OneMCP nginx (không kèm /api/mcp). Prod: 10.200.0.44, Lab: 192.168.122.56.",
         )
         BOT_USER: str = Field(
             default="openwebui-bot",

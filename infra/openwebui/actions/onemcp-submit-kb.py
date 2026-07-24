@@ -107,7 +107,7 @@ def soft_redact(text: str) -> RedactResult:
 
 class Action:
     class Valves(BaseModel):
-        ONEMCP_URL: str = Field(default="https://192.168.122.56")
+        ONEMCP_URL: str = Field(default="https://10.200.0.44")
         BOT_USER: str = Field(default="openwebui-bot")
         ONEMCP_CA_PATH: str = Field(
             default="/opt/onemcp-ca.crt",

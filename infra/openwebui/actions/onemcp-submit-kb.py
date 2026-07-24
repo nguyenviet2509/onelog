@@ -390,13 +390,42 @@ class Action:
                     },
                 },
             )
-            # MCP tools/call trả {content: [{type: "text", text: "Submitted artifact #N ..."}]}
-            # Log response để debug nếu ID parse fail.
             print(f"[onemcp-submit-kb] submit response: {json.dumps(result)[:500]}", flush=True)
             aid: str = self._extract_artifact_id(result)
             portal_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/artifacts/{aid}"
+            success_msg = f"✅ KB #{aid} đã submit thành công (pending review)"
+
+            # 1) Status update ở header
             await status(f"✅ KB #{aid} pending — {portal_url}", done=True)
-            return f"Submitted KB #{aid} (pending). Verify tại: {portal_url}"
+
+            # 2) Toast notification (góc màn hình) — nhiều OpenWebUI version support
+            if __event_emitter__:
+                for notif_payload in (
+                    {"type": "notification", "data": {"type": "success", "content": success_msg}},
+                    {"type": "toast", "data": {"type": "success", "content": success_msg}},
+                ):
+                    try:
+                        await __event_emitter__(notif_payload)
+                    except Exception:
+                        pass
+
+                # 3) Inline message trong chat flow — luôn visible không cần scroll
+                await __event_emitter__(
+                    {
+                        "type": "message",
+                        "data": {
+                            "content": (
+                                f"\n\n---\n\n"
+                                f"### {success_msg}\n\n"
+                                f"🔗 **Xem/edit KB:** [artifacts/{aid}]({portal_url})\n\n"
+                                f"Maintainer sẽ review + publish. Sau khi publish, chat khác gọi "
+                                f"`onemcp_search` sẽ trả entry này."
+                            )
+                        },
+                    }
+                )
+
+            return f"Submitted KB #{aid} (pending). Verify: {portal_url}"
 
         except Exception as e:
             await status(f"⛔ Error: {type(e).__name__}: {e}", done=True)

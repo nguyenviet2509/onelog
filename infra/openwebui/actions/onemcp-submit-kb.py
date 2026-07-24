@@ -152,14 +152,26 @@ class Action:
     async def _summarize(self, transcript: str) -> dict[str, Any]:
         """Gọi LiteLLM để tóm tắt transcript thành KB draft. Trả dict theo template KB."""
         prompt = (
-            "Bạn tóm tắt 1 cuộc chat trace lỗi thành entry KB. Trả JSON đúng schema:\n"
-            '{"title": str (1 câu, service + triệu chứng), '
-            '"problem": str (markdown, error/symptom cụ thể), '
-            '"solution": str (markdown, step-by-step + commands), '
+            "Bạn là gatekeeper KB — CHỈ tạo entry cho chat có bug ĐÃ FIX XONG, không phải investigation.\n\n"
+            "TRẢ {\"error\": \"not_kb_worthy\"} nếu chat có BẤT KỲ dấu hiệu nào:\n"
+            "- User hỏi how-to / cách làm (VD: 'có cách nào', 'làm sao', 'làm thế nào', 'how to')\n"
+            "- Chat đang investigation / exploration (đang tìm hiểu, chưa xác định root cause)\n"
+            "- Solution chưa được verified (chỉ là hypothesis / suggestion / gợi ý)\n"
+            "- Chat là thảo luận / Q&A / brainstorm\n"
+            "- Không có error message cụ thể hoặc command/config thay đổi cụ thể\n"
+            "- Assistant hỏi user info thêm (VD 'service nào', 'bạn muốn xem') → chưa fix xong\n\n"
+            "CHỈ tạo KB entry nếu chat có ĐỦ:\n"
+            "1. Bug/error CỤ THỂ với error message hoặc symptom rõ (VD: 'nginx 502 upstream timeout')\n"
+            "2. Root cause đã xác định (VD: 'do proxy_read_timeout 60s quá thấp')\n"
+            "3. Solution ĐÃ APPLY và VERIFIED (VD: 'set 300s + reload nginx, đã hết 502')\n"
+            "4. Ít nhất 1 command hoặc config change cụ thể trong solution\n\n"
+            "Schema JSON khi pass:\n"
+            '{"title": str (service + triệu chứng cụ thể, KHÔNG kết thúc bằng ?), '
+            '"problem": str (markdown, error message + symptom + context), '
+            '"solution": str (markdown, ĐÃ VERIFIED steps + commands cụ thể trong ```), '
             '"related": str (markdown, links optional), '
-            '"tags": [str] (max 5, snake_case)}\n'
-            "Không suy diễn. Chỉ trích từ chat. Nếu chat chưa fix xong hoặc mơ hồ, "
-            'trả {"error": "not_kb_worthy"}.\n\n'
+            '"tags": [str] (max 5, snake_case, service + error type)}\n\n"'
+            "Không suy diễn. Chỉ trích chính xác từ chat. Nghi ngờ = not_kb_worthy.\n\n"
             f"Chat transcript:\n---\n{transcript}\n---"
         )
         url = f"{self.valves.LITELLM_BASE_URL.rstrip('/')}/chat/completions"
@@ -197,39 +209,57 @@ class Action:
 
     @staticmethod
     def _validate_kb_draft(draft: dict[str, Any]) -> tuple[bool, str]:
-        """Strict server-side check — chỉ pass nếu title/problem/solution đủ nội dung.
+        """Strict server-side check — chỉ pass nếu title/problem/solution đủ nội dung THẬT.
         Trả (ok, reason). LLM đôi khi hallucinate draft từ chat mơ hồ nên cần double-check."""
         title = str(draft.get("title", "")).strip()
         problem = str(draft.get("problem", "")).strip()
         solution = str(draft.get("solution", "")).strip()
 
-        if len(title) < 10:
-            return False, "title quá ngắn (< 10 ký tự)"
-        # Title là câu hỏi → reject
-        if re.match(r"^(có cách|làm sao|làm thế nào|how to|why|cách nào|có tool|có thể)", title, re.IGNORECASE):
-            return False, "title là câu hỏi, không phải KB entry"
-        if title.endswith("?"):
-            return False, "title kết thúc bằng dấu ? → không phải KB"
-
-        if len(problem) < 40:
-            return False, f"problem quá ngắn ({len(problem)} < 40 ký tự)"
-        # Problem toàn câu hỏi → reject
-        problem_lines = [ln.strip() for ln in problem.split("\n") if ln.strip()]
-        if problem_lines and all(ln.endswith("?") for ln in problem_lines):
-            return False, "problem toàn câu hỏi, không có triệu chứng cụ thể"
-
-        if len(solution) < 40:
-            return False, f"solution quá ngắn ({len(solution)} < 40 ký tự)"
-        # Solution phải có action indicator: numbered list, code block, command, or step
-        action_indicators = [
-            r"^\s*\d+[.)]\s+",       # 1. 2) ...
-            r"^\s*[-*]\s+",           # bullet
-            r"`[^`]+`",               # inline code
-            r"```",                   # code block
-            r"\b(run|chạy|check|kiểm tra|edit|sửa|restart|tăng|giảm|set|thêm|xóa|thay|apply)\b",
+        # --- Title checks ---
+        if len(title) < 15:
+            return False, f"title quá ngắn ({len(title)} < 15 ký tự)"
+        title_lower = title.lower()
+        # Title là câu hỏi hoặc how-to
+        question_patterns = [
+            r"^(có cách|có tool|có thể|làm sao|làm thế nào|how to|why|cách nào|why is|xem thời gian|xem cách)",
+            r"\?$",
+            r"\b(hỏi|question|query about)\b",
         ]
-        if not any(re.search(pat, solution, re.IGNORECASE | re.MULTILINE) for pat in action_indicators):
-            return False, "solution không có action steps (list/command/verb hành động)"
+        for pat in question_patterns:
+            if re.search(pat, title_lower):
+                return False, f"title là câu hỏi/how-to, không phải KB fix entry"
+
+        # --- Problem checks ---
+        if len(problem) < 60:
+            return False, f"problem quá ngắn ({len(problem)} < 60 ký tự)"
+        # Problem phải có ít nhất 1 error indicator concrete
+        error_indicators = [
+            r"\b(error|fail|failed|timeout|crash|down|refused|denied|invalid|panic|exception)\b",
+            r"\b(5\d{2}|4\d{2})\b",  # HTTP 5xx/4xx codes
+            r"\b(OOM|OOM-killed|SIGKILL|SIGTERM|SIGSEGV|core dump)\b",
+            r"\b(không hoạt động|không kết nối|không phản hồi|bị treo|báo lỗi|lỗi khi|lỗi ở)\b",
+            r"\b(cannot|can'?t|unable to|refused|rejected)\b",
+        ]
+        if not any(re.search(pat, problem, re.IGNORECASE) for pat in error_indicators):
+            return False, "problem thiếu error indicator cụ thể (error code, exception, symptom)"
+
+        # --- Solution checks ---
+        if len(solution) < 60:
+            return False, f"solution quá ngắn ({len(solution)} < 60 ký tự)"
+        # Solution PHẢI có concrete fix artifact: code block hoặc backtick command hoặc config change
+        concrete_fix = [
+            r"```",                                    # code block
+            r"`[a-zA-Z0-9_.\-]+(\s+[^`]+)?`",         # inline command in backticks
+            r"\b(set|thêm dòng|sửa|thay|update|edit|apply|reload|restart|deploy)\s+`?[\w.-]+`?\s*[:=]",
+            r"^\s*\d+[.)]\s+.{20,}",                   # numbered step >= 20 chars
+        ]
+        if not any(re.search(pat, solution, re.IGNORECASE | re.MULTILINE) for pat in concrete_fix):
+            return False, "solution thiếu concrete fix (code block / command / config change)"
+
+        # Solution toàn câu hỏi → reject
+        solution_qs = solution.count("?")
+        if solution_qs >= 3:
+            return False, f"solution có {solution_qs} câu hỏi → chưa phải fix verified"
 
         return True, "ok"
 

@@ -269,40 +269,67 @@ class Action:
                     {"type": "status", "data": {"description": msg, "done": done}}
                 )
 
-        # Marker để nhận biết message hiện tại là KB draft (từ click trước).
-        # Two-click workflow: click 1 = gen + emit draft; click 2 = submit draft đã edit.
-        DRAFT_MARKER = "📝 **KB Draft (edit rồi click 📚 lần nữa để submit):**"
+        # Two-click workflow:
+        #   Click 1: gen draft từ chat, emit vào assistant message
+        #   User: copy draft → paste vào chat input (full-width) → edit → send
+        #   Click 2: detect user message có KB markdown → submit; hoặc submit draft as-is
+        DRAFT_MARKER = "📝 **KB Draft"
+
+        def _looks_like_kb_markdown(text: str) -> bool:
+            """Heuristic: có H1 (#) và ít nhất section ## Problem hoặc ## Solution."""
+            if not text or len(text) < 30:
+                return False
+            has_h1 = bool(re.search(r"^#\s+\S", text, re.MULTILINE))
+            has_section = bool(re.search(r"^##\s+(Problem|Solution)", text, re.MULTILINE | re.IGNORECASE))
+            return has_h1 and has_section
 
         try:
-            # Stage 0 — check nếu message cuối cùng đã là draft (user đang re-click sau khi edit)
             transcript = self._transcript_from_body(body)
             msgs = body.get("messages", [])
+
+            # Tìm message user cuối và message assistant cuối
+            last_user_content = ""
             last_assistant_content = ""
             for m in reversed(msgs):
-                if m.get("role") == "assistant":
-                    content = m.get("content", "")
-                    if isinstance(content, list):
-                        content = " ".join(
-                            c.get("text", "") for c in content if isinstance(c, dict)
-                        )
-                    last_assistant_content = str(content)
+                content = m.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(
+                        c.get("text", "") for c in content if isinstance(c, dict)
+                    )
+                content = str(content)
+                if m.get("role") == "user" and not last_user_content:
+                    last_user_content = content
+                elif m.get("role") == "assistant" and not last_assistant_content:
+                    last_assistant_content = content
+                if last_user_content and last_assistant_content:
                     break
 
-            if DRAFT_MARKER in last_assistant_content:
-                # Click lần 2 — parse draft đã edit và submit trực tiếp
-                await status("Parse draft đã edit...")
+            edited: dict[str, Any] | None = None
+
+            # Path A: user đã edit + gửi KB markdown làm message mới → submit user version
+            if _looks_like_kb_markdown(last_user_content):
+                await status("Parse KB từ message user...")
+                edited = self._parse_kb_markdown(last_user_content, {})
+                if not edited.get("title") or not edited.get("problem"):
+                    await status("⛔ KB markdown thiếu title/problem", done=True)
+                    return "KB markdown không hợp lệ. Cần `# Title` + `## Problem` + `## Solution`."
+
+            # Path B: click lại trên assistant draft không edit → submit draft as-is
+            elif DRAFT_MARKER in last_assistant_content:
+                await status("Submit draft as-is (chưa edit)...")
                 draft_text = last_assistant_content.split(DRAFT_MARKER, 1)[1].strip()
-                # Remove trailing hint text nếu có
-                for hint in ("---", "👆 Edit message"):
+                # Bỏ header line + trailing hint
+                draft_text = re.sub(r"^[^\n]*\n", "", draft_text, count=1)
+                for hint in ("---\n👆", "👆 Edit"):
                     if hint in draft_text:
                         draft_text = draft_text.split(hint, 1)[0].strip()
                 edited = self._parse_kb_markdown(draft_text, {})
                 if not edited.get("title") or not edited.get("problem"):
-                    await status("⛔ Draft thiếu title hoặc problem", done=True)
-                    return "Draft không hợp lệ. Cần có `# Title` và `## Problem` section."
-                # Skip Stage 1-3, jump to Stage 4 (redact + submit)
+                    await status("⛔ Draft thiếu title/problem", done=True)
+                    return "Draft không hợp lệ."
+
+            # Path C: click lần đầu → generate draft và emit
             else:
-                # Click lần 1 — generate draft và emit vào chat để user edit
                 await status("Kiểm tra secrets...")
                 try:
                     check_hard_block(transcript)
@@ -324,7 +351,6 @@ class Action:
                     )
                     return "Not KB-worthy: chat chưa có problem+solution rõ."
 
-                # Emit draft as full-width chat message (OpenWebUI native editor)
                 draft_md = self._draft_to_markdown(draft)
                 if __event_emitter__:
                     await __event_emitter__(
@@ -332,16 +358,16 @@ class Action:
                             "type": "message",
                             "data": {
                                 "content": (
-                                    f"\n\n{DRAFT_MARKER}\n\n"
-                                    f"{draft_md}\n\n---\n"
-                                    f"👆 Edit message này (click ✏️ icon) rồi click 📚 dưới message này để submit KB. "
-                                    f"Giữ format: `# Title` + `## Problem/Solution/Related/Tags`."
+                                    f"\n\n{DRAFT_MARKER} — copy nội dung dưới, paste vào ô chat, edit rồi Send + click 📚 lần nữa:**\n\n"
+                                    f"```markdown\n{draft_md}\n```\n\n"
+                                    f"**Hoặc submit as-is:** click 📚 dưới message này (không cần edit).\n"
+                                    f"Giữ format: `# Title` + `## Problem/Solution/Related/Tags` khi edit."
                                 )
                             },
                         }
                     )
-                await status("✏️ Draft ready — edit message trên rồi click 📚 lần nữa", done=True)
-                return None  # Kết thúc click 1
+                await status("✏️ Draft ready — xem hướng dẫn 2 cách submit", done=True)
+                return None
 
             # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:

@@ -312,7 +312,19 @@ class Action:
                     },
                 },
             )
-            aid = result.get("id") or result.get("artifact_id") or "?"
+            # MCP tools/call trả {content: [{type: "text", text: "Submitted artifact #N ..."}]}
+            # Không phải flat {id: N} — extract ID từ text.
+            aid: str = "?"
+            if isinstance(result, dict):
+                aid = str(result.get("id") or result.get("artifact_id") or "") or "?"
+                if aid == "?":
+                    content = result.get("content", [])
+                    if isinstance(content, list) and content:
+                        first = content[0] if isinstance(content[0], dict) else {}
+                        text_body = str(first.get("text", ""))
+                        m = re.search(r"artifact\s*#(\d+)", text_body, re.IGNORECASE)
+                        if m:
+                            aid = m.group(1)
             portal_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/artifacts/{aid}"
             await status(f"✅ KB #{aid} pending — {portal_url}", done=True)
             return f"Submitted KB #{aid} (pending). Verify tại: {portal_url}"

@@ -196,6 +196,44 @@ class Action:
         return f"{s}-{int(time.time())}"
 
     @staticmethod
+    def _validate_kb_draft(draft: dict[str, Any]) -> tuple[bool, str]:
+        """Strict server-side check — chỉ pass nếu title/problem/solution đủ nội dung.
+        Trả (ok, reason). LLM đôi khi hallucinate draft từ chat mơ hồ nên cần double-check."""
+        title = str(draft.get("title", "")).strip()
+        problem = str(draft.get("problem", "")).strip()
+        solution = str(draft.get("solution", "")).strip()
+
+        if len(title) < 10:
+            return False, "title quá ngắn (< 10 ký tự)"
+        # Title là câu hỏi → reject
+        if re.match(r"^(có cách|làm sao|làm thế nào|how to|why|cách nào|có tool|có thể)", title, re.IGNORECASE):
+            return False, "title là câu hỏi, không phải KB entry"
+        if title.endswith("?"):
+            return False, "title kết thúc bằng dấu ? → không phải KB"
+
+        if len(problem) < 40:
+            return False, f"problem quá ngắn ({len(problem)} < 40 ký tự)"
+        # Problem toàn câu hỏi → reject
+        problem_lines = [ln.strip() for ln in problem.split("\n") if ln.strip()]
+        if problem_lines and all(ln.endswith("?") for ln in problem_lines):
+            return False, "problem toàn câu hỏi, không có triệu chứng cụ thể"
+
+        if len(solution) < 40:
+            return False, f"solution quá ngắn ({len(solution)} < 40 ký tự)"
+        # Solution phải có action indicator: numbered list, code block, command, or step
+        action_indicators = [
+            r"^\s*\d+[.)]\s+",       # 1. 2) ...
+            r"^\s*[-*]\s+",           # bullet
+            r"`[^`]+`",               # inline code
+            r"```",                   # code block
+            r"\b(run|chạy|check|kiểm tra|edit|sửa|restart|tăng|giảm|set|thêm|xóa|thay|apply)\b",
+        ]
+        if not any(re.search(pat, solution, re.IGNORECASE | re.MULTILINE) for pat in action_indicators):
+            return False, "solution không có action steps (list/command/verb hành động)"
+
+        return True, "ok"
+
+    @staticmethod
     def _extract_artifact_id(result: Any) -> str:
         """Trích ID từ mọi format MCP tools/call có thể trả về."""
         if not isinstance(result, dict):
@@ -377,6 +415,17 @@ class Action:
                     await status("⚠️ Chat chưa đủ nội dung cho KB", done=True)
                     await toast("warning", warn_msg)
                     return "Not KB-worthy."
+
+                # Strict server-side validation — không tin LLM 100%.
+                ok, reason = self._validate_kb_draft(edited)
+                if not ok:
+                    warn_msg = (
+                        f"⚠️ Draft không đạt: {reason}. "
+                        f"Hãy type KB markdown vào chat (đủ title + problem + solution) rồi click 📚 lần nữa."
+                    )
+                    await status(f"⚠️ Draft rejected: {reason}", done=True)
+                    await toast("warning", warn_msg)
+                    return f"Draft rejected: {reason}"
 
             # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:

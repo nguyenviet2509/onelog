@@ -13,6 +13,7 @@ requirements: httpx
 # /usr/local/share/ca-certificates/onemcp.crt + update-ca-certificates (Phase 1 gate V2).
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -34,13 +35,17 @@ class Tools:
             description="Path tới OneMCP self-signed cert mounted vào container. "
             "Đặt rỗng để tắt TLS verify (chỉ dev-local).",
         )
-        TIMEOUT_SEC: float = Field(default=15.0, description="HTTP timeout per RPC call.")
+        TIMEOUT_SEC: float = Field(default=5.0, description="HTTP timeout per RPC call.")
 
     def __init__(self):
         self.valves = self.Valves()
 
     async def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """POST /api/mcp — JSON-RPC 2.0. Trả .result (không unwrap error để LLM thấy)."""
+        # Phase 0 instrumentation (plan 260724-0805): đo per-call latency để verify
+        # hypothesis "network overhead + multi-query = bottleneck chat". Xoá sau Phase 4.
+        t0 = time.perf_counter()
+        tool_name = params.get("name", method) if isinstance(params, dict) else method
         url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
         headers = {
             "X-Onemcp-User": self.valves.BOT_USER,
@@ -48,29 +53,51 @@ class Tools:
         }
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
-        async with httpx.AsyncClient(
-            verify=verify_arg, timeout=self.valves.TIMEOUT_SEC
-        ) as client:
-            try:
-                r = await client.post(url, json=payload, headers=headers)
-                r.raise_for_status()
-                data = r.json()
-            except httpx.RequestError as e:
-                return {"error": f"OneMCP unreachable: {type(e).__name__}: {e}"}
-            except httpx.HTTPStatusError as e:
-                return {"error": f"OneMCP HTTP {e.response.status_code}: {e.response.text[:200]}"}
-        if "error" in data:
-            return {"error": f"OneMCP RPC error: {data['error']}"}
-        return data.get("result", {})
+        status = "ok"
+        try:
+            async with httpx.AsyncClient(
+                verify=verify_arg, timeout=self.valves.TIMEOUT_SEC
+            ) as client:
+                try:
+                    r = await client.post(url, json=payload, headers=headers)
+                    r.raise_for_status()
+                    data = r.json()
+                except httpx.TimeoutException:
+                    status = "timeout"
+                    return {"status": "kb_unavailable", "code": "timeout",
+                            "message": f"OneMCP {tool_name} > {self.valves.TIMEOUT_SEC}s"}
+                except httpx.RequestError as e:
+                    status = "network_error"
+                    return {"status": "kb_unavailable", "code": "network",
+                            "message": f"OneMCP unreachable: {type(e).__name__}"}
+                except httpx.HTTPStatusError as e:
+                    status = f"http_{e.response.status_code}"
+                    if 500 <= e.response.status_code < 600:
+                        return {"status": "kb_unavailable", "code": "http_5xx",
+                                "message": f"OneMCP {e.response.status_code}"}
+                    # 4xx = auth/validation → giữ verbose để debug
+                    return {"error": f"OneMCP HTTP {e.response.status_code}: {e.response.text[:200]}"}
+            if "error" in data:
+                status = "rpc_error"
+                return {"error": f"OneMCP RPC error: {data['error']}"}
+            return data.get("result", {})
+        finally:
+            dt_ms = (time.perf_counter() - t0) * 1000
+            # flush=True để log xuất hiện realtime trong `docker logs -f`
+            print(
+                f"[onemcp-tools] tool={tool_name} status={status} took={dt_ms:.0f}ms",
+                flush=True,
+            )
 
     async def onemcp_search(self, query: str, limit: int = 10) -> str:
         """
         Search OneMCP KB (published artifacts only). Vietnamese unaccent-aware FTS + trigram.
         Gọi tool này TRƯỚC TIÊN cho mọi câu hỏi về lỗi/incident/log/service down.
-        Sinh 2-3 query candidate khác nhau (VN + EN + keyword service) để tăng recall.
-        :param query: Câu hỏi hoặc keyword (VN hoặc EN).
+        1 call duy nhất với query rich — gộp VN + EN + service name vào cùng chuỗi.
+        VD: "nginx 502 upstream timeout gateway lỗi". KHÔNG chia làm nhiều calls.
+        :param query: Full keyword string (VN + EN + service name gộp).
         :param limit: Max entries trả về (default 10).
-        :return: JSON string list results với title, tags, service, score, snippet.
+        :return: JSON string list results với title, tags, service, score, snippet 25 words.
         """
         res = await self._rpc(
             "tools/call",

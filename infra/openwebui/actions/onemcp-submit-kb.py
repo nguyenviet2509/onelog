@@ -2,17 +2,21 @@
 title: Save to OneMCP KB
 author: onelog
 version: 0.1.0
-description: Action button 📚 — user click sau chat trace log để submit KB entry vào OneMCP.
+description: Action button 📚 — two-click submit KB. Click 1 = AI draft emit ra chat (edit in-place, full-width). Click 2 = submit draft đã edit.
 requirements: httpx
 
-Flow:
-  1. User click nút dưới message
-  2. Redact hard-block check trên transcript (raise nếu có private key/token)
-  3. Summarize transcript bằng LLM cheap → {problem, solution, related, title, tags}
-  4. Soft redact fields
-  5. Show modal preview (OpenWebUI __event_call__ type:input) cho user edit
-  6. Submit qua OneMCP submit_artifact(type=kb) → nhận {id, url}
-  7. Toast success với link portal
+Flow (two-click, không dùng modal):
+  Click 1 trên LLM message:
+    1. Hard-block check trên transcript
+    2. Summarize bằng LLM → {problem, solution, related, title, tags}
+    3. Emit draft markdown như 1 assistant message mới (user edit tại chỗ)
+    4. Kết thúc, hint user edit + click 📚 lần 2
+
+  Click 2 trên DRAFT message (đã edit hoặc chưa):
+    1. Detect DRAFT_MARKER → parse markdown ngược lại structured
+    2. Soft redact fields
+    3. Submit qua OneMCP submit_artifact(type=kb) → nhận artifact ID
+    4. Toast link portal
 
 Plan 260723-1200 Phase 2. Bot user openwebui-bot, contributor role.
 """
@@ -265,81 +269,79 @@ class Action:
                     {"type": "status", "data": {"description": msg, "done": done}}
                 )
 
+        # Marker để nhận biết message hiện tại là KB draft (từ click trước).
+        # Two-click workflow: click 1 = gen + emit draft; click 2 = submit draft đã edit.
+        DRAFT_MARKER = "📝 **KB Draft (edit rồi click 📚 lần nữa để submit):**"
+
         try:
-            # Stage 1 — hard-block check trên raw transcript
-            await status("Kiểm tra secrets...")
+            # Stage 0 — check nếu message cuối cùng đã là draft (user đang re-click sau khi edit)
             transcript = self._transcript_from_body(body)
-            try:
-                check_hard_block(transcript)
-            except RedactBlocked as e:
-                await status(f"⛔ Từ chối submit: {e.pattern_name} phát hiện", done=True)
-                return f"Blocked: transcript chứa {e.pattern_name}. Xoá secret khỏi chat rồi thử lại."
+            msgs = body.get("messages", [])
+            last_assistant_content = ""
+            for m in reversed(msgs):
+                if m.get("role") == "assistant":
+                    content = m.get("content", "")
+                    if isinstance(content, list):
+                        content = " ".join(
+                            c.get("text", "") for c in content if isinstance(c, dict)
+                        )
+                    last_assistant_content = str(content)
+                    break
 
-            # Stage 2 — summarize (soft-redact input trước để tránh gửi PII cho LLM)
-            await status("Đang tóm tắt chat (deepseek)...")
-            redacted_input = soft_redact(transcript).text
-            try:
-                draft = await self._summarize(redacted_input)
-            except Exception as e:
-                await status(f"⛔ Summarizer fail: {e}", done=True)
-                return f"Summarizer error: {e}"
-
-            if draft.get("error") == "not_kb_worthy":
-                await status("⚠️ Chat không đủ nội dung cho KB (chưa fix xong / mơ hồ)", done=True)
-                return "Not KB-worthy: chat chưa có problem+solution rõ."
-
-            # Stage 3 — pack draft thành markdown editable trong single textarea.
-            # OpenWebUI 0.10.x `__event_call__ type:input` chỉ support single-input,
-            # không support `fields[]` array. Workaround: dùng markdown với H1 = title
-            # + `## Problem/Solution/Related/Tags` sections → user edit → parse ngược.
-            draft_md = self._draft_to_markdown(draft)
-
-            # Emit draft vào chat message trước → user thấy được nội dung dù modal render fail
-            if __event_emitter__:
-                await __event_emitter__(
-                    {"type": "message", "data": {"content": f"\n\n📝 **KB Draft (preview):**\n\n{draft_md}\n"}}
-                )
-
-            if not __event_call__:
-                edited = draft
-                await status("(Không có modal API — submit direct)")
+            if DRAFT_MARKER in last_assistant_content:
+                # Click lần 2 — parse draft đã edit và submit trực tiếp
+                await status("Parse draft đã edit...")
+                draft_text = last_assistant_content.split(DRAFT_MARKER, 1)[1].strip()
+                # Remove trailing hint text nếu có
+                for hint in ("---", "👆 Edit message"):
+                    if hint in draft_text:
+                        draft_text = draft_text.split(hint, 1)[0].strip()
+                edited = self._parse_kb_markdown(draft_text, {})
+                if not edited.get("title") or not edited.get("problem"):
+                    await status("⛔ Draft thiếu title hoặc problem", done=True)
+                    return "Draft không hợp lệ. Cần có `# Title` và `## Problem` section."
+                # Skip Stage 1-3, jump to Stage 4 (redact + submit)
             else:
-                await status("Mở modal edit...")
-                # Nhiều OpenWebUI version dùng key khác nhau cho prefill value.
-                # Pass cả `placeholder` + `value` + `default` để tăng khả năng render.
-                event_result = await __event_call__(
-                    {
-                        "type": "input",
-                        "data": {
-                            "title": "📚 Edit KB before submit",
-                            "message": (
-                                "Chỉnh markdown bên dưới rồi bấm OK để submit. "
-                                "Giữ format: `# Title` + `## Problem/Solution/Related/Tags` sections."
-                            ),
-                            "placeholder": draft_md,
-                            "value": draft_md,
-                            "default": draft_md,
-                        },
-                    }
-                )
-                if event_result is None or event_result is False:
-                    await status("Đã huỷ submit", done=True)
-                    return "Cancelled."
+                # Click lần 1 — generate draft và emit vào chat để user edit
+                await status("Kiểm tra secrets...")
+                try:
+                    check_hard_block(transcript)
+                except RedactBlocked as e:
+                    await status(f"⛔ Từ chối submit: {e.pattern_name} phát hiện", done=True)
+                    return f"Blocked: transcript chứa {e.pattern_name}. Xoá secret khỏi chat rồi thử lại."
 
-                # Parse: event_result có thể là str (single-field 0.10.x) hoặc dict.
-                if isinstance(event_result, str):
-                    text_input = event_result.strip()
-                    # Nếu user không sửa gì (empty return) → dùng draft
-                    edited = self._parse_kb_markdown(text_input, draft) if text_input else draft
-                elif isinstance(event_result, dict):
-                    # Dict format: có thể có "content" key hoặc structured fields
-                    text_input = str(event_result.get("content", "")).strip()
-                    if text_input:
-                        edited = self._parse_kb_markdown(text_input, draft)
-                    else:
-                        edited = {**draft, **{k: v for k, v in event_result.items() if v}}
-                else:
-                    edited = draft
+                await status("Đang tóm tắt chat (deepseek)...")
+                redacted_input = soft_redact(transcript).text
+                try:
+                    draft = await self._summarize(redacted_input)
+                except Exception as e:
+                    await status(f"⛔ Summarizer fail: {e}", done=True)
+                    return f"Summarizer error: {e}"
+
+                if draft.get("error") == "not_kb_worthy":
+                    await status(
+                        "⚠️ Chat không đủ nội dung cho KB (chưa fix xong / mơ hồ)", done=True
+                    )
+                    return "Not KB-worthy: chat chưa có problem+solution rõ."
+
+                # Emit draft as full-width chat message (OpenWebUI native editor)
+                draft_md = self._draft_to_markdown(draft)
+                if __event_emitter__:
+                    await __event_emitter__(
+                        {
+                            "type": "message",
+                            "data": {
+                                "content": (
+                                    f"\n\n{DRAFT_MARKER}\n\n"
+                                    f"{draft_md}\n\n---\n"
+                                    f"👆 Edit message này (click ✏️ icon) rồi click 📚 dưới message này để submit KB. "
+                                    f"Giữ format: `# Title` + `## Problem/Solution/Related/Tags`."
+                                )
+                            },
+                        }
+                    )
+                await status("✏️ Draft ready — edit message trên rồi click 📚 lần nữa", done=True)
+                return None  # Kết thúc click 1
 
             # Stage 4 — soft redact final fields trước submit
             def _field(key: str, default: Any = "") -> str:

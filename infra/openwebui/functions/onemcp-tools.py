@@ -89,7 +89,12 @@ class Tools:
                 flush=True,
             )
 
-    async def onemcp_search(self, query: str, limit: int = 10) -> str:
+    async def onemcp_search(
+        self,
+        query: str,
+        limit: int = 10,
+        space: str | None = None,
+    ) -> str:
         """
         Search OneMCP KB (published artifacts only). Vietnamese unaccent-aware FTS + trigram.
         Gọi tool này TRƯỚC TIÊN cho mọi câu hỏi về lỗi/incident/log/service down.
@@ -97,12 +102,17 @@ class Tools:
         VD: "nginx 502 upstream timeout gateway lỗi". KHÔNG chia làm nhiều calls.
         :param query: Full keyword string (VN + EN + service name gộp).
         :param limit: Max entries trả về (default 10).
+        :param space: Optional space slug để lọc kết quả (VD: "ops-runbook", "support-faq").
+                      Để None = search toàn bộ KB. Ops user nên truyền "ops-runbook" hoặc "ops-oncall".
         :return: JSON string list results với title, tags, service, score, snippet 25 words.
         """
-        res = await self._rpc(
-            "tools/call",
-            {"name": "search", "arguments": {"q": query, "limit": limit, "status": "published"}},
-        )
+        # TODO(groups-inference): read __user__.groups (OpenWebUI Groups), map groups starting
+        # with "ops-" → default space="ops-runbook" and "support-" → "support-faq" when space
+        # param is not explicitly provided. Requires OpenWebUI groups API access in tool context.
+        arguments: dict = {"q": query, "limit": limit, "status": "published"}
+        if space is not None:
+            arguments["space"] = space
+        res = await self._rpc("tools/call", {"name": "search", "arguments": arguments})
         return json.dumps(res, ensure_ascii=False)
 
     async def onemcp_get(self, artifact_id: str) -> str:

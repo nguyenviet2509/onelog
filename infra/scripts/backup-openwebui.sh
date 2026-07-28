@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Encrypted backup of OpenWebUI SQLite + config (RT-F4).
 #
+# NOTE: The daily 02:00 cron uses snapshot-daily.sh which now bundles OpenWebUI
+# alongside every other OneLog data dir into one archive. Keep this standalone
+# script for ad-hoc / emergency use when you only want the OpenWebUI slice
+# without pulling the full ~500MB snapshot.
+#
 # Chat history may contain PII from ops pasting raw logs — encrypt-at-rest with
 # age. Public key on logserver; private key stays in ops vault so a stolen
 # backup file is worthless without the vault key.

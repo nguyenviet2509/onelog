@@ -41,7 +41,9 @@ if [[ "$ARCHIVE" == s3://* ]]; then
 fi
 
 if [[ "${FORCE:-0}" != "1" ]]; then
-  echo "[restore] DESTRUCTIVE: this will overwrite victorialogs / qdrant / postgres data."
+  echo "[restore] DESTRUCTIVE: overwrites data dirs for qdrant, victorialogs,"
+  echo "[restore]   victoriametrics, openwebui, grafana, nats, alertmanager,"
+  echo "[restore]   audit, indexer, and (unless --no-secrets) .env + caddy TLS."
   echo "[restore] archive: $ARCHIVE"
   read -r -p "Type 'yes' to continue: " ans
   [[ "$ans" == "yes" ]] || { echo "aborted"; exit 1; }
@@ -80,17 +82,32 @@ fi
 
 cd "$INFRA_DIR"
 
+# Helper: replace a data subdir from a stage tar. Idempotent — noop when the
+# tar is missing (older backup schema, or component removed from stack).
+restore_data_dir() {
+  local name="$1"
+  local tarball="$STAGE/${name}.tar"
+  if [[ ! -f "$tarball" ]]; then
+    echo "  ($name.tar missing in archive — skipped)"
+    return 0
+  fi
+  echo "[restore] ${name} data"
+  rm -rf "$INFRA_DIR/data/$name"
+  tar -C "$INFRA_DIR/data" -xf "$tarball"
+}
+
 # --- 1. Stop affected services ---
-echo "[restore] stop victorialogs, qdrant, postgres"
-docker compose stop victorialogs qdrant || true
+# Stop every stateful service before overwriting its data dir. Qdrant restart
+# handled separately (needs to be UP for snapshot upload API).
+echo "[restore] stop stateful services"
+docker compose stop victorialogs victoriametrics openwebui grafana nats \
+  alertmanager qdrant || true
 docker compose --profile kb stop postgres 2>/dev/null || true
 
-# --- 2. VictoriaLogs ---
-if [[ -f "$STAGE/victorialogs.tar" ]]; then
-  echo "[restore] victorialogs data"
-  rm -rf "$INFRA_DIR/data/victorialogs"
-  tar -C "$INFRA_DIR/data" -xf "$STAGE/victorialogs.tar"
-fi
+# --- 2. Filesystem data dirs (raw tar restore) ---
+for d in victorialogs victoriametrics openwebui grafana nats alertmanager audit indexer; do
+  restore_data_dir "$d"
+done
 
 # --- 3. Qdrant: bring qdrant up first, then upload snapshots ---
 if [[ -d "$STAGE/qdrant" ]]; then

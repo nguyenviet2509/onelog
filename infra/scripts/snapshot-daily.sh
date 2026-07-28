@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Daily snapshot of ragstack data: VictoriaLogs + Qdrant + Postgres + secrets.
+# Daily snapshot of ALL OneLog state — encrypted with age, pushed to S3.
+# Covers: Qdrant, VictoriaLogs, VictoriaMetrics, OpenWebUI (SQLite + files),
+#         Grafana (SQLite + provisioning), NATS JetStream, alertmanager, audit
+#         logs, indexer state, secrets (.env + Caddy TLS + mcp-tokens).
+# Excluded: Vector disk buffer (transient checkpoints), Postgres (decommissioned;
+#           dormant block kept in case it's ever resurrected).
 # Output is age-encrypted (asymmetric) so leaking S3 creds does NOT expose data.
 # Usage:  bash snapshot-daily.sh [BACKUP_DIR]
 #   BACKUP_DIR default: /opt/onelog/backup
-# Cron:   0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/ragstack-snapshot.log 2>&1
+# Cron:   0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/onelog-snapshot.log 2>&1
 # Retention: keep last 3 days locally (S3 has its own lifecycle).
 # Prereq: age binary + infra/backup/backup-age.pub committed. See infra/backup/README.md.
 
@@ -28,9 +33,25 @@ fi
 
 echo "[snapshot] $(date -Is) start → $BACKUP_DIR"
 
+# Helper: hot-tar a data subdir. Best-effort (accept mutation during read).
+# Grafana + OpenWebUI use SQLite WAL; a raw tar snapshot is safe enough for a
+# nightly point-in-time backup. For stricter consistency, stop the service.
+tar_data_dir() {
+  local name="$1"
+  local src="$INFRA_DIR/data/$name"
+  if [[ ! -d "$src" ]]; then
+    echo "  ($name dir missing — skipped)"
+    return 0
+  fi
+  tar --warning=no-file-changed --ignore-failed-read \
+    -C "$INFRA_DIR/data" -cf "$STAGE/${name}.tar" "$name" \
+    || echo "  warn: tar reported file changed for $name (acceptable for hot copy)"
+}
+
 # --- 1. Postgres logical dump — only when container is running ---
-# Postgres is opt-in (profile: kb). Skip cleanly on stacks that don't run it.
-echo "[1/5] pg_dump"
+# Postgres decommissioned 2026-07-17. Dormant block: skips cleanly on stacks
+# without it, activates automatically if profile `kb` ever comes back.
+echo "[1/9] pg_dump"
 if docker inspect -f '{{.State.Running}}' ragstack-postgres 2>/dev/null | grep -q true; then
   docker exec ragstack-postgres sh -c \
     "pg_dump -U '${POSTGRES_USER:-rag}' -d rag -f /tmp/postgres-rag.sql"
@@ -47,7 +68,7 @@ fi
 # --- 2. Qdrant snapshot API ---
 # Dùng jq nếu có; fallback sed cho list collection thô. Mỗi collection lưu vào subdir
 # riêng để restore phân biệt được tên collection chứa dấu '-'.
-echo "[2/5] qdrant snapshots"
+echo "[2/9] qdrant snapshots"
 QDRANT_URL="http://127.0.0.1:6333"
 COLS_JSON=$(curl -fsS -H "api-key: ${QDRANT_API_KEY:-}" "$QDRANT_URL/collections" || echo '')
 if command -v jq >/dev/null 2>&1; then
@@ -78,22 +99,47 @@ if [[ -n "${COLLECTIONS:-}" ]]; then
 fi
 
 # --- 3. VictoriaLogs data dir (filesystem copy) ---
-# Single-node VL không có snapshot API; copy data dir hot (best-effort).
-# `--warning=no-file-changed` chấp nhận file mutate giữa lúc tar (log đang ghi).
-# Nightly snapshot 02:00 thường low-traffic, sai sót nhỏ chấp nhận được.
-# Trade-off: muốn consistency tuyệt đối → stop container vài giây trước khi tar.
-echo "[3/5] victorialogs data copy"
-if [[ -d "$INFRA_DIR/data/victorialogs" ]]; then
-  tar --warning=no-file-changed --ignore-failed-read \
-    -C "$INFRA_DIR/data" -cf "$STAGE/victorialogs.tar" victorialogs \
-    || echo "[snapshot] warn: tar reported file changed (acceptable for hot copy)"
-fi
+# Single-node VL has no snapshot API; hot copy is best-effort. Nightly 02:00 is
+# low-traffic; want strict consistency → stop container before the tar.
+echo "[3/9] victorialogs data"
+tar_data_dir victorialogs
 
-# --- 4. Secrets bundle (for portability to another VPS) ---
+# --- 4. VictoriaMetrics data dir ---
+# VM has /snapshot/create API but it produces an on-disk snapshot dir we'd have
+# to tar anyway. Hot tar of the data dir is equivalent for nightly grain and
+# keeps this script uniform.
+echo "[4/9] victoriametrics data"
+tar_data_dir victoriametrics
+
+# --- 5. OpenWebUI (SQLite webui.db + uploaded files + vector store) ---
+# Contains user accounts, chat history (may include PII from pasted logs),
+# uploaded files, tools cache. Largest single component (~1GB typical).
+echo "[5/9] openwebui data"
+tar_data_dir openwebui
+
+# --- 6. Grafana (SQLite grafana.db + provisioning artifacts) ---
+# Has users/orgs/API keys/alert state that aren't in git provisioning.
+echo "[6/9] grafana data"
+tar_data_dir grafana
+
+# --- 7. NATS JetStream (message state) ---
+echo "[7/9] nats data"
+tar_data_dir nats
+
+# --- 8. Small state bundle: alertmanager + audit + indexer ---
+# Bundled together because each is < 1MB and restoring is trivially symmetric.
+# alertmanager: silences/notifications state; audit: append-only audit trail;
+# indexer: drain3 template state (log parsing patterns learned over time).
+echo "[8/9] misc state (alertmanager, audit, indexer)"
+for d in alertmanager audit indexer; do
+  tar_data_dir "$d"
+done
+
+# --- 9a. Secrets bundle (for portability to another VPS) ---
 # Bundle .env + caddy TLS certs + alertmanager config into secrets/ so a fresh
 # VPS can restore the archive and boot the stack immediately, without an
 # out-of-band copy of secrets. Whole archive is age-encrypted below.
-echo "[4/5] secrets bundle"
+echo "[9/9] secrets bundle + manifest"
 mkdir -p "$STAGE/secrets"
 [[ -f "$INFRA_DIR/.env" ]] && cp -p "$INFRA_DIR/.env" "$STAGE/secrets/env"
 for d in caddy/data caddy/config alertmanager mcp-tokens; do
@@ -103,8 +149,7 @@ for d in caddy/data caddy/config alertmanager mcp-tokens; do
   fi
 done
 
-# --- 5. MANIFEST + SHA256SUMS (integrity + provenance) ---
-echo "[5/5] manifest"
+# --- 9b. MANIFEST + SHA256SUMS (integrity + provenance) ---
 GIT_COMMIT=$(cd "$INFRA_DIR/.." && git rev-parse HEAD 2>/dev/null || echo unknown)
 IMAGE_TAGS=$(cd "$INFRA_DIR" && docker compose config --images 2>/dev/null | sort -u | paste -sd, - || echo unknown)
 HAS_SECRETS=$([[ -f "$STAGE/secrets/env" ]] && echo true || echo false)

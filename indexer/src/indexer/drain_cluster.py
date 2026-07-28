@@ -1,23 +1,22 @@
 """
-Per-service Drain3 template miner with periodic JSON snapshot.
+Per-service Drain3 template miner with periodic binary snapshot.
 
 Drain3 clusters raw log lines into templates (parameter slots → `<*>`),
 so we embed *templates* not raw lines — cuts embed cost ~50-100x and
 gives stable IDs for trending / dedup.
 
-State persisted to {DRAIN_STATE_DIR}/{service}.json. Atomic write (tmp + rename)
-to survive crash mid-snapshot.
+State persisted to {DRAIN_STATE_DIR}/{service}.bin via drain3 FilePersistence
+(pickle format). TemplateMiner auto-loads on init.
 """
 from __future__ import annotations
 
-import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
 from drain3 import TemplateMiner
+from drain3.file_persistence import FilePersistence
 from drain3.template_miner_config import TemplateMinerConfig
 
 from indexer.config import settings
@@ -33,7 +32,7 @@ class ClusterResult:
 
 
 class DrainPool:
-    """One TemplateMiner per service, lazy-loaded + persisted to JSON."""
+    """One TemplateMiner per service, lazy-loaded via FilePersistence."""
 
     def __init__(self, state_dir: str | None = None) -> None:
         self._dir = Path(state_dir or settings.drain_state_dir)
@@ -42,36 +41,29 @@ class DrainPool:
         self._lock = Lock()
         self._last_snapshot = time.time()
 
-    def _make_miner(self) -> TemplateMiner:
+    def _make_miner(self, service: str) -> TemplateMiner:
         cfg = TemplateMinerConfig()
         # Defaults are sensible for syslog-shaped messages. Tighten if unmatched_ratio creeps up.
         cfg.drain_sim_th = 0.4
         cfg.drain_depth = 4
         cfg.drain_max_children = 100
         cfg.drain_max_clusters = 5000
-        return TemplateMiner(config=cfg)
+        persistence = FilePersistence(str(self._path(service)))
+        miner = TemplateMiner(persistence_handler=persistence, config=cfg)
+        clusters = len(miner.drain.clusters)
+        if clusters:
+            log.info("drain.loaded", service=service, clusters=clusters)
+        return miner
 
     def _path(self, service: str) -> Path:
         safe = service.replace("/", "_").replace("..", "_") or "unknown"
-        return self._dir / f"{safe}.json"
-
-    def _load(self, service: str) -> TemplateMiner:
-        miner = self._make_miner()
-        path = self._path(service)
-        if path.exists():
-            try:
-                state = json.loads(path.read_text())
-                miner.drain.restore_state(state)
-                log.info("drain.loaded", service=service, clusters=len(miner.drain.clusters))
-            except (json.JSONDecodeError, KeyError, AttributeError) as exc:
-                log.warning("drain.load_failed", service=service, err=str(exc))
-        return miner
+        return self._dir / f"{safe}.bin"
 
     def add(self, service: str, message: str) -> ClusterResult:
         with self._lock:
             miner = self._miners.get(service)
             if miner is None:
-                miner = self._load(service)
+                miner = self._make_miner(service)
                 self._miners[service] = miner
             res = miner.add_log_message(message)
         return ClusterResult(
@@ -88,29 +80,13 @@ class DrainPool:
 
     def snapshot_all(self) -> None:
         with self._lock:
-            services = list(self._miners.keys())
-        for svc in services:
-            self._snapshot_one(svc)
-        self._last_snapshot = time.time()
-
-    def _snapshot_one(self, service: str) -> None:
-        with self._lock:
-            miner = self._miners.get(service)
-            if miner is None:
-                return
+            items = list(self._miners.items())
+        for svc, miner in items:
             try:
-                state = miner.drain.get_state()
-            except Exception as exc:  # noqa: BLE001 — drain3 internals can throw various
-                log.error("drain.state_failed", service=service, err=str(exc))
-                return
-        path = self._path(service)
-        tmp = path.with_suffix(".json.tmp")
-        try:
-            tmp.write_text(json.dumps(state, default=str))
-            os.replace(tmp, path)
-        except OSError as exc:
-            log.error("drain.snapshot_failed", service=service, err=str(exc))
-            tmp.unlink(missing_ok=True)
+                miner.save_state("periodic")
+            except Exception as exc:  # noqa: BLE001 — drain3 pickle can raise various
+                log.error("drain.snapshot_failed", service=svc, err=str(exc))
+        self._last_snapshot = time.time()
 
     def unmatched_ratio(self) -> float:
         """Estimate of new-cluster rate across all miners. 0 = all templates known."""

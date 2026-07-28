@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     drain_state_dir: str = "/data/drain_state"
     drain_persist_interval_s: int = 900  # 15 min snapshot
 
+    # Qdrant point bucketing — floor window_start to this granularity so
+    # multiple batches sharing (service, template_id) within the bucket
+    # collapse to one point via upsert (idempotent). 3600s = hourly buckets.
+    point_bucket_s: int = 3600
+
     # Observability
     metrics_port: int = 9100
     log_level: str = "INFO"

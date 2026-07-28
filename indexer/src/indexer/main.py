@@ -29,6 +29,12 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
+def _bucket_iso(ts: float) -> str:
+    """Floor to settings.point_bucket_s so batches within the bucket share point_id."""
+    bucket = settings.point_bucket_s
+    return _iso((int(ts) // bucket) * bucket)
+
+
 def _extract_msg(event: dict[str, Any]) -> str:
     """Vector publishes the redacted message under `_msg`. Fall back gracefully."""
     return str(event.get("_msg") or event.get("message") or "").strip()
@@ -111,7 +117,7 @@ async def _process_batch(
             service=slot["service"],
             host=slot["host"],
             severity=slot["severity"],
-            window_start=_iso(slot["ts_min"]),
+            window_start=_bucket_iso(slot["ts_min"]),
             window_end=_iso(slot["ts_max"]),
             count=slot["count"],
             sample=slot["sample"][:1024],

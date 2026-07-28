@@ -32,7 +32,7 @@ def test_snapshot_and_restore(tmp_path: Path) -> None:
     for line in _gen_nginx(200):
         pool.add("nginx", line)
     pool.snapshot_all()
-    assert (tmp_path / "nginx.json").exists()
+    assert (tmp_path / "nginx.bin").exists()
 
     # Fresh pool — should load existing state and keep cluster ids stable.
     pool2 = DrainPool(state_dir=str(tmp_path))
@@ -47,5 +47,5 @@ def test_service_isolation(tmp_path: Path) -> None:
     pool.add("nginx", '1.1.1.1 - - [25/Jun/2026:10:00:00 +0000] "GET /a HTTP/1.1" 200 100')
     pool.add("mysql", "[ERROR] [MY-013183] [Server] Got error from storage engine")
     pool.snapshot_all()
-    assert (tmp_path / "nginx.json").exists()
-    assert (tmp_path / "mysql.json").exists()
+    assert (tmp_path / "nginx.bin").exists()
+    assert (tmp_path / "mysql.bin").exists()

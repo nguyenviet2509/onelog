@@ -1,7 +1,7 @@
 """
 title: Arena Blind
 author: onelog
-version: 0.1.0
+version: 0.1.1
 description: Blind A/B compare 2 random models. Vote qua 4 action buttons riêng (arena-vote-*).
 requirements:
 """
@@ -63,14 +63,14 @@ class Pipe:
                  "temperature": self.valves.TEMPERATURE}
 
         try:
-            from open_webui.utils.chat import generate_chat_completions
+            from open_webui.utils.chat import generate_chat_completion
         except ImportError:
-            return "⚠️ Không import được `open_webui.utils.chat.generate_chat_completions`. Check OpenWebUI version ≥ 0.5."
+            return "⚠️ Không import được `open_webui.utils.chat.generate_chat_completion`. Check OpenWebUI version."
 
         async def _call(req: dict) -> str:
             try:
                 resp = await asyncio.wait_for(
-                    generate_chat_completions(__request__, req, user=__user__),
+                    generate_chat_completion(__request__, req, user=__user__),
                     timeout=self.valves.TIMEOUT_SEC,
                 )
                 return resp["choices"][0]["message"]["content"]

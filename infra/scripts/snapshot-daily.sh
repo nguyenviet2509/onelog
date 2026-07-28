@@ -9,7 +9,10 @@
 # Usage:  bash snapshot-daily.sh [BACKUP_DIR]
 #   BACKUP_DIR default: /opt/onelog/backup
 # Cron:   0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/onelog-snapshot.log 2>&1
-# Retention: keep last 3 days locally (S3 has its own lifecycle).
+# Retention:
+#   S3 → BACKUP_S3_KEEP_DAYS in infra/.env (recommended: 5).
+#   Local → deleted immediately after successful S3 upload; failed uploads
+#           linger up to KEEP_DAYS (default 2) as a stranded-file safety net.
 # Prereq: age binary + infra/backup/backup-age.pub committed. See infra/backup/README.md.
 
 set -euo pipefail
@@ -19,7 +22,10 @@ INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BACKUP_DIR="${1:-${BACKUP_DIR:-$INFRA_DIR/../backup}}"
 DATE="$(date +%Y%m%d-%H%M)"
 STAGE="$(mktemp -d -t ragsnap.XXXXXX)"
-KEEP_DAYS="${KEEP_DAYS:-3}"
+# Local disk is a staging area only when S3 is enabled — successful upload
+# deletes the archive immediately. Failed uploads linger for KEEP_DAYS so a
+# manual retry (or the next cron run) can retransmit before eviction.
+KEEP_DAYS="${KEEP_DAYS:-2}"
 
 cleanup() { rm -rf "$STAGE"; }
 trap cleanup EXIT
@@ -183,9 +189,6 @@ fi
 tar -C "$STAGE" -czf - . | age -R "$AGE_PUB" -o "$ARCHIVE"
 echo "[snapshot] wrote $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 
-# --- Retention (local) ---
-find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -mtime "+${KEEP_DAYS}" -print -delete || true
-
 # --- S3 offsite push (optional) ---
 # Config via infra/.env:
 #   BACKUP_S3_ENABLE=true
@@ -217,6 +220,11 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
     --only-show-errors \
     --metadata "hostname=$(hostname),created=$(date -Iseconds)"
 
+  # S3 is the canonical store — drop local copy to keep VPS disk near zero.
+  # `set -e` guarantees we only reach this point when aws cp exited 0.
+  rm -f "$ARCHIVE"
+  echo "[snapshot] local archive purged (uploaded to S3)"
+
   # Best-effort remote retention (skip if 0/unset — assume lifecycle handles).
   KEEP_S3="${BACKUP_S3_KEEP_DAYS:-0}"
   if [[ "$KEEP_S3" -gt 0 ]]; then
@@ -233,5 +241,12 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
         done
   fi
 fi
+
+# --- Local retention (safety net for stranded archives) ---
+# Normal path: local archive was rm'd after S3 upload succeeded, this find is a
+# noop. When S3 upload fails (network, creds, endpoint down), the archive stays
+# on disk so the next successful run can be triggered manually; this purge only
+# evicts *stranded* archives older than KEEP_DAYS to bound disk usage.
+find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -mtime "+${KEEP_DAYS}" -print -delete || true
 
 echo "[snapshot] $(date -Is) done"

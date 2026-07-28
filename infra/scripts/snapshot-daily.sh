@@ -214,16 +214,61 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
   BUCKET_URI="$BACKUP_S3_BUCKET"
   [[ "$BUCKET_URI" != s3://* ]] && BUCKET_URI="s3://$BUCKET_URI"
   S3_KEY="${BUCKET_URI%/}/${BACKUP_S3_PREFIX:-}onelog-${DATE}.tar.gz.age"
+  S3_KEY_PATH="${BACKUP_S3_PREFIX:-}onelog-${DATE}.tar.gz.age"
+  BUCKET_NAME="${BUCKET_URI#s3://}"
+  BUCKET_NAME="${BUCKET_NAME%%/*}"
+
+  # --- Pre-flight: is the endpoint reachable + bucket writable? ---
+  # Cheap ListBucket call catches DNS / TLS / auth / bucket-missing before we
+  # burn minutes on a doomed multipart upload. Failure here → keep local, retry
+  # next cron. Temporarily disable `set -e` so we can inspect the exit code.
+  echo "[snapshot] s3 preflight (list bucket)"
+  set +e
+  aws "${S3_ENDPOINT_ARG[@]}" s3 ls "${BUCKET_URI%/}/" >/dev/null 2>&1
+  PREFLIGHT=$?
+  set -e
+  if [[ "$PREFLIGHT" -ne 0 ]]; then
+    echo "[snapshot] WARN S3 preflight failed (exit $PREFLIGHT) — archive kept at $ARCHIVE" >&2
+    echo "[snapshot] $(date -Is) done (local-only, S3 skipped)"
+    exit 0
+  fi
 
   echo "[snapshot] s3 upload → $S3_KEY"
+  set +e
   aws "${S3_ENDPOINT_ARG[@]}" s3 cp "$ARCHIVE" "$S3_KEY" \
     --only-show-errors \
     --metadata "hostname=$(hostname),created=$(date -Iseconds)"
+  UPLOAD_RC=$?
+  set -e
+  if [[ "$UPLOAD_RC" -ne 0 ]]; then
+    echo "[snapshot] WARN s3 cp failed (exit $UPLOAD_RC) — archive kept at $ARCHIVE" >&2
+    echo "[snapshot] $(date -Is) done (local-only, S3 upload failed)"
+    exit 0
+  fi
 
-  # S3 is the canonical store — drop local copy to keep VPS disk near zero.
-  # `set -e` guarantees we only reach this point when aws cp exited 0.
+  # --- Post-flight: HEAD the uploaded object, compare byte size ---
+  # Some S3-compatible backends (MinIO, custom gateways) have edge cases where
+  # multipart upload returns 200 but object listing lags a second or two. Retry
+  # a few times before declaring the upload trustworthy enough to drop local.
+  LOCAL_SIZE=$(stat -c%s "$ARCHIVE" 2>/dev/null || stat -f%z "$ARCHIVE")
+  REMOTE_SIZE=""
+  for attempt in 1 2 3 4 5; do
+    REMOTE_SIZE=$(aws "${S3_ENDPOINT_ARG[@]}" s3api head-object \
+      --bucket "$BUCKET_NAME" --key "$S3_KEY_PATH" \
+      --query 'ContentLength' --output text 2>/dev/null || true)
+    if [[ -n "$REMOTE_SIZE" && "$REMOTE_SIZE" == "$LOCAL_SIZE" ]]; then break; fi
+    sleep 2
+  done
+
+  if [[ "$REMOTE_SIZE" != "$LOCAL_SIZE" ]]; then
+    echo "[snapshot] WARN s3 verify failed (local=$LOCAL_SIZE remote=${REMOTE_SIZE:-<missing>}) — archive kept at $ARCHIVE" >&2
+    echo "[snapshot] $(date -Is) done (local-only, S3 verify failed)"
+    exit 0
+  fi
+
+  echo "[snapshot] s3 verified ($REMOTE_SIZE bytes match)"
   rm -f "$ARCHIVE"
-  echo "[snapshot] local archive purged (uploaded to S3)"
+  echo "[snapshot] local archive purged (uploaded + verified on S3)"
 
   # Best-effort remote retention (skip if 0/unset — assume lifecycle handles).
   KEEP_S3="${BACKUP_S3_KEEP_DAYS:-0}"

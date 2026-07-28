@@ -1,7 +1,7 @@
 """
 title: Save to OneMCP KB
 author: onelog
-version: 0.2.0
+version: 0.2.1
 description: Action button 📚 — one-click submit KB entry vào OneMCP. 3 cách dùng (xem HƯỚNG DẪN NGƯỜI DÙNG bên dưới).
 
 requirements: httpx
@@ -258,6 +258,13 @@ class Action:
             '"solution": str (markdown, ĐÃ VERIFIED steps + commands cụ thể trong ```), '
             '"related": str (markdown, links optional), '
             '"tags": [str] (max 5, snake_case, service + error type)}\n\n"'
+            "NGÔN NGỮ OUTPUT: Viết title/problem/solution bằng TIẾNG VIỆT có dấu cho phần "
+            "văn xuôi mô tả (triệu chứng, ngữ cảnh, giải thích, bước làm). GIỮ NGUYÊN "
+            "tiếng Anh cho technical terms không có nghĩa VN tương đương: tên service/tool "
+            "(nginx, crowdsec, docker...), error code (502, OOM, SIGKILL), config key "
+            "(proxy_read_timeout, api_key), path (/etc/...), command, exit code, HTTP verb, "
+            "log keyword. KHÔNG dịch máy móc kiểu 'thời gian chờ đọc proxy'. "
+            "Tags LUÔN snake_case tiếng Anh (VD: bouncer_disconnected, http_502).\n\n"
             "Không suy diễn. Chỉ trích chính xác từ chat. Nghi ngờ = not_kb_worthy.\n\n"
             f"Chat transcript:\n---\n{transcript}\n---"
         )

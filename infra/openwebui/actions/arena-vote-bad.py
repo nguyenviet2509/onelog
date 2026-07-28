@@ -1,7 +1,7 @@
 """
 title: Arena Vote Both Bad
 author: onelog
-version: 0.1.0
+version: 0.1.1
 description: 👎 Bấm khi cả 2 response đều tệ. Reveal tên 2 model + ghi vote vào arena-votes.jsonl.
 requirements:
 """
@@ -51,6 +51,7 @@ class Action:
 
     def __init__(self):
         self.valves = self.Valves()
+        self.icon_url = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='20' font-size='18'>👎</text></svg>"
 
     async def action(
         self,

@@ -6,9 +6,14 @@ Plan: `plans/260723-1200-onemcp-openwebui-bridge/`
 ```
 infra/openwebui/
 ├── functions/
-│   └── onemcp-tools.py          # LLM-callable: search / get / template / list_skills / load_skill
+│   ├── onemcp-tools.py          # LLM-callable: search / get / template / list_skills / load_skill
+│   └── arena-blind.py           # Pipe "Arena Blind" — blind A/B compare 2 model random từ pool
 ├── actions/
 │   ├── onemcp-submit-kb.py      # Button 📚 Save to OneMCP KB
+│   ├── arena-vote-a.py          # 🅰️ Vote A wins (blind arena)
+│   ├── arena-vote-b.py          # 🅱️ Vote B wins
+│   ├── arena-vote-tie.py        # 🤝 Vote Tie
+│   ├── arena-vote-bad.py        # 👎 Vote Both bad
 │   ├── redact.py                # Hard-block + soft redact secrets
 │   └── test_redact.py           # Unit tests (chạy local trước deploy)
 ├── onemcp-ca.crt                # OneMCP nginx self-signed cert (mount vào container)
@@ -85,6 +90,52 @@ Hoặc per-model override cho DeepSeek: Admin → Models → deepseek → System
 Test:
 - Chat mới: hỏi "test onemcp" → LLM có gọi `onemcp_search` không?
 - Chat error: "nginx 502 spike" → LLM sinh 2-3 query variants?
+
+### 5b. Blind Arena (plan 260728-0829)
+
+**Pipe `arena-blind`:**
+- Admin → Workspace → **Functions** → + New Function → paste `functions/arena-blind.py`
+- Save → toggle **Enabled**
+- Valves: `MODEL_POOL=claude-sonnet,deepseek,gemini-flash,gpt-4-mini` (đổi nếu pool khác)
+- Sau khi enable, model dropdown chat sẽ có thêm **"Arena Blind"**
+
+**4 Action vote button:**
+- Admin → Workspace → **Actions** → + New Action → paste lần lượt 4 file:
+  - `actions/arena-vote-a.py` → 🅰️ A wins
+  - `actions/arena-vote-b.py` → 🅱️ B wins
+  - `actions/arena-vote-tie.py` → 🤝 Tie
+  - `actions/arena-vote-bad.py` → 👎 Both bad
+- Toggle Enabled cho cả 4
+
+**Smoke test:**
+1. Chat → model "Arena Blind" → hỏi "502 troubleshoot" → verify 2 response A/B (ẩn tên)
+2. Bấm 1 button vote → verify reveal message + notification
+3. Verify JSONL:
+   ```bash
+   docker exec ragstack-openwebui cat /app/backend/data/arena-votes.jsonl | tail -4
+   # Kỳ vọng: 1 event "pair" + 1 event "vote" per prompt
+   ```
+4. Lặp 5 lần với 4 loại vote khác nhau
+
+**Leaderboard (script tạm chưa build):**
+```bash
+docker exec ragstack-openwebui python -c "
+import json
+from collections import Counter
+c = Counter()
+with open('/app/backend/data/arena-votes.jsonl') as f:
+    pairs = {}
+    for line in f:
+        r = json.loads(line)
+        if r['event'] == 'pair':
+            pairs[r['arena_key']] = (r['model_a'], r['model_b'])
+        elif r['event'] == 'vote':
+            a, b = pairs.get(r['arena_key'], (None, None))
+            if r['vote'] == 'A' and a: c[a] += 1
+            elif r['vote'] == 'B' and b: c[b] += 1
+print(c.most_common())
+"
+```
 
 ### 6. Alertmanager webhook (Phase 4)
 

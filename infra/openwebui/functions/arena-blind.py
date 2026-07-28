@@ -1,7 +1,7 @@
 """
 title: Arena Blind
 author: onelog
-version: 0.2.0
+version: 0.2.1
 description: Blind A/B compare 2 random models qua LiteLLM. Vote qua 4 action buttons riêng (arena-vote-*).
 requirements: httpx
 """
@@ -69,11 +69,20 @@ class Pipe:
         model_a, model_b = random.sample(pool, 2)
         arena_key = uuid.uuid4().hex[:12]
 
-        # Lọc messages: chỉ giữ role/content, bỏ metadata openwebui thêm vào
-        # (info, files, ...) — LiteLLM strict OpenAI schema.
+        # Lọc messages: CHỈ giữ role="user"/"assistant" với content string.
+        # Bỏ tool/function messages + tool_calls từ assistant vì blind arena
+        # gọi lại từ đầu, không có tool binding → LiteLLM/Anthropic reject
+        # "Missing corresponding tool call".
         raw_messages = body.get("messages", [])
-        messages = [{"role": m["role"], "content": m["content"]}
-                    for m in raw_messages if m.get("role") and m.get("content")]
+        messages: list[dict[str, str]] = []
+        for m in raw_messages:
+            role = m.get("role")
+            content = m.get("content")
+            if role not in ("user", "assistant"):
+                continue
+            if not isinstance(content, str) or not content.strip():
+                continue
+            messages.append({"role": role, "content": content})
 
         url = f"{self.valves.LITELLM_URL.rstrip('/')}/chat/completions"
         headers = {

@@ -470,7 +470,7 @@ services:
       MCP_HTTP_PATH: /mcp
       # Allowed Host headers (DNS rebinding protection). Only names that
       # mcpo will resolve to reach this container.
-      MCP_HTTP_ALLOWED_HOSTS: bookstack-mcp,localhost
+      MCP_HTTP_ALLOWED_HOSTS: bookstack-mcp,bookstack-mcp:8080,localhost,localhost:8080
       BOOKSTACK_BASE_URL: ${KB_INET_BASE_URL:-https://kb.inet.vn}
       BOOKSTACK_TOKEN_ID: ${KB_INET_TOKEN_ID:?KB_INET_TOKEN_ID must be set}
       BOOKSTACK_TOKEN_SECRET: ${KB_INET_TOKEN_SECRET:?KB_INET_TOKEN_SECRET must be set}

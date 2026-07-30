@@ -660,6 +660,7 @@ class Action:
         base_url = self.valves.OPENWEBUI_URL.rstrip("/")
         headers = {
             "Authorization": f"Bearer {auth_token}",
+            "Accept": "application/json",  # CRITICAL: without this, OpenWebUI serves HTML SPA
             "Content-Type": "application/json",
         }
         # Try common endpoint paths — OpenWebUI versions have used /api/v1/chats and /api/chat

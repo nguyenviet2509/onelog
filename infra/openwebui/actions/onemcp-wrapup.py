@@ -257,7 +257,11 @@ SCHEMA (JSON thuần):
   "tags": ["tag1"] /* max 5, snake_case */
 }
 
-NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms giữ nguyên EN. Tags snake_case EN.
+NGÔN NGỮ OUTPUT:
+- Viết title/problem/solution bằng TIẾNG VIỆT có dấu cho phần văn xuôi mô tả (triệu chứng, ngữ cảnh, giải thích, bước làm).
+- GIỮ NGUYÊN tiếng Anh cho technical terms không có nghĩa VN tương đương: tên service/tool (nginx, crowdsec, docker, systemd...), error code (502, OOM, SIGKILL), config key (proxy_read_timeout, api_key), path (/etc/..., /opt/...), command, exit code, HTTP verb, log keyword.
+- KHÔNG dịch máy móc kiểu "thời gian chờ đọc proxy" hay "cửa sổ trượt".
+- Tags LUÔN snake_case tiếng Anh (VD: bouncer_disconnected, http_502, oom_kill).
 
 TRANSCRIPT:
 ---
@@ -296,7 +300,11 @@ SCHEMA (JSON thuần):
   "tags": ["tag1"] /* max 5, snake_case */
 }
 
-NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms giữ nguyên EN. Tags snake_case EN.
+NGÔN NGỮ OUTPUT:
+- Viết title/context/work_done/outcome/next_steps bằng TIẾNG VIỆT có dấu cho phần văn xuôi (mục tiêu, background, quyết định, kết quả).
+- GIỮ NGUYÊN tiếng Anh cho technical terms: tên service/tool (nginx, postgres, k8s...), command, path, config key, metric, HTTP verb, error code.
+- KHÔNG dịch máy móc technical terms (VD giữ "restart container", không dịch "khởi động lại container").
+- Tags LUÔN snake_case tiếng Anh (VD: migration_done, rollout_prod, backup_verified).
 
 TRANSCRIPT:
 ---
@@ -336,7 +344,11 @@ SCHEMA (JSON thuần):
   "conclusion": "markdown: tổng kết + recommendation cuối, gom tất cả action items"
 }
 
-NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms + commands giữ nguyên EN + code block.
+NGÔN NGỮ OUTPUT:
+- Viết title/question/hypothesis/findings/conclusion bằng TIẾNG VIỆT có dấu cho phần văn xuôi (câu hỏi nghiên cứu, giả thuyết, phân tích, kết luận, recommendation).
+- GIỮ NGUYÊN tiếng Anh cho technical terms: tên service/tool (crowdsec, ssmtp, rsyslog, systemd, victorialogs...), error code (OOM, SIGKILL, 502), config key (proxy_read_timeout, MaxSessions), path (/opt/, /var/log/), command, query, log keyword, metric name.
+- KHÔNG dịch máy móc technical terms (giữ "session systemd đầy", không dịch "phiên systemd đầy"; giữ "disk usage > 80%", không đổi thành "sử dụng đĩa vượt 80 phần trăm").
+- Trong code block ``` giữ NGUYÊN 100% (không thêm ký tự VN vào commands/queries).
 
 CẤM: rút gọn findings <200 ký tự khi transcript có nội dung technical dài. Nếu transcript có 5+ topics/errors, findings phải cover đủ.
 

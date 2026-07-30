@@ -676,7 +676,7 @@ class Action:
                     r = await c.get(url, headers=headers)
                     ct = r.headers.get("content-type", "")
                     if r.status_code == 401:
-                        errors.append(f"{url} → 401 Unauthorized")
+                        errors.append(f"{url} → 401 Unauthorized (auth prefix={auth_token[:8]}..., len={len(auth_token)})")
                         continue
                     if r.status_code != 200:
                         errors.append(f"{url} → HTTP {r.status_code} ct={ct} body[:80]={r.text[:80]!r}")
@@ -1013,6 +1013,16 @@ class Action:
                             "để Action fetch chat history đầy đủ.",
                         )
                         return "Config error: OPENWEBUI_API_KEY missing, cannot fetch chat."
+                    else:
+                        # Auth attempted but failed — likely wrong API key
+                        await status("⚙️ OPENWEBUI_API_KEY invalid (401)", done=True)
+                        await toast(
+                            "error",
+                            "⚙️ OPENWEBUI_API_KEY không hợp lệ (401 Unauthorized). "
+                            "Vào Settings → Account → API Keys → tạo mới → paste vào Valve. "
+                            "Hoặc paste JWT từ cookie 'token' (F12 → Application → Cookies).",
+                        )
+                        return "Config error: OPENWEBUI_API_KEY invalid (401)."
 
             # --- Debug: log role distribution to catch OpenWebUI msg shape issues ---
             role_counts: dict[str, int] = {}

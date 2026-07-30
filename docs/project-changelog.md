@@ -1,5 +1,33 @@
 # Project Changelog
 
+## 2026-07-30
+
+### feat(openwebui): session wrap-up hook — auto-classify KB/Report/Research + gatekeeper + template validation
+
+**Status:** ✅ Complete
+
+Plan: `260730-1043-openwebui-wrapup-hook` (Phase 1–4)
+
+OpenWebUI Action button 🏁 "End & Save" — tự động đọc toàn bộ conversation, phân loại thành KB / Report / Research, validate qua gatekeeper, preview cho user xác nhận, rồi submit lên OneMCP.
+
+**New files:**
+- `infra/openwebui/actions/wrapup-prompts.py` — classifier + gatekeeper prompt library, 3 template renderers (KB/Report/Research)
+- `infra/openwebui/actions/onemcp-wrapup.py` — Action main entry point (1047L), 5 audit events wired
+
+**Components:**
+- **Classifier LLM** — đọc conversation, chọn KB/Report/Research dựa trên nội dung; skip nếu session chit-chat / <5 tin nhắn kỹ thuật
+- **Gatekeeper LLM** — validate draft đạt quality bar trước khi show preview; reject nếu thiếu nội dung
+- **3 template types**: KB (fix/howto), Report (task/incident tổng kết), Research (brainstorm/khảo sát)
+- **Preview + confirm flow** — user thấy draft trước khi submit (khác 📚 one-click)
+- **5 audit events**: `wrapup.attempted`, `wrapup.skipped_classifier`, `wrapup.rejected_gatekeeper`, `wrapup.cancelled`, `wrapup.submitted`
+
+**OneMCP dependency:**
+- Phase 1: report + research templates V2 schemas — commit cf2dc5a (OneMCP repo)
+
+**Tests:** 5/5 pass (`test_wrapup_prompts.py`, 270L)
+
+---
+
 ## 2026-07-17
 
 ### feat(kb): Pivot to OpenWebUI native + /web removal

@@ -162,6 +162,38 @@ See [deployment-guide.md](deployment-guide.md) for topology and setup.
 
 ---
 
+### OpenWebUI Actions
+
+#### v1.5.0 — KB Submit Action (📚)
+
+**Status:** ✅ Shipped (2026-07-24)
+
+One-click submit KB entry từ chat → OneMCP. Per-user attribution, one-click no-modal, triple-channel notification.
+Plan: `260723-1200-onemcp-openwebui-bridge`
+
+#### v1.5.1 — Wrap-up Hook (🏁)
+
+**Status:** ✅ Shipped (2026-07-30)
+
+Session wrap-up: auto-classify KB / Report / Research + gatekeeper validation + preview confirm → OneMCP.
+
+**Features:**
+- Classifier LLM: KB vs Report vs Research, skip nếu session không đủ chất
+- Gatekeeper LLM: validate draft trước khi show preview
+- 3 template renderers: KB (fix/howto), Report (incident/task), Research (brainstorm/analysis)
+- 5 audit events: attempted / skipped_classifier / rejected_gatekeeper / cancelled / submitted
+
+**Files:** `infra/openwebui/actions/onemcp-wrapup.py`, `infra/openwebui/actions/wrapup-prompts.py`
+Plan: `260730-1043-openwebui-wrapup-hook`
+
+**KPI targets (4 tuần):**
+- attempted / total_sessions ≥ 40%
+- (submitted + cancelled) / attempted ≥ 60%
+- submitted / preview_shown ≥ 80%
+- Report + Research ≥ 5/tuần mỗi loại
+
+---
+
 ### LLM Abstraction (LiteLLM + OpenWebUI)
 
 **Status:** ✅ Optional / Deployed on-demand
@@ -183,6 +215,8 @@ See [cost-dashboard.md](cost-dashboard.md) for setup.
 | Milestone | Target | Status |
 |-----------|--------|--------|
 | KB01 (Phase 1 OpenWebUI) | 2026-07-16 | ✅ Done |
+| v1.5.0 KB Submit Action (📚) | 2026-07-24 | ✅ Done |
+| v1.5.1 Wrap-up Hook (🏁) | 2026-07-30 | ✅ Done |
 | KB02 (Cleanup + verify) | 2026-08-01 | 📋 Planned |
 | KB03 (Manual entry) | 2026-08-15 | 📋 Planned |
 | KB04 (Taxonomy admin) | 2026-09-01 | 📋 Planned |

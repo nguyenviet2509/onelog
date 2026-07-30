@@ -119,6 +119,84 @@ Model picker hiển thị cost ước tính per-message. Sau chat:
 - Chat history lưu server-side, backup daily encrypted (age).
 - Provider API (Anthropic/OpenAI/Google) có ToS riêng — assume không train trên enterprise API traffic nhưng vẫn không paste sensitive PII.
 
+## 12. Wrap-up session (🏁 End & Save)
+
+Nút 🏁 trong toolbar dưới chat — tự động classify session thành artifact và lưu vào OneMCP.
+
+### Khi nào dùng
+
+Dùng cuối mỗi session có outcome thực: troubleshoot, design, task review, incident triage.
+**Không dùng** cho chat hỏi đáp lý thuyết thuần hoặc session < 5 tin nhắn kỹ thuật.
+
+### Cách dùng
+
+1. Click nút 🏁 trong message toolbar (cuối chat)
+2. Chờ 5–10s — model đọc toàn bộ conversation, classify, tạo draft
+3. Preview hiện ra — xem nội dung, artifact type, tags
+4. Xác nhận **Submit** hoặc **Cancel**
+
+### 3 loại artifact
+
+| Type | Khi nào | Ví dụ |
+|---|---|---|
+| **KB** | Fix cụ thể, howto, khái niệm lặp lại | "nginx 502 fix: upstream timeout 60s" |
+| **Report** | Tổng kết task / incident / công việc | "Incident mysql 2026-07-30: nguyên nhân + timeline" |
+| **Research** | Brainstorm, khảo sát, phân tích | "So sánh Qdrant vs pgvector cho team 5 người" |
+
+Model tự chọn type dựa trên nội dung — không cần user chỉ định.
+
+### Khi bị SKIP (không tạo artifact)
+
+Session bị coi là không đủ nếu:
+- Toàn bộ là chit-chat / Q&A lý thuyết
+- Ít hơn 5 tin nhắn có nội dung kỹ thuật
+- Không có outcome / action cụ thể
+
+→ Nhận thông báo skip, không có artifact. Session vẫn lưu trong chat history bình thường.
+
+### Khi bị REJECT (draft không đạt chuẩn)
+
+Gatekeeper từ chối draft nếu thiếu nội dung tối thiểu (title ngắn, body rỗng, type không phân loại được).
+→ Thông báo lý do reject. Có thể edit thêm nội dung vào chat rồi click 🏁 thử lại, hoặc bỏ qua.
+
+### So sánh 🏁 vs 📚
+
+| | 📚 Mark Resolved | 🏁 Wrap-up |
+|---|---|---|
+| Loại artifact | KB only | KB / Report / Research |
+| Phân loại | Manual (user chọn title/tags) | Auto-classify |
+| Khi dùng | Khi biết rõ là KB entry | Cuối bất kỳ session outcome |
+| Submit | One-click, không preview | Preview trước → confirm |
+
+### Best practices
+
+- Chat với **concrete outcome**: command cụ thể, số liệu, quyết định rõ
+- Tránh mix nhiều topic khác nhau trong 1 session — artifact sẽ thiếu focus
+- Session troubleshoot: nên kết thúc bằng "tóm tắt: nguyên nhân X, fix Y" → draft sẽ tốt hơn
+
+### Metrics theo dõi (admin)
+
+Weekly wrapup funnel — chạy trực tiếp trên Postgres:
+
+```sql
+-- Weekly wrapup funnel
+SELECT
+  date_trunc('week', created_at) as week,
+  event_type,
+  COUNT(*) as n
+FROM audit_events
+WHERE event_type LIKE 'wrapup.%'
+  AND created_at > now() - interval '4 weeks'
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+KPI mục tiêu sau 4 tuần:
+- `wrapup.attempted / total_sessions` ≥ 40%
+- `(submitted + cancelled) / attempted` ≥ 60% (qua được gatekeeper)
+- `submitted / preview_shown` ≥ 80%
+- Report + Research ≥ 5/tuần mỗi loại
+
 ## Support
 
 - UI issue → admin (docker logs openwebui).

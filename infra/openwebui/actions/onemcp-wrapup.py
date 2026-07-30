@@ -554,6 +554,14 @@ class Action:
         )
         LITELLM_BASE_URL: str = Field(default="http://litellm-proxy:4000/v1")
         LITELLM_API_KEY: str = Field(default="", description="OpenWebUI virtual key hoặc LiteLLM master key.")
+        OPENWEBUI_URL: str = Field(
+            default="http://localhost:8080",
+            description="OpenWebUI internal URL để fetch chat history khi body.messages assistant content rỗng.",
+        )
+        OPENWEBUI_API_KEY: str = Field(
+            default="",
+            description="OpenWebUI API key. Tạo tại Settings → Account → API Keys. Cần thiết để fetch chat content đầy đủ.",
+        )
         MAX_TRANSCRIPT_MSG: int = Field(default=40, description="Max messages gửi vào LLM. Cap token cost.")
         CLASSIFIER_CONFIDENCE_THRESHOLD: float = Field(
             default=0.5,
@@ -630,6 +638,53 @@ class Action:
         except Exception as exc:
             # Audit failure must never block the main flow.
             print(f"[onemcp-wrapup] audit emit failed event={event}: {exc}", flush=True)
+
+    async def _fetch_chat_messages(self, chat_id: str) -> list[dict[str, Any]] | None:
+        """Fetch full chat messages from OpenWebUI internal API using chat_id.
+
+        Returns list of {role, content} dicts, or None if fetch fails.
+        Needed because body.messages assistant.content is often empty in Action context.
+        """
+        if not chat_id or not self.valves.OPENWEBUI_API_KEY.strip():
+            return None
+        url = f"{self.valves.OPENWEBUI_URL.rstrip('/')}/api/v1/chats/{chat_id}"
+        headers = {
+            "Authorization": f"Bearer {self.valves.OPENWEBUI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.valves.TIMEOUT_SEC) as c:
+                r = await c.get(url, headers=headers)
+                r.raise_for_status()
+                data = r.json()
+        except Exception as exc:
+            print(f"[onemcp-wrapup] fetch chat {chat_id} failed: {exc}", flush=True)
+            return None
+
+        # OpenWebUI /api/v1/chats/{id} returns { chat: { history: { messages: {id: {role, content, ...}, ...} } } }
+        chat_obj = data.get("chat") if isinstance(data, dict) else None
+        if not isinstance(chat_obj, dict):
+            print(f"[onemcp-wrapup] fetch chat: unexpected response shape keys={list(data.keys()) if isinstance(data, dict) else type(data)}", flush=True)
+            return None
+
+        history = chat_obj.get("history", {})
+        msgs_dict = history.get("messages", {}) if isinstance(history, dict) else {}
+        if not isinstance(msgs_dict, dict) or not msgs_dict:
+            # Fallback: try chat_obj.messages (array shape)
+            msgs_arr = chat_obj.get("messages")
+            if isinstance(msgs_arr, list):
+                return msgs_arr
+            print(f"[onemcp-wrapup] fetch chat: empty history", flush=True)
+            return None
+
+        # Convert dict {id: msg} to ordered list following parent/children chain if present
+        # Simple approach: sort by timestamp if available
+        result = []
+        for m in msgs_dict.values():
+            if isinstance(m, dict):
+                result.append(m)
+        result.sort(key=lambda x: x.get("timestamp", 0))
+        return result
 
     async def _llm_call(self, prompt: str, model: str) -> str:
         """Call LiteLLM with given prompt, return raw content string."""
@@ -881,6 +936,41 @@ class Action:
                 return "Session too short."
 
             transcript = self._transcript_from_messages(msgs)
+
+            # --- Fallback: if assistant content empty in body, fetch full chat from OpenWebUI API ---
+            def _assistant_content_missing(m_list: list[dict[str, Any]]) -> bool:
+                for m in m_list:
+                    if m.get("role") == "assistant":
+                        c = m.get("content")
+                        if isinstance(c, str) and c.strip():
+                            return False
+                        if isinstance(c, list) and any(
+                            isinstance(x, dict) and str(x.get("text", "")).strip() for x in c
+                        ):
+                            return False
+                # Any assistant present but none has content → missing
+                return any(m.get("role") == "assistant" for m in m_list)
+
+            if _assistant_content_missing(msgs):
+                chat_id = body.get("chat_id") or body.get("id") or ""
+                fetched = await self._fetch_chat_messages(str(chat_id))
+                if fetched:
+                    print(
+                        f"[onemcp-wrapup] fetched {len(fetched)} msgs from OpenWebUI API chat_id={chat_id}",
+                        flush=True,
+                    )
+                    msgs = fetched[-self.valves.MAX_TRANSCRIPT_MSG :]
+                    transcript = self._transcript_from_messages(msgs)
+                else:
+                    if not self.valves.OPENWEBUI_API_KEY.strip():
+                        await status("⚙️ Thiếu OPENWEBUI_API_KEY", done=True)
+                        await toast(
+                            "error",
+                            "⚙️ Chat content chưa có sẵn trong body. Admin cần set Valve "
+                            "OPENWEBUI_API_KEY (tạo tại Settings → Account → API Keys) "
+                            "để Action fetch chat history đầy đủ.",
+                        )
+                        return "Config error: OPENWEBUI_API_KEY missing, cannot fetch chat."
 
             # --- Debug: log role distribution to catch OpenWebUI msg shape issues ---
             role_counts: dict[str, int] = {}

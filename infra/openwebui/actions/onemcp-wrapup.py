@@ -825,6 +825,17 @@ class Action:
 
             transcript = self._transcript_from_messages(msgs)
 
+            # --- Config check: fail-fast if LITELLM_API_KEY missing ---
+            if not self.valves.LITELLM_API_KEY.strip():
+                await status("⚙️ Thiếu cấu hình", done=True)
+                await toast(
+                    "error",
+                    "⚙️ Action chưa được cấu hình: LITELLM_API_KEY trống. "
+                    "Admin vui lòng vào Workspace → Actions → 🏁 End & Save → Valves → "
+                    "set LITELLM_API_KEY (copy giá trị từ Action 📚 Submit KB).",
+                )
+                return "Config error: LITELLM_API_KEY empty."
+
             # --- Audit: attempted ---
             await self._audit("wrapup.attempted", onemcp_user, {"msg_count": len(msgs)})
 
@@ -851,13 +862,32 @@ class Action:
             is_en = _is_english_transcript(redacted_transcript)
             clf_template = _CLASSIFIER_PROMPT_EN if is_en else _CLASSIFIER_PROMPT_VN
             clf_prompt = clf_template.replace("{transcript}", redacted_transcript)
+            llm_transport_error: str | None = None
             try:
                 clf_raw = await self._llm_call(clf_prompt, self.valves.CLASSIFIER_MODEL)
                 clf_raw = re.sub(r"^```(?:json)?\s*", "", clf_raw.strip(), flags=re.MULTILINE)
                 clf_raw = re.sub(r"```\s*$", "", clf_raw.strip(), flags=re.MULTILINE)
                 clf_result = json.loads(clf_raw.strip())
+            except httpx.HTTPError as e:
+                llm_transport_error = f"LLM transport error: {e}"
+                clf_result = {"type": "SKIP", "confidence": 0.0, "reason": llm_transport_error}
             except Exception as e:
                 clf_result = {"type": "SKIP", "confidence": 0.0, "reason": f"parse error: {e}"}
+
+            # Distinguish transport/config error from real "session insufficient"
+            if llm_transport_error:
+                await status("❌ LLM call thất bại", done=True)
+                await self._audit(
+                    "wrapup.llm_error",
+                    onemcp_user,
+                    {"stage": "classifier", "error": llm_transport_error[:500]},
+                )
+                await toast(
+                    "error",
+                    f"❌ Không gọi được LLM classifier. {llm_transport_error}. "
+                    "Kiểm tra Valve LITELLM_BASE_URL + LITELLM_API_KEY.",
+                )
+                return llm_transport_error
 
             artifact_type: str = str(clf_result.get("type", "SKIP"))
             confidence: float = float(clf_result.get("confidence", 0.0))

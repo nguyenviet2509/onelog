@@ -153,22 +153,35 @@ _CLASSIFIER_PROMPT_VN = """Bạn là classifier phân loại chat session để 
 NHIỆM VỤ: Đọc transcript → trả JSON `{type, confidence, reason}`.
 
 CÁC TYPE:
-- "kb"       — Bug/lỗi cụ thể đã được fix và verified. Có error message, root cause, và solution đã apply.
-- "report"   — Hoàn thành task/công việc trong session: có work_done + outcome/kết quả cụ thể.
-- "research" — Nghiên cứu, phân tích, brainstorm: có hypothesis/câu hỏi + findings/kết luận.
-- "SKIP"     — Không đủ giá trị để lưu (chit-chat, Q&A lý thuyết, session chưa có kết quả).
+- "kb"       — Bug/lỗi cụ thể đã fix và verified. Có error, root cause, solution.
+- "report"   — Hoàn thành task/công việc: có steps + outcome/kết quả cụ thể.
+- "research" — Nghiên cứu, phân tích, thiết kế, brainstorm: có câu hỏi/mục tiêu + findings/deliverable
+               (VD: query design, config draft, so sánh options, phân tích log pattern, đề xuất giải pháp).
+- "SKIP"     — Thật sự không đáng lưu (chit-chat, câu hỏi 1 dòng chưa có trả lời, session hoàn toàn không có deliverable).
 
-QUY TẮC CỨNG (phải SKIP nếu vi phạm bất kỳ điều nào):
-1. Dưới 5 message có nội dung technical (không tính lời chào, ack, OK).
-2. Chat chỉ là Q&A lý thuyết / cách làm → không có outcome cụ thể.
-3. Session chưa kết thúc: assistant vẫn đang hỏi thêm info, user chưa xác nhận kết quả.
-4. Chat là chit-chat, hỏi thăm, không liên quan công việc.
-5. Không có finding/fix/decision cụ thể nào được ghi nhận.
+DELIVERABLE HỢP LỆ (nếu có → KHÔNG được SKIP):
+- Code block ```...``` (query, config, script)
+- Bảng so sánh / analysis
+- Đề xuất giải pháp cụ thể có step
+- Fix/decision đã ghi nhận
+- Structured breakdown (numbered list of options/steps)
+
+QUY TẮC CỨNG (SKIP nếu VI PHẠM):
+1. Dưới 3 message có nội dung technical thật sự (không tính chào hỏi).
+2. Assistant không trả lời hoặc trả lời rỗng.
+3. Chat hoàn toàn là chit-chat, off-topic.
+4. Không có bất kỳ deliverable nào (code, config, phân tích, đề xuất, quyết định).
+
+KHÔNG SKIP CHỈ VÌ:
+- Session là Q&A → nếu assistant trả bằng deliverable cụ thể (query, config, list of steps) → là "research" hoặc "kb".
+- User chưa "apply" solution → nếu assistant đã đưa ra deliverable → vẫn là "research" (chưa apply) hoặc "kb" (nếu là bug fix).
+- Có follow-up questions → miễn có deliverable chính thì OK.
 
 PHÂN BIỆT TYPE:
-- kb vs report: kb = FIX BUG/LỖI cụ thể đã verified. Report = hoàn thành TASK (không nhất thiết phải có bug).
-- report vs research: report = task đã XONG với outcome. Research = tìm hiểu / phân tích, kết luận là findings.
-- kb vs research: kb = solution đã APPLY. Research = hypothesis / findings chưa apply hoặc không phải bug.
+- kb vs report: kb = FIX BUG cụ thể. Report = task hoàn thành (không cần bug).
+- report vs research: report = đã XONG có outcome. Research = đưa ra deliverable/analysis (chưa nhất thiết apply).
+- kb vs research: kb = solution APPLY và verified. Research = deliverable/query/analysis (chưa apply hoặc không phải bug).
+- Nếu assistant trả bằng 1 query/config/script cụ thể mà user chưa xác nhận đã apply → thường là "research".
 
 CONFIDENCE:
 - > 0.7: rõ ràng.
@@ -189,17 +202,29 @@ _CLASSIFIER_PROMPT_EN = """You are a classifier for chat sessions to store in a 
 TASK: Read the transcript → return JSON `{type, confidence, reason}`.
 
 TYPES:
-- "kb"       — A specific bug/error fixed and verified. Has error message, root cause, applied solution.
-- "report"   — A task completed in this session: has work_done + concrete outcome.
-- "research" — Research, analysis, or brainstorm: has hypothesis/question + findings/conclusion.
-- "SKIP"     — Not worth saving (chit-chat, theoretical Q&A, no concrete outcome).
+- "kb"       — Specific bug fixed and verified. Has error, root cause, applied solution.
+- "report"   — Task completed: steps + concrete outcome.
+- "research" — Research, analysis, design, brainstorm: has question/goal + findings/deliverable
+               (e.g. query design, config draft, options comparison, log pattern analysis, proposed solution).
+- "SKIP"     — Truly not worth saving (chit-chat, one-line question without answer, no deliverable at all).
 
-HARD RULES (must SKIP if any violated):
-1. Fewer than 5 messages with technical content (greetings/ack/OK don't count).
-2. Chat is only theoretical Q&A / how-to → no concrete outcome.
-3. Session unfinished: assistant still asking for more info, user hasn't confirmed result.
-4. Chat is chit-chat, unrelated to work.
-5. No specific finding/fix/decision recorded.
+VALID DELIVERABLES (if present → do NOT SKIP):
+- Code blocks ```...``` (query, config, script)
+- Comparison table / analysis
+- Concrete proposed solution with steps
+- Recorded fix/decision
+- Structured breakdown (numbered options/steps)
+
+HARD RULES (SKIP if VIOLATED):
+1. Fewer than 3 messages with genuine technical content.
+2. Assistant never replies or replies empty.
+3. Chat is purely chit-chat, off-topic.
+4. No deliverable of any kind (code, config, analysis, proposal, decision).
+
+DO NOT SKIP JUST BECAUSE:
+- Session is Q&A → if assistant answered with concrete deliverable → it's "research" or "kb".
+- User hasn't "applied" the solution → if assistant provided a deliverable → still "research".
+- Follow-up questions exist → as long as a main deliverable is there, OK.
 
 CONFIDENCE:
 - > 0.7: clear case.
@@ -531,8 +556,8 @@ class Action:
         LITELLM_API_KEY: str = Field(default="", description="OpenWebUI virtual key hoặc LiteLLM master key.")
         MAX_TRANSCRIPT_MSG: int = Field(default=40, description="Max messages gửi vào LLM. Cap token cost.")
         CLASSIFIER_CONFIDENCE_THRESHOLD: float = Field(
-            default=0.6,
-            description="Confidence cutoff để SKIP. Default 0.6 (stricter than classifier's own 0.5).",
+            default=0.5,
+            description="Confidence cutoff để SKIP. Default 0.5 khớp internal check của classifier. Tăng lên nếu muốn strict hơn.",
         )
 
     def __init__(self):

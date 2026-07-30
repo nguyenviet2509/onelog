@@ -639,26 +639,51 @@ class Action:
             # Audit failure must never block the main flow.
             print(f"[onemcp-wrapup] audit emit failed event={event}: {exc}", flush=True)
 
-    async def _fetch_chat_messages(self, chat_id: str) -> list[dict[str, Any]] | None:
+    async def _fetch_chat_messages(
+        self,
+        chat_id: str,
+        user_token: str = "",
+    ) -> list[dict[str, Any]] | None:
         """Fetch full chat messages from OpenWebUI internal API using chat_id.
 
         Returns list of {role, content} dicts, or None if fetch fails.
         Needed because body.messages assistant.content is often empty in Action context.
+
+        Auth priority: user_token (from __user__ ctx) > Valve OPENWEBUI_API_KEY.
         """
-        if not chat_id or not self.valves.OPENWEBUI_API_KEY.strip():
+        if not chat_id:
             return None
-        url = f"{self.valves.OPENWEBUI_URL.rstrip('/')}/api/v1/chats/{chat_id}"
+        auth_token = user_token.strip() or self.valves.OPENWEBUI_API_KEY.strip()
+        if not auth_token:
+            return None
+
+        base_url = self.valves.OPENWEBUI_URL.rstrip("/")
         headers = {
-            "Authorization": f"Bearer {self.valves.OPENWEBUI_API_KEY}",
+            "Authorization": f"Bearer {auth_token}",
             "Content-Type": "application/json",
         }
-        try:
-            async with httpx.AsyncClient(timeout=self.valves.TIMEOUT_SEC) as c:
-                r = await c.get(url, headers=headers)
-                r.raise_for_status()
-                data = r.json()
-        except Exception as exc:
-            print(f"[onemcp-wrapup] fetch chat {chat_id} failed: {exc}", flush=True)
+        # Try common endpoint paths — OpenWebUI versions have used /api/v1/chats and /api/chat
+        candidates = [
+            f"{base_url}/api/v1/chats/{chat_id}",
+            f"{base_url}/api/chats/{chat_id}",
+        ]
+        data = None
+        last_err = ""
+        for url in candidates:
+            try:
+                async with httpx.AsyncClient(timeout=self.valves.TIMEOUT_SEC) as c:
+                    r = await c.get(url, headers=headers)
+                    if r.status_code == 401:
+                        last_err = f"401 Unauthorized (token starts with {auth_token[:6]}...)"
+                        continue  # try next candidate
+                    r.raise_for_status()
+                    data = r.json()
+                    break
+            except Exception as exc:
+                last_err = f"{url}: {exc}"
+                continue
+        if data is None:
+            print(f"[onemcp-wrapup] fetch chat {chat_id} all endpoints failed. last_err={last_err}", flush=True)
             return None
 
         # OpenWebUI /api/v1/chats/{id} returns { chat: { history: { messages: {id: {role, content, ...}, ...} } } }
@@ -953,7 +978,16 @@ class Action:
 
             if _assistant_content_missing(msgs):
                 chat_id = body.get("chat_id") or body.get("id") or ""
-                fetched = await self._fetch_chat_messages(str(chat_id))
+                # Try user token from __user__ ctx first (many OpenWebUI versions inject it)
+                user_token = ""
+                if isinstance(__user__, dict):
+                    user_token = str(
+                        __user__.get("token")
+                        or __user__.get("access_token")
+                        or __user__.get("api_key")
+                        or ""
+                    ).strip()
+                fetched = await self._fetch_chat_messages(str(chat_id), user_token)
                 if fetched:
                     print(
                         f"[onemcp-wrapup] fetched {len(fetched)} msgs from OpenWebUI API chat_id={chat_id}",
@@ -979,7 +1013,8 @@ class Action:
                 role_counts[r] = role_counts.get(r, 0) + 1
             print(
                 f"[onemcp-wrapup] msgs={len(msgs)} roles={role_counts} "
-                f"transcript_len={len(transcript)} first_120={transcript[:120]!r}",
+                f"transcript_len={len(transcript)} first_120={transcript[:120]!r} "
+                f"__user__keys={list(__user__.keys()) if isinstance(__user__, dict) else type(__user__).__name__}",
                 flush=True,
             )
             # Deep dump body keys to find alt sources for assistant content

@@ -85,6 +85,20 @@ groups:
           summary: "lsphp segfault trên {{ $labels.host }} ({{ $value }})"
           description: "PHP extension bug hoặc OPcache corruption. journalctl -xe / core dump."
 
+      # systemd session limit đầy (8192) — crond/sudo không tạo được session mới,
+      # cron job silent-fail, sudo escalation fail. First occurrence = incident.
+      # Pattern quan sát trên onehost-webhn072403: 2014/h.
+      - alert: SystemdSessionLimitReached
+        expr: '_msg:"Maximum number of sessions" _msg:"reached, refusing further sessions" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>0'
+        for: 0s
+        labels:
+          severity: critical
+          category: capacity
+          notify_style: event
+        annotations:
+          summary: "systemd session limit đầy trên {{ $labels.host }}"
+          description: "pam_systemd từ chối tạo session (limit 8192). Cron/sudo/login fail silent. loginctl list-sessions | wc -l; kill orphan sessions hoặc restart systemd-logind."
+
   # ─────────────────────────────────────────────────────────────────────────
   # BURST — 5m window, threshold >N to confirm pattern
   # ─────────────────────────────────────────────────────────────────────────
@@ -243,6 +257,61 @@ groups:
         annotations:
           summary: "php-fpm worker exhaustion trên {{ $labels.host }}"
           description: "Pool đầy → user-facing latency spike. Nâng pm.max_children hoặc thêm pool."
+
+      # ────────── Wrapup 260730 — patterns từ report tuần này ──────────
+
+      # sSMTP không gửi được (port 25 blocked / MTA down). Zimbra mailer mất
+      # notification. Threshold 20/5m để lọc noise 1-2 event tạm thời.
+      # Pattern quan sát: "Unable to connect to \"mail\" port 25."
+      - alert: SmtpDeliveryFailure
+        expr: |
+          (service:sSMTP OR service:ssmtp) _msg:"Unable to connect" _time:5m
+            | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
+            | filter value:>20
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+          component: mail
+          notify_style: event
+        annotations:
+          summary: "sSMTP delivery fail trên {{ $labels.host }}"
+          description: "{{ $value }} sSMTP conn-fail trong 5m. Check MTA (mailhub) reachable + port 25 outbound firewall."
+
+      # rsyslog imjournal rate-limit drop = log LOSS trên host client. Nghiêm
+      # trọng vì các rule khác dựa vào log này. Threshold 5/5m để không noise.
+      # Pattern: "imjournal: NNNN messages lost due to rate-limiting"
+      - alert: RsyslogRateLimitDrop
+        expr: |
+          service:rsyslogd _msg:"imjournal" _msg:"messages lost due to rate-limiting" _time:5m
+            | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
+            | filter value:>5
+        for: 5m
+        labels:
+          severity: warning
+          category: log-pipeline
+          component: rsyslog
+          notify_style: event
+        annotations:
+          summary: "rsyslog imjournal đang drop log trên {{ $labels.host }}"
+          description: "{{ $value }} 'messages lost' event trong 5m — log downstream (VL) MẤT event. Nâng RateLimitBurst / RateLimitInterval trong /etc/systemd/journald.conf hoặc rsyslog imjournal module."
+
+      # MagicSpam DNS reverse lookup fail — mail filter degraded. Threshold cao
+      # (100/5m) vì DNS timeout lẻ tẻ bình thường; chỉ alert khi burst.
+      - alert: MagicspamDnsErrors
+        expr: |
+          service:"magicspam-daemon" _msg:"lm_lookup_reverse_dns" _time:5m
+            | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg
+            | filter value:>100
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+          component: mail-filter
+          notify_style: event
+        annotations:
+          summary: "MagicSpam DNS reverse lookup fail burst trên {{ $labels.host }}"
+          description: "{{ $value }} rDNS fail trong 5m — spam filter effectiveness giảm. Check DNS resolver liveness / upstream."
 
   # ─────────────────────────────────────────────────────────────────────────
   # OPENWEBUI SQLITE — capacity trending, event source = vector exec probe

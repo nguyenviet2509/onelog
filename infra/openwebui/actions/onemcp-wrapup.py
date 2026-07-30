@@ -791,11 +791,36 @@ class Action:
                         break
             # Fallback: OpenWebUI sometimes stores assistant output outside 'content'
             if not text.strip():
-                for k in ("message", "reasoning_content", "output", "response"):
+                for k in ("message", "reasoning_content", "response", "originalContent"):
                     v = m.get(k)
                     if isinstance(v, str) and v.strip():
                         text = v
                         break
+            # OpenAI-style nested output: output=[{type:message, content:[{type:output_text, text:...}]}]
+            if not text.strip():
+                output = m.get("output")
+                if isinstance(output, list):
+                    parts = []
+                    for block in output:
+                        if not isinstance(block, dict):
+                            continue
+                        # message-type block contains list of content parts
+                        inner = block.get("content")
+                        if isinstance(inner, list):
+                            for cp in inner:
+                                if isinstance(cp, dict):
+                                    t = cp.get("text") or cp.get("content")
+                                    if isinstance(t, str) and t.strip():
+                                        parts.append(t)
+                        elif isinstance(inner, str) and inner.strip():
+                            parts.append(inner)
+                        # Some blocks put text directly on block.text
+                        elif isinstance(block.get("text"), str) and block["text"].strip():
+                            parts.append(block["text"])
+                    if parts:
+                        text = "\n".join(parts)
+                elif isinstance(output, str) and output.strip():
+                    text = output
             lines.append(f"[{role}] {text}")
         return "\n".join(lines)
 

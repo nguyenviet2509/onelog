@@ -825,6 +825,17 @@ class Action:
 
             transcript = self._transcript_from_messages(msgs)
 
+            # --- Debug: log role distribution to catch OpenWebUI msg shape issues ---
+            role_counts: dict[str, int] = {}
+            for m in msgs:
+                r = str(m.get("role", "?"))
+                role_counts[r] = role_counts.get(r, 0) + 1
+            print(
+                f"[onemcp-wrapup] msgs={len(msgs)} roles={role_counts} "
+                f"transcript_len={len(transcript)} first_120={transcript[:120]!r}",
+                flush=True,
+            )
+
             # --- Config check: fail-fast if LITELLM_API_KEY missing ---
             if not self.valves.LITELLM_API_KEY.strip():
                 await status("⚙️ Thiếu cấu hình", done=True)
@@ -904,11 +915,25 @@ class Action:
                 await self._audit(
                     "wrapup.skipped_classifier",
                     onemcp_user,
-                    {"reason": clf_reason, "confidence": confidence, "msg_count": len(msgs)},
+                    {
+                        "reason": clf_reason,
+                        "confidence": confidence,
+                        "msg_count": len(msgs),
+                        "role_counts": role_counts,
+                    },
                 )
+                # Sanity check: if classifier claims 'no assistant' but assistant IS in transcript,
+                # surface the mismatch so admin can diagnose (LLM hallucination vs real gap).
+                assistant_count = role_counts.get("assistant", 0)
+                hint = ""
+                if assistant_count > 0 and "no assistant" in clf_reason.lower():
+                    hint = (
+                        f" ⓘ Debug: transcript CÓ {assistant_count} assistant msg — "
+                        "classifier có thể đọc sai. Thử session dài hơn hoặc chuyển sang nút 📚."
+                    )
                 await toast(
                     "warning",
-                    f"⚠️ Session chưa đủ nội dung để save. Lý do: {clf_reason}",
+                    f"⚠️ Session chưa đủ nội dung để save. Lý do: {clf_reason}{hint}",
                 )
                 return f"SKIP: {clf_reason}"
 

@@ -520,12 +520,12 @@ class Action:
         )
         TIMEOUT_SEC: float = Field(default=30.0)
         CLASSIFIER_MODEL: str = Field(
-            default="deepseek-chat",
-            description="LiteLLM model dùng để classify session (fast + cheap).",
+            default="deepseek",
+            description="LiteLLM model dùng để classify session (fast + cheap). Phải khớp model_name trong litellm config.yaml.",
         )
         EXTRACTOR_MODEL: str = Field(
-            default="deepseek-chat",
-            description="LiteLLM model dùng để extract structured fields.",
+            default="deepseek",
+            description="LiteLLM model dùng để extract structured fields. Phải khớp model_name trong litellm config.yaml.",
         )
         LITELLM_BASE_URL: str = Field(default="http://litellm-proxy:4000/v1")
         LITELLM_API_KEY: str = Field(default="", description="OpenWebUI virtual key hoặc LiteLLM master key.")

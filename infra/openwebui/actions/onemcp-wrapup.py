@@ -669,22 +669,29 @@ class Action:
             f"{base_url}/api/chats/{chat_id}",
         ]
         data = None
-        last_err = ""
+        errors: list[str] = []
         for url in candidates:
             try:
                 async with httpx.AsyncClient(timeout=self.valves.TIMEOUT_SEC) as c:
                     r = await c.get(url, headers=headers)
+                    ct = r.headers.get("content-type", "")
                     if r.status_code == 401:
-                        last_err = f"401 Unauthorized (token starts with {auth_token[:6]}...)"
-                        continue  # try next candidate
-                    r.raise_for_status()
+                        errors.append(f"{url} → 401 Unauthorized")
+                        continue
+                    if r.status_code != 200:
+                        errors.append(f"{url} → HTTP {r.status_code} ct={ct} body[:80]={r.text[:80]!r}")
+                        continue
+                    if "application/json" not in ct.lower():
+                        errors.append(f"{url} → 200 but ct={ct} (SPA fallthrough?) body[:80]={r.text[:80]!r}")
+                        continue
                     data = r.json()
+                    print(f"[onemcp-wrapup] fetch chat OK via {url} (auth_prefix={auth_token[:6]}...)", flush=True)
                     break
             except Exception as exc:
-                last_err = f"{url}: {exc}"
+                errors.append(f"{url} → exc {type(exc).__name__}: {exc}")
                 continue
         if data is None:
-            print(f"[onemcp-wrapup] fetch chat {chat_id} all endpoints failed. last_err={last_err}", flush=True)
+            print(f"[onemcp-wrapup] fetch chat {chat_id} all endpoints failed. errors={errors}", flush=True)
             return None
 
         # OpenWebUI /api/v1/chats/{id} returns { chat: { history: { messages: {id: {role, content, ...}, ...} } } }

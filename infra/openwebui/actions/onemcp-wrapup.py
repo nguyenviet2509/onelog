@@ -892,8 +892,13 @@ class Action:
                 f"transcript_len={len(transcript)} first_120={transcript[:120]!r}",
                 flush=True,
             )
-            # Deep dump of assistant msg shape if transcript suspiciously short
+            # Deep dump body keys to find alt sources for assistant content
             if len(transcript) < 500 and role_counts.get("assistant", 0) > 0:
+                print(
+                    f"[onemcp-wrapup] body top-level keys: {list(body.keys())} "
+                    f"chat_id={body.get('chat_id')!r} id={body.get('id')!r}",
+                    flush=True,
+                )
                 for i, m in enumerate(msgs):
                     if m.get("role") == "assistant":
                         keys = list(m.keys())

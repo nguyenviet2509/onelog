@@ -802,13 +802,18 @@ class Action:
 
     @staticmethod
     def _make_slug(title: str) -> str:
-        """Generate slug: lowercase alphanumeric + dashes + epoch suffix."""
+        """Generate slug: lowercase alphanumeric + dashes + epoch suffix.
+
+        Handles full Vietnamese diacritics via NFKD normalization (strips all
+        combining marks) plus explicit đ→d mapping (đ is not decomposable).
+        """
+        import unicodedata
         s = title.lower()
-        for src, dst in (
-            ("đ", "d"), ("ă", "a"), ("â", "a"), ("ê", "e"),
-            ("ô", "o"), ("ơ", "o"), ("ư", "u"),
-        ):
-            s = s.replace(src, dst)
+        # đ / Đ not decomposed by NFKD → replace before normalize
+        s = s.replace("đ", "d").replace("Đ", "d")
+        # NFKD splits vowels+tone into base+combining mark; drop combining marks
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
         s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
         s = s[:140]
         if len(s) < 3:

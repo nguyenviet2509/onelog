@@ -642,16 +642,48 @@ class Action:
 
     @staticmethod
     def _transcript_from_messages(msgs: list[dict[str, Any]]) -> str:
-        """Format messages list as role-prefixed transcript string."""
+        """Format messages list as role-prefixed transcript string.
+
+        Robust to multiple OpenWebUI content shapes:
+        - str
+        - list of {"type": "text", "text": "..."} (multimodal)
+        - list of other dicts (tries: text, content, value, message)
+        - fallback: assistant may store body in top-level 'message' or 'reasoning_content'
+        """
         lines = []
         for m in msgs:
             role = m.get("role", "?")
             content = m.get("content", "")
-            if isinstance(content, list):
-                content = " ".join(
-                    c.get("text", "") for c in content if isinstance(c, dict)
-                )
-            lines.append(f"[{role}] {content}")
+            text = ""
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                parts = []
+                for c in content:
+                    if isinstance(c, dict):
+                        # Try common keys in order
+                        for k in ("text", "content", "value", "message"):
+                            v = c.get(k)
+                            if isinstance(v, str) and v.strip():
+                                parts.append(v)
+                                break
+                    elif isinstance(c, str):
+                        parts.append(c)
+                text = " ".join(parts)
+            elif isinstance(content, dict):
+                for k in ("text", "content", "value", "message"):
+                    v = content.get(k)
+                    if isinstance(v, str) and v.strip():
+                        text = v
+                        break
+            # Fallback: OpenWebUI sometimes stores assistant output outside 'content'
+            if not text.strip():
+                for k in ("message", "reasoning_content", "output", "response"):
+                    v = m.get(k)
+                    if isinstance(v, str) and v.strip():
+                        text = v
+                        break
+            lines.append(f"[{role}] {text}")
         return "\n".join(lines)
 
     @staticmethod
@@ -835,6 +867,20 @@ class Action:
                 f"transcript_len={len(transcript)} first_120={transcript[:120]!r}",
                 flush=True,
             )
+            # Deep dump of assistant msg shape if transcript suspiciously short
+            if len(transcript) < 500 and role_counts.get("assistant", 0) > 0:
+                for i, m in enumerate(msgs):
+                    if m.get("role") == "assistant":
+                        keys = list(m.keys())
+                        content = m.get("content")
+                        ctype = type(content).__name__
+                        preview = str(content)[:200] if content else "<empty>"
+                        print(
+                            f"[onemcp-wrapup] assistant#{i} keys={keys} "
+                            f"content_type={ctype} content_preview={preview!r}",
+                            flush=True,
+                        )
+                        break
 
             # --- Config check: fail-fast if LITELLM_API_KEY missing ---
             if not self.valves.LITELLM_API_KEY.strip():

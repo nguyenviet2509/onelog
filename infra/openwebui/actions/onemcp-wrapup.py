@@ -240,14 +240,24 @@ TRANSCRIPT:
 ---
 """
 
-_KB_EXTRACTOR_PROMPT_VN = """Bạn là extractor KB — trích xuất thông tin từ chat transcript thành KB entry.
+_KB_EXTRACTOR_PROMPT_VN = """Bạn là extractor KB — trích xuất TOÀN BỘ nội dung bug fix từ transcript.
 
-QUY TẮC: CHỈ trích xuất từ transcript. KHÔNG suy diễn. Thiếu dữ liệu → trả {"error": "not_extractable"}.
+QUY TẮC:
+1. CHỈ trích xuất từ transcript. KHÔNG suy diễn.
+2. **TỔNG HỢP TOÀN BỘ**: nếu session có nhiều lỗi/fix, gom hết vào 1 KB (dùng section rõ ràng cho từng lỗi).
+3. Giữ nguyên chi tiết: error message, service names, commands, config keys.
+4. Thiếu dữ liệu concrete → trả {"error": "not_extractable"}.
 
 SCHEMA (JSON thuần):
-{"title": "service + triệu chứng cụ thể, KHÔNG kết thúc bằng ?", "problem": "markdown: error + context", "solution": "markdown: steps đã apply + commands trong ``` block", "related": "markdown (optional)", "tags": ["tag1"] /* max 5, snake_case */}
+{
+  "title": "service + triệu chứng cụ thể, KHÔNG kết thúc bằng ?",
+  "problem": "markdown DÀI: mô tả TẤT CẢ error observed, context, khi nào xảy ra. Dùng bullet/section nếu nhiều lỗi.",
+  "solution": "markdown CHI TIẾT: TẤT CẢ steps đã apply, commands trong ``` block. Bao gồm verify steps.",
+  "related": "markdown (optional): links, related issues",
+  "tags": ["tag1"] /* max 5, snake_case */
+}
 
-NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms (service, command, config key, error code) giữ nguyên EN. Tags luôn snake_case EN.
+NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms giữ nguyên EN. Tags snake_case EN.
 
 TRANSCRIPT:
 ---
@@ -268,12 +278,23 @@ TRANSCRIPT:
 ---
 """
 
-_REPORT_EXTRACTOR_PROMPT_VN = """Bạn là extractor Report — trích xuất thông tin từ transcript thành work report.
+_REPORT_EXTRACTOR_PROMPT_VN = """Bạn là extractor Report — tổng hợp TOÀN BỘ công việc trong session thành work report.
 
-QUY TẮC: CHỈ trích xuất từ transcript. KHÔNG suy diễn. Thiếu outcome cụ thể → trả {"error": "not_extractable"}.
+QUY TẮC:
+1. CHỈ trích xuất từ transcript. KHÔNG suy diễn.
+2. **TỔNG HỢP TOÀN BỘ**: liệt kê TẤT CẢ steps đã làm, decisions đã chốt, không lược bỏ.
+3. Giữ nguyên chi tiết: commands, file paths, config changes, metrics.
+4. Thiếu outcome concrete → trả {"error": "not_extractable"}.
 
 SCHEMA (JSON thuần):
-{"title": "task + kết quả ngắn gọn, KHÔNG kết thúc bằng ?", "context": "markdown: mục tiêu + background", "work_done": "markdown: steps + decisions + commands đã apply", "outcome": "markdown: kết quả cuối, deliver được gì", "next_steps": "markdown (optional)", "tags": ["tag1"] /* max 5, snake_case */}
+{
+  "title": "task + kết quả ngắn gọn, KHÔNG kết thúc bằng ?",
+  "context": "markdown: mục tiêu + background + tại sao làm",
+  "work_done": "markdown DÀI VÀ CHI TIẾT: TẤT CẢ steps + decisions + commands đã apply, numbered list nếu nhiều bước",
+  "outcome": "markdown: kết quả cuối cụ thể, metrics/state/deliverable",
+  "next_steps": "markdown (optional): follow-up items",
+  "tags": ["tag1"] /* max 5, snake_case */
+}
 
 NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms giữ nguyên EN. Tags snake_case EN.
 
@@ -296,14 +317,28 @@ TRANSCRIPT:
 ---
 """
 
-_RESEARCH_EXTRACTOR_PROMPT_VN = """Bạn là extractor Research — trích xuất thông tin từ transcript thành research entry.
+_RESEARCH_EXTRACTOR_PROMPT_VN = """Bạn là extractor Research — trích xuất TOÀN BỘ nội dung research từ transcript.
 
-QUY TẮC: CHỈ trích xuất từ transcript. KHÔNG suy diễn. Thiếu findings rõ → trả {"error": "not_extractable"}.
+QUY TẮC QUAN TRỌNG:
+1. CHỈ trích xuất từ transcript. KHÔNG suy diễn ngoài.
+2. **TỔNG HỢP TOÀN BỘ session** — nếu session có nhiều câu hỏi/chủ đề, gom lại thành 1 research đầy đủ.
+3. **KHÔNG chỉ pick câu hỏi cuối** — phải cover tất cả topics user hỏi + tất cả findings assistant đưa ra.
+4. **Giữ nguyên chi tiết technical**: service names, error codes, commands, queries, config keys, threshold numbers.
+5. Thiếu findings rõ → trả {"error": "not_extractable"}.
 
 SCHEMA (JSON thuần):
-{"title": "chủ đề nghiên cứu ngắn gọn, KHÔNG kết thúc bằng ?", "question": "markdown: câu hỏi ban đầu", "hypothesis": "markdown (optional): giả thuyết ban đầu", "findings": "markdown: kết quả phân tích + kết luận từ evidence", "references": "markdown (optional): nguồn tham khảo", "conclusion": "markdown: kết luận cuối + recommendation"}
+{
+  "title": "chủ đề tổng thể của session, ngắn gọn, KHÔNG kết thúc bằng ?",
+  "question": "markdown: gom TẤT CẢ câu hỏi user hỏi thành 1 khối, dùng bullet points nếu >1 câu",
+  "hypothesis": "markdown (optional): giả thuyết ban đầu nếu có",
+  "findings": "markdown DÀI VÀ CHI TIẾT: liệt kê TẤT CẢ phát hiện, phân tích, error types, root cause, kèm code block ``` cho commands/queries. Dùng H3 (### service_name) hoặc numbered list cho từng finding riêng biệt.",
+  "references": "markdown (optional): logs/paths/docs mentioned",
+  "conclusion": "markdown: tổng kết + recommendation cuối, gom tất cả action items"
+}
 
-NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms giữ nguyên EN.
+NGÔN NGỮ: Văn xuôi tiếng Việt có dấu. Technical terms + commands giữ nguyên EN + code block.
+
+CẤM: rút gọn findings <200 ký tự khi transcript có nội dung technical dài. Nếu transcript có 5+ topics/errors, findings phải cover đủ.
 
 TRANSCRIPT:
 ---
@@ -311,12 +346,26 @@ TRANSCRIPT:
 ---
 """
 
-_RESEARCH_EXTRACTOR_PROMPT_EN = """You are a Research extractor — extract information from transcript into a research entry.
+_RESEARCH_EXTRACTOR_PROMPT_EN = """You are a Research extractor — extract the ENTIRE research content from transcript.
 
-RULES: ONLY extract from transcript. Do NOT infer. If insufficient → return {"error": "not_extractable"}.
+CRITICAL RULES:
+1. ONLY extract from transcript. Do NOT infer beyond.
+2. **SYNTHESIZE THE ENTIRE session** — if multiple questions/topics, aggregate into 1 comprehensive research.
+3. **Do NOT pick only the last question** — cover ALL topics user asked + ALL findings assistant provided.
+4. **Preserve technical detail**: service names, error codes, commands, queries, config keys, thresholds.
+5. If insufficient findings → return {"error": "not_extractable"}.
 
 SCHEMA (plain JSON):
-{"title": "brief research topic, must NOT end with ?", "question": "markdown: initial question", "hypothesis": "markdown (optional): initial hypothesis", "findings": "markdown: analysis results + conclusions from evidence", "references": "markdown (optional): sources used", "conclusion": "markdown: final conclusion + recommendation"}
+{
+  "title": "overall session topic, brief, must NOT end with ?",
+  "question": "markdown: gather ALL user questions, use bullet points if >1",
+  "hypothesis": "markdown (optional): initial hypothesis if any",
+  "findings": "markdown LONG AND DETAILED: list ALL findings/analysis/error types/root causes with ``` blocks for commands/queries. Use H3 (### service_name) or numbered list per finding.",
+  "references": "markdown (optional): logs/paths/docs mentioned",
+  "conclusion": "markdown: final wrap-up + all action items"
+}
+
+FORBIDDEN: findings <200 chars when transcript has long technical content. If transcript has 5+ topics/errors, findings must cover all.
 
 TRANSCRIPT:
 ---
@@ -731,6 +780,7 @@ class Action:
             "messages": [{"role": "user", "content": prompt}],
             "response_format": {"type": "json_object"},
             "temperature": 0.2,
+            "max_tokens": 8192,  # allow long extraction output (multi-topic sessions)
         }
         async with httpx.AsyncClient(timeout=self.valves.TIMEOUT_SEC) as c:
             r = await c.post(url, json=payload, headers=headers)

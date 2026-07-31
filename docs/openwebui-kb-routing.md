@@ -1,18 +1,32 @@
 # OpenWebUI system prompt — OneLog assistant (KB + Log tools)
 
-**Plan:** [260730-1504-kb-inet-bookstack-mcp-bridge](../plans/260730-1504-kb-inet-bookstack-mcp-bridge/plan.md)
+**Plans:**
+- [260731-0847-bookstack-function-wrapper](../plans/260731-0847-bookstack-function-wrapper/plan.md) (current — Function wrapper)
+- [260730-1504-kb-inet-bookstack-mcp-bridge](../plans/260730-1504-kb-inet-bookstack-mcp-bridge/plan.md) (superseded — mcpo path)
+
 **Purpose:** Version-controlled backup của system prompt cấu hình trong OpenWebUI UI (per-model, no history).
 
-## Wiring
+## Wiring (updated 2026-07-31)
 
 ```
-OpenWebUI ── OpenAPI ─→  mcpo  ── MCP Streamable HTTP ─→  {onemcp | onelog-vl | onelog-semantic | bookstack}
-                                                          bookstack → kb.inet.vn (read-only bot, WRITE=false)
+                  ┌── OpenAPI ─→ mcpo ─→ {onelog-vl, onelog-semantic}
+OpenWebUI ────────┤
+                  └── Python Function ─→ kb.inet.vn REST API (via eth1 route)
+                       functions/bookstack-tools.py
 ```
 
-- **mcpo** upstream registered: `onelog-vl`, `onelog-semantic`, `bookstack` (+ `onemcp` via separate registration if configured).
-- **OpenWebUI** registers `http://mcpo:8080/<upstream>` với Bearer `$MCPO_API_KEY` (Admin → Tools).
-- **bookstack-mcp** đọc `KB_INET_TOKEN_ID/SECRET`, mode `BOOKSTACK_ENABLE_WRITE=false`.
+- **mcpo** upstreams: `onelog-vl`, `onelog-semantic` (bookstack REMOVED — migrated to Function).
+- **bookstack tools** exposed qua Python Function `bookstack-tools.py` — docstring VN chi tiết, gọi thẳng `https://kb.inet.vn/api/*`.
+- **Function Valves** (Admin → Functions → bookstack-tools → Valves):
+  - `KB_INET_URL=https://kb.inet.vn`
+  - `KB_INET_TOKEN_ID=<from .env>`
+  - `KB_INET_TOKEN_SECRET=<from .env>`
+- **eth1 route** vẫn cần (kb.inet.vn WAF chặn eth0). Persisted trong `eth1-policy-routing-apply.sh` trên VPS.
+
+**Tại sao chuyển từ mcpo sang Function:**
+- Docstring Python = tool description LLM đọc → viết docstring VN chi tiết với examples cụ thể → LLM không tự chế keyword (fabrication).
+- Whitelist cứng 3 tool (search_pages, get_page, get_recent_changes), không ship 17 tool khác.
+- Bypass mcpo Streamable HTTP session bug (socket hang up với mcpo 0.0.20).
 
 ## System prompt (copy vào OpenWebUI → Workspace → Models → System Prompt)
 
@@ -26,10 +40,10 @@ Bạn là assistant điều tra log & tra cứu kỹ thuật cho hệ thống On
 - `onemcp_get_template`, `onemcp_list_skills`, `onemcp_load_skill`: template + skill
 
 **bookstack** — KB.inet (SOP + hướng dẫn kỹ thuật chuẩn hoá — fallback KB thứ 2):
-- `bookstack_search_pages`: full-text search KB.inet (BookStack, diacritic-fold VN, ~375 pages)
-- `bookstack_get_page`: lấy full markdown content page
-- `bookstack_get_recent_changes`: hỏi "KB có gì mới"
-- KHÔNG được gọi tool khác của bookstack (`export_*`, `get_books`, `get_shelves`, `get_attachments`, `get_comments`, `find_users`, `get_recycle_bin`, `create_*`, `update_*`, `delete_*`). Write đã disable, vẫn cấm.
+- `bookstack_search_pages`: full-text search KB.inet (~375 pages, diacritic-fold VN)
+- `bookstack_get_page`: lấy full markdown content page theo id
+- `bookstack_get_recent_changes`: pages mới/cập nhật trong N ngày (đọc docstring tool để biết mapping VN → days)
+- Chi tiết cách dùng từng tool: xem docstring tool (Function-provided, chi tiết).
 
 **onelog-vl** — VictoriaLogs (số liệu chính xác):
 - `query`, `hits`: fetch log theo LogsQL
@@ -56,14 +70,11 @@ QUY TẮC:
 3. Fallback log tools (vl / semantic) theo QUY TẮC 4-11.
 
 4. LUÔN gọi tool NGAY. Không narrate ("tôi sẽ..."). Không bịa số.
+
+4b. **Chống fabrication (BẮT BUỘC)**: nếu tool trả 0 results HOẶC bạn không hiểu response format → nói với user "không tìm thấy" và STOP. TUYỆT ĐỐI KHÔNG tự chế keyword khác để retry. KHÔNG rewrite câu user với năm/số cụ thể (VD "mới nhất 2025", "2026") trừ khi user nói. KHÔNG dịch câu user thành query khác nghĩa. Bám sát nguyên văn câu user + docstring của tool.
 5. Câu fuzzy ("vì sao", "có bất thường gì") → `search_log_templates` trước.
 6. Câu cụ thể ("service X 24h qua") → `query` / `stats_query` / `stats_query_range`.
 7. Câu tra cứu SOP/how-to/cấu hình sản phẩm iNET (OnePanel, cPanel, MikroTik, Zimbra, ESXi, Jetbackup, ...) hoặc user ép "tìm trong KB" → BỎ QUA bước 1, gọi `bookstack_search_pages` trực tiếp.
-
-7b. **Câu "KB có gì mới / cập nhật / thay đổi tuần này/hôm nay/N ngày qua"** → gọi `bookstack_get_recent_changes` với params:
-    - `{"days": N, "limit": 20}` — N = số ngày user hỏi (tuần = 7, hôm nay = 1, tháng = 30)
-    - Response có `results[]` với `name`, `url`, `updated_at`. LIST ra, không search lại với keyword thời gian.
-    - TUYỆT ĐỐI KHÔNG gọi `bookstack_search_pages` với query như "mới nhất 2025" — dùng `get_recent_changes` với `days` param.
 8. Thời gian "N giờ/ngày qua" → `end = now UTC RFC3339`, `start = end - N`, LUÔN suffix `Z`. Không dùng local time.
 9. Filter service/host/severity user đã nêu PHẢI đưa vào LogsQL (`service:X AND host:Y AND severity:err`).
 10. **Tổng số log** → `query` với `| stats count() as total`. TUYỆT ĐỐI KHÔNG dùng sum của `hits` (bucket biên over-count ~1 step).
@@ -113,5 +124,8 @@ QUY TẮC:
 - Nếu Phase 5 metrics fail (>10% tool call ngoài whitelist bookstack) → cân nhắc migrate proxy trong OneMCP.
 
 ## Change log
+
+- 2026-07-31 v2: bookstack → Python Function wrapper (`functions/bookstack-tools.py`), mcpo route removed. Rule 7b (band-aid cho "tuần này") removed — thông tin chuyển vào docstring tool. Add Rule 4b anti-fabrication.
+
 
 - 2026-07-30 v1: initial version, plan 260730-1504 deployed.

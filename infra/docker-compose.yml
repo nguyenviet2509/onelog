@@ -454,42 +454,19 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # bookstack-mcp — bridge KB.inet (BookStack) into OpenWebUI via mcpo.
-  # Plan 260730-1504-kb-inet-bookstack-mcp-bridge. Read-only (WRITE=false).
-  # Trust boundary = docker internal network; no bearer auth on this endpoint.
-  # Token owner = dedicated read-only bot user in BookStack (see phase-01).
-  bookstack-mcp:
-    image: ghcr.io/ttpears/bookstack-mcp:${BOOKSTACK_MCP_IMAGE_TAG:-latest}
-    container_name: ragstack-bookstack-mcp
-    restart: unless-stopped
-    profiles: [chat]
-    environment:
-      MCP_TRANSPORT: http
-      MCP_HTTP_PORT: "8080"
-      MCP_HTTP_HOST: 0.0.0.0
-      MCP_HTTP_PATH: /mcp
-      # Allowed Host headers (DNS rebinding protection). Only names that
-      # mcpo will resolve to reach this container.
-      MCP_HTTP_ALLOWED_HOSTS: bookstack-mcp,bookstack-mcp:8080,localhost,localhost:8080
-      BOOKSTACK_BASE_URL: ${KB_INET_BASE_URL:-https://kb.inet.vn}
-      BOOKSTACK_TOKEN_ID: ${KB_INET_TOKEN_ID:?KB_INET_TOKEN_ID must be set}
-      BOOKSTACK_TOKEN_SECRET: ${KB_INET_TOKEN_SECRET:?KB_INET_TOKEN_SECRET must be set}
-      # NEVER flip to true. LLM must not be able to mutate KB.
-      BOOKSTACK_ENABLE_WRITE: "false"
-      BOOKSTACK_INSECURE_SKIP_TLS_VERIFY: "false"
-    networks:
-      - default
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # NOTE: bookstack-mcp service removed 2026-07-31.
+  # KB.inet integration migrated to OpenWebUI Python Function
+  # (infra/openwebui/functions/bookstack-tools.py) — calls kb.inet.vn REST API
+  # directly. Reasons: (1) richer VN docstring per tool → LLM won't fabricate
+  # keywords, (2) bypass mcpo/bookstack-mcp Streamable HTTP session bug,
+  # (3) whitelist to 3 tools without shipping 17 unused.
+  # Plan 260731-0847-bookstack-function-wrapper.
 
   # mcpo — MCP-to-OpenAPI bridge (Phase 3 addendum). OpenWebUI doesn't speak
-  # MCP natively (SSE/Streamable HTTP) — mcpo proxies mcp-vl + mcp-semantic +
-  # bookstack-mcp as OpenAPI REST endpoints that OpenWebUI can register under
-  # Workspace → Tools. Config baked with token at container start via sed
-  # (mcpo doesn't expand env vars in config.json).
+  # MCP natively (SSE/Streamable HTTP) — mcpo proxies mcp-vl + mcp-semantic
+  # as OpenAPI REST endpoints that OpenWebUI can register under Workspace →
+  # Tools. Config baked with token at container start via sed (mcpo doesn't
+  # expand env vars in config.json).
   mcpo:
     image: ghcr.io/open-webui/mcpo:${MCPO_IMAGE_TAG:-main}
     container_name: ragstack-mcpo
@@ -512,7 +489,6 @@ services:
     depends_on:
       - mcp-vl
       - mcp-semantic
-      - bookstack-mcp
       - caddy
     # mcpo discovers tools ONCE at startup (no retry). If upstream flaps at boot,
     # openapi paths stay empty forever → OpenWebUI sees 0 tools → LLM hallucinates
@@ -522,11 +498,10 @@ services:
     # Docker healthcheck only marks unhealthy — doesn't restart. `|| kill 1` exits
     # PID 1 (mcpo) so `restart: unless-stopped` kicks in and mcpo re-discovers
     # tools on fresh process.
-    # NOTE: `bookstack` upstream (KB.inet) is intentionally OMITTED from this
-    # essential list. If KB.inet is unreachable or token expired, mcpo would
-    # otherwise kill-loop and take down onelog-vl + onelog-semantic (log tools),
-    # which are critical. bookstack failure = degraded chat (no KB search), not
-    # broken chat. Plan 260730-1504-kb-inet-bookstack-mcp-bridge.
+    # NOTE: bookstack removed from mcpo entirely 2026-07-31 — migrated to
+    # OpenWebUI Python Function (functions/bookstack-tools.py). Only mcpo
+    # essentials (onelog-vl + onelog-semantic) remain.
+    # Plan 260731-0847-bookstack-function-wrapper.
     healthcheck:
       test:
         - CMD-SHELL

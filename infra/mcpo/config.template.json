@@ -13,10 +13,6 @@
       "headers": {
         "Authorization": "Bearer __MCP_TOKEN__"
       }
-    },
-    "bookstack": {
-      "type": "streamable_http",
-      "url": "http://bookstack-mcp:8080/mcp"
     }
   }
 }

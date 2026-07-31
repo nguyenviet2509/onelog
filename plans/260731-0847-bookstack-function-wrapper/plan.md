@@ -3,7 +3,7 @@ name: bookstack-function-wrapper
 title: Replace bookstack mcpo route with Python Function wrapper
 slug: bookstack-function-wrapper
 date: 2026-07-31
-status: pending
+status: completed
 owner: chuongdt@inet.vn
 mode: --fast
 supersedes:
@@ -62,13 +62,17 @@ Rule single-line thêm vào system prompt cuối:
 Nếu tool trả 0 results HOẶC bạn không hiểu response format → nói với user "không tìm thấy". TUYỆT ĐỐI KHÔNG tự chế keyword khác để retry. KHÔNG rewrite câu user với năm/số cụ thể trừ khi user nói.
 ```
 
-## Success criteria
+## Success criteria — VERIFIED 2026-07-31 09:06
 
-- [ ] Function loaded trong OpenWebUI, 3 tool visible với tên `bookstack_search_pages`, `bookstack_get_page`, `bookstack_get_recent_changes`
-- [ ] Câu "KB có gì mới tuần này" → LLM call `bookstack_get_recent_changes(days=7)` — không rewrite keyword
-- [ ] Câu "Cách khắc phục Redis OOM cPanel" → `bookstack_search_pages` cite kb.inet.vn/...
-- [ ] bookstack-mcp container removed, mcpo config cleaned
-- [ ] System prompt gọn lại (xoá Rule 7b — user đã làm, thêm anti-fab rule cuối)
+- [x] Tool loaded trong OpenWebUI (Workspace → Tools), 3 method visible
+- [x] "KB có gì mới tuần này" → `bookstack_get_recent_changes(days=7)`, 0 results → LLM nói thẳng "không có", KHÔNG retry với keyword bịa
+- [x] "KB có gì mới trong 2 tháng" → LLM auto map "2 tháng"→days=60, trả 20+ pages với updated_at
+- [x] "Redis OOM cPanel" → `bookstack_search_pages` + `bookstack_get_page`, runbook đầy đủ cite kb.inet.vn
+- [x] "Zimbra forwarding" → `bookstack_search_pages("Zimbra forwarding")`, 6+ pages cite links
+- [x] bookstack-mcp container removed, mcpo cleaned (2 upstreams remain)
+- [x] System prompt: Rule 7b removed, Rule 4b anti-fabrication added
+
+## Plan status: completed (2026-07-31 09:06)
 
 ## Risks
 

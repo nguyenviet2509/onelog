@@ -528,8 +528,8 @@ services:
     volumes:
       - ./data/openwebui:/app/backend/data
       # MCP tools wired via mcpo bridge (see mcpo service above) — registered
-      # manually in OpenWebUI Admin → Tools with OpenAPI URL. OpenWebUI doesn't
-      # read mcp-config.json natively.
+      # manually in OpenWebUI Admin → Tools with OpenAPI URL. KB.inet via
+      # OpenWebUI Python Function (functions/bookstack-tools.py, plan 260731-0847).
       # OneMCP self-signed cert (plan 260723-1200 Phase 2) — mount read-only,
       # Function/Action pass verify=<path> vào httpx directly (không đụng system CA
       # trust store để tránh phá image entrypoint). Path này khớp với default

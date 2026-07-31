@@ -3,7 +3,7 @@ name: kb-inet-bookstack-mcp-bridge
 title: KB.inet ↔ OpenWebUI via bookstack-mcp (read-only bridge)
 slug: kb-inet-bookstack-mcp-bridge
 date: 2026-07-30
-status: pending
+status: completed
 owner: chuongdt@inet.vn
 mode: --fast
 blockedBy: []
@@ -31,11 +31,14 @@ Zero-copy dữ liệu. Không đụng OneMCP core code.
 
 | # | Phase | File | Status |
 |---|-------|------|--------|
-| 1 | Prep BookStack (bot user + token + KB audit) | phase-01-bookstack-prep.md | pending |
-| 2 | Deploy bookstack-mcp container | phase-02-deploy-container.md | pending |
-| 3 | ~~Caddy route~~ (deferred — docker internal đủ) | phase-03-caddy-route.md | deferred |
-| 4 | OpenWebUI mcp-config.json + routing prompt | phase-04-openwebui-routing.md | pending |
-| 5 | Verify + 2-week observability | phase-05-verify-observability.md | pending |
+| 1 | Prep BookStack (bot user + token + KB audit) | phase-01-bookstack-prep.md | ✅ done (2026-07-30) |
+| 2 | Deploy bookstack-mcp container | phase-02-deploy-container.md | ✅ done (2026-07-30) |
+| 3 | ~~Caddy route~~ (deferred) | phase-03-caddy-route.md | deferred |
+| 4 | OpenWebUI wiring + routing prompt | phase-04-openwebui-routing.md | ✅ done (2026-07-30) |
+| 5 | Verify + observability | phase-05-verify-observability.md | ✅ done (2026-07-31) — E2E verified |
+| 6 | **eth1 route workaround** (unplanned) | see cook report | ✅ persisted (2026-07-31) |
+
+**Plan status:** `completed` (2026-07-31 08:32)
 
 ## Dependencies
 

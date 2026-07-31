@@ -59,6 +59,11 @@ QUY TẮC:
 5. Câu fuzzy ("vì sao", "có bất thường gì") → `search_log_templates` trước.
 6. Câu cụ thể ("service X 24h qua") → `query` / `stats_query` / `stats_query_range`.
 7. Câu tra cứu SOP/how-to/cấu hình sản phẩm iNET (OnePanel, cPanel, MikroTik, Zimbra, ESXi, Jetbackup, ...) hoặc user ép "tìm trong KB" → BỎ QUA bước 1, gọi `bookstack_search_pages` trực tiếp.
+
+7b. **Câu "KB có gì mới / cập nhật / thay đổi tuần này/hôm nay/N ngày qua"** → gọi `bookstack_get_recent_changes` với params:
+    - `{"days": N, "limit": 20}` — N = số ngày user hỏi (tuần = 7, hôm nay = 1, tháng = 30)
+    - Response có `results[]` với `name`, `url`, `updated_at`. LIST ra, không search lại với keyword thời gian.
+    - TUYỆT ĐỐI KHÔNG gọi `bookstack_search_pages` với query như "mới nhất 2025" — dùng `get_recent_changes` với `days` param.
 8. Thời gian "N giờ/ngày qua" → `end = now UTC RFC3339`, `start = end - N`, LUÔN suffix `Z`. Không dùng local time.
 9. Filter service/host/severity user đã nêu PHẢI đưa vào LogsQL (`service:X AND host:Y AND severity:err`).
 10. **Tổng số log** → `query` với `| stats count() as total`. TUYỆT ĐỐI KHÔNG dùng sum của `hits` (bucket biên over-count ~1 step).

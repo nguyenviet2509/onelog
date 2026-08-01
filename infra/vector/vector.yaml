@@ -1,6 +1,6 @@
 # Vector pipeline — PoC stage
 # Sources: syslog UDP/TCP from 3 demo servers
-# Sinks: VictoriaLogs (full), file (debug)
+# Sinks: VictoriaLogs (full), NATS (WARN+)
 # Future Phase 02: + filter WARN+ → NATS → indexer
 
 api:
@@ -418,9 +418,3 @@ sinks:
     encoding:
       codec: json
 
-  debug_file:
-    type: file
-    inputs: [redact]
-    path: /var/lib/vector/debug-%Y-%m-%d.log
-    encoding:
-      codec: json

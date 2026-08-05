@@ -223,6 +223,9 @@ class Action:
 
     async def _rpc(self, method: str, params: dict[str, Any], username: str) -> dict[str, Any]:
         url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
+        # TODO(sso-phase3): X-Onemcp-User path deprecated. Backend accepts it in
+        # SSO mode per waiver. Long-term: add per-user API key impersonation
+        # (backend feature TBD) or move actions to portal-authenticated calls.
         headers = {"X-Onemcp-User": username, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False

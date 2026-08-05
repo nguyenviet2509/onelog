@@ -8,7 +8,10 @@ requirements: httpx
 
 # Function OpenWebUI · plan 260723-1200-onemcp-openwebui-bridge Phase 2.
 # LLM tự gọi các tool này. `onemcp_search` hardcode filter status=published để chỉ
-# trả entries đã verify. Auth qua static bot user (X-Onemcp-User: openwebui-bot).
+# trả entries đã verify.
+# Auth dual-mode (plan 260727-0843-onemcp-gitlab-sso Phase 3):
+#   - BOT_KEY set (non-empty) → X-Onemcp-Key: <key>  (preferred, SSO-native)
+#   - BOT_KEY empty            → X-Onemcp-User: <BOT_USER>  (fallback, legacy waiver)
 # TLS verify default TRUE — mount OneMCP CA cert vào openwebui container ở
 # /usr/local/share/ca-certificates/onemcp.crt + update-ca-certificates (Phase 1 gate V2).
 
@@ -26,9 +29,16 @@ class Tools:
             default="https://10.200.0.44",
             description="Base URL của OneMCP nginx (không kèm /api/mcp). Prod: 10.200.0.44, Lab: 192.168.122.56.",
         )
+        BOT_KEY: str = Field(
+            default="",
+            description="X-Onemcp-Key (API key, preferred over BOT_USER when set). Format: omk_... "
+            "Set via OpenWebUI Admin UI → Functions → onemcp-tools → Valves. "
+            "When non-empty, BOT_USER is ignored.",
+        )
         BOT_USER: str = Field(
             default="openwebui-bot",
-            description="X-Onemcp-User header. Bot contributor role — submit pending only.",
+            description="X-Onemcp-User header (legacy fallback). Used only when BOT_KEY is empty. "
+            "Bot contributor role — submit pending only.",
         )
         ONEMCP_CA_PATH: str = Field(
             default="/opt/onemcp-ca.crt",
@@ -47,10 +57,12 @@ class Tools:
         t0 = time.perf_counter()
         tool_name = params.get("name", method) if isinstance(params, dict) else method
         url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
-        headers = {
-            "X-Onemcp-User": self.valves.BOT_USER,
-            "Content-Type": "application/json",
-        }
+        # Dual-auth: prefer API key (SSO-native) when valve is set, else legacy bot user.
+        if self.valves.BOT_KEY:
+            auth_headers = {"X-Onemcp-Key": self.valves.BOT_KEY}
+        else:
+            auth_headers = {"X-Onemcp-User": self.valves.BOT_USER}
+        headers = {**auth_headers, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
         verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
         status = "ok"

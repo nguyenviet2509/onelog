@@ -54,3 +54,9 @@ infra/ansible/inventory.ini
 
 # OneMCP junction (read-only mirror to D:\Vietnt\Project\onemcp for cross-project context)
 /onemcp
+
+# OneDocs junction (mirror to D:\Vietnt\Project\onedocs for cross-project build context)
+/onedocs
+
+# Authway junction (mirror to D:\Vietnt\Project\authway — Zitadel selfhost project for IdP)
+/authway

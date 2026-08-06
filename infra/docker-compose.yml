@@ -88,8 +88,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # NARROW bind cho df probe data disk. KHÔNG bind rootfs (bảo vệ secrets
       # khỏi Vector container — combined với docker.sock = takeover primitive).
-      # rslave để thấy nested mount khi /opt/ragstack/data là separate FS.
-      - /opt/ragstack/data:/host/data:ro,rslave
+      # rslave để thấy nested mount khi /opt/onelog/infra/data là separate FS.
+      - /opt/onelog/infra/data:/host/data:ro,rslave
     depends_on:
       - victorialogs
       - nats

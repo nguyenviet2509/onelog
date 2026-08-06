@@ -489,7 +489,7 @@ groups:
 
 
   # ─────────────────────────────────────────────────────────────────────────
-  # DISK CAPACITY — 5 rules: warning@75 + critical@88 cho / và /opt/ragstack/data,
+  # DISK CAPACITY — 5 rules: warning@75 + critical@88 cho / và /opt/onelog/infra/data,
   # cộng DiskProbeStale detect probe silent.
   #
   # LogsQL notes (khớp precedent llm_cost + openwebui-db):
@@ -502,7 +502,7 @@ groups:
     type: vlogs
     interval: 5m
     rules:
-      # Data disk /opt/ragstack/data — warning 75%, notify sớm cho ops proactive.
+      # Data disk /opt/onelog/infra/data — warning 75%, notify sớm cho ops proactive.
       - alert: DiskDataHighWarn
         expr: |
           service:logserver-disk-monitor source_stream:vector-exec-probe _time:15m
@@ -515,7 +515,7 @@ groups:
           component: data-disk
         annotations:
           summary: "Data disk {{ $labels.mount }} > 75% used"
-          description: "/opt/ragstack/data đang {{ $value }}% used. Kiểm tra VL retention hoặc backup archive size. Trigger tune VL_RETENTION nếu > 80%."
+          description: "/opt/onelog/infra/data đang {{ $value }}% used. Kiểm tra VL retention hoặc backup archive size. Trigger tune VL_RETENTION nếu > 80%."
 
       # Data disk critical 88% — page immediately, không đợi for:
       - alert: DiskDataHighCrit
@@ -530,7 +530,7 @@ groups:
           component: data-disk
         annotations:
           summary: "Data disk {{ $labels.mount }} > 88% CRITICAL"
-          description: "/opt/ragstack/data đang {{ $value }}% — sắp vỡ. Giảm VL_RETENTION, xóa backup cũ, hoặc thêm ổ ngay."
+          description: "/opt/onelog/infra/data đang {{ $value }}% — sắp vỡ. Giảm VL_RETENTION, xóa backup cũ, hoặc thêm ổ ngay."
 
       # Root partition / — warning 75%. Fed bởi host cron probe-host-disk-root.sh.
       - alert: DiskRootHighWarn

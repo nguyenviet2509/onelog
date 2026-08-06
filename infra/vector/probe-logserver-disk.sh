@@ -1,7 +1,7 @@
 #!/bin/sh
-# Vector exec source probe — data disk /opt/ragstack/data via bind mount /host/data.
+# Vector exec source probe — data disk /opt/onelog/infra/data via bind mount /host/data.
 # Runs inside Vector container (alpine + busybox).
-# Compose bind: /opt/ragstack/data:/host/data:ro,rslave (rslave để thấy nested mount).
+# Compose bind: /opt/onelog/infra/data:/host/data:ro,rslave (rslave để thấy nested mount).
 # Output: 1 dòng JSON per run về stdout, Vector parse qua transform logserver_disk_parse.
 set -eu
 
@@ -10,7 +10,7 @@ target=/host/data
 
 # Guard: mount thật sự visible. Nếu bind + rslave chưa apply đúng, emit error event.
 if ! [ -d "$target" ]; then
-  printf '{"_time":"%s","_msg":"disk_probe_error","service":"logserver-disk-monitor","source_stream":"vector-exec-probe","host":"logserver","mount":"/opt/ragstack/data","probe_error":"target_not_mounted"}\n' "$ts"
+  printf '{"_time":"%s","_msg":"disk_probe_error","service":"logserver-disk-monitor","source_stream":"vector-exec-probe","host":"logserver","mount":"/opt/onelog/infra/data","probe_error":"target_not_mounted"}\n' "$ts"
   exit 0
 fi
 
@@ -25,6 +25,6 @@ df -PB1 "$target" 2>/dev/null | tail -n +2 | tr '\n' ' ' | awk -v ts="$ts" '
     # used_pct format "NN%" → strip %
     sub(/%$/, "", used_pct_str);
     if (size == "" || used_pct_str == "") next;
-    printf "{\"_time\":\"%s\",\"_msg\":\"disk_usage\",\"service\":\"logserver-disk-monitor\",\"source_stream\":\"vector-exec-probe\",\"host\":\"logserver\",\"mount\":\"/opt/ragstack/data\",\"fs\":\"%s\",\"size_bytes\":%s,\"used_bytes\":%s,\"avail_bytes\":%s,\"used_pct\":%s}\n", ts, fs, size, used, avail, used_pct_str;
+    printf "{\"_time\":\"%s\",\"_msg\":\"disk_usage\",\"service\":\"logserver-disk-monitor\",\"source_stream\":\"vector-exec-probe\",\"host\":\"logserver\",\"mount\":\"/opt/onelog/infra/data\",\"fs\":\"%s\",\"size_bytes\":%s,\"used_bytes\":%s,\"avail_bytes\":%s,\"used_pct\":%s}\n", ts, fs, size, used, avail, used_pct_str;
   }
 '

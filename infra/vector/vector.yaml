@@ -67,7 +67,7 @@ sources:
       - /bin/sh
       - /etc/vector/probe-openwebui-db.sh
 
-  # Data disk probe — poll df /opt/ragstack/data (via bind /host/data) mỗi 5m.
+  # Data disk probe — poll df /opt/onelog/infra/data (via bind /host/data) mỗi 5m.
   # Bind mount narrow, KHÔNG expose rootfs. Compose khai báo bind + rslave.
   logserver_disk_size:
     type: exec

@@ -1,0 +1,29 @@
+provider = "oidc"
+oidc_issuer_url = "http://10.200.0.125"
+insecure_oidc_allow_unverified_email = true
+
+client_id = "YOUR_ZITADEL_CLIENT_ID"
+client_secret = "YOUR_ZITADEL_CLIENT_SECRET"
+
+redirect_url = "http://10.200.0.30/oauth2/callback"
+
+cookie_secret = "REPLACE_WITH_32BYTE_BASE64URL_SECRET"
+# Generate: python3 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+# NO cookie_domains — Chrome RFC 6265 doesn't accept Domain=IP
+cookie_secure = false  # HTTP-only pilot; set true when TLS enabled
+cookie_httponly = true
+cookie_samesite = "lax"
+cookie_expire = "168h"
+cookie_name = "_onelog_oauth2"
+
+email_domains = ["*"]
+skip_provider_button = true
+set_xauthrequest = true
+pass_access_token = true
+pass_authorization_header = true
+reverse_proxy = true
+
+http_address = "0.0.0.0:4180"
+whitelist_domains = ["10.200.0.30"]
+
+scope = "openid profile email offline_access"

@@ -46,6 +46,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# oauth2-proxy actual config (contains client_secret + cookie_secret — never commit)
+infra/oauth2-proxy/oauth2-proxy.cfg
+
 # mTLS artifacts — never commit private keys or CA state
 infra/ansible/tls-certs/
 infra/vector/certs/

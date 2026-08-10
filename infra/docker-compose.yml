@@ -554,6 +554,14 @@ services:
       ENABLE_SIGNUP: "false"
       WEBUI_SECRET_KEY: ${OPENWEBUI_SECRET_KEY}
 
+      # SSO via oauth2-proxy IAP (plan 260810-1021-sso). Caddy forward_auth
+      # injects X-Auth-Request-Email after Zitadel OIDC validates the session.
+      # OpenWebUI auto-provisions user on first request with matching email.
+      # ENABLE_SIGNUP=false above blocks direct form signup; trusted header bypass
+      # is the ONLY provisioning path after admin bootstrap.
+      WEBUI_AUTH_TRUSTED_EMAIL_HEADER: X-Auth-Request-Email
+      WEBUI_AUTH_TRUSTED_NAME_HEADER: X-Auth-Request-User
+
       # MCP wired via mcpo bridge (separate service). Two paths to register:
       # 1. Auto — set TOOL_SERVER_CONNECTIONS env below (JSON array).
       # 2. Manual — user Settings → Tools → + Add Connection with URL
@@ -594,6 +602,22 @@ services:
       - ./data/step-ca:/home/step
     ports:
       - "127.0.0.1:9000:9000"
+
+  # oauth2-proxy — IAP sidecar for SSO via Zitadel OIDC (plan 260810-1021-sso).
+  # Caddy forward_auth calls /oauth2/auth; on 401 Caddy redirects to /oauth2/start.
+  # NO port exposure to host — only Caddy reaches it via docker DNS oauth2-proxy:4180.
+  # Actual cfg (secrets) SCP'd to VPS separately; .cfg.example committed for bootstrap.
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    container_name: ragstack-oauth2-proxy
+    restart: unless-stopped
+    command: ["--config=/etc/oauth2-proxy.cfg"]
+    volumes:
+      - ./oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
+    networks:
+      default:
+        aliases:
+          - oauth2-proxy
 
   caddy:
     image: caddy:${CADDY_IMAGE_TAG:-2-alpine}
@@ -662,6 +686,19 @@ services:
     environment:
       GF_INSTALL_PLUGINS: victoriametrics-logs-datasource
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # Auth proxy via oauth2-proxy IAP (plan 260810-1021-sso).
+      # Caddy forward_auth injects X-Auth-Request-Email after Zitadel validates session.
+      # Grafana auto-provisions user on first request; basic auth / login form disabled.
+      # Whitelist covers docker bridge ranges so Caddy container IP is trusted.
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: X-Auth-Request-Email
+      GF_AUTH_PROXY_HEADER_PROPERTY: username
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_HEADERS: "Email:X-Auth-Request-Email Name:X-Auth-Request-User"
+      GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "true"
+      GF_AUTH_PROXY_WHITELIST: "172.16.0.0/12,10.0.0.0/8"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
     depends_on:
       - victorialogs
     logging:

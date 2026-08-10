@@ -154,13 +154,15 @@
             }
         }
 
-        # ── OpenWebUI root — forward_auth gated ──
-        # WEBUI_AUTH_TRUSTED_EMAIL_HEADER=X-Auth-Request-Email auto-provisions user.
+        # ── OpenWebUI root — forward_auth gated, shared admin identity ──
+        # SSO gate: oauth2-proxy verifies Zimbra LDAP login. All authenticated users
+        # share the admin account (support@inet.vn) — trust header hardcoded here
+        # to override oauth2-proxy's per-user email. Rationale: OpenWebUI resources
+        # (models, tools, functions, knowledge, chats) are shared team-wide.
         # Catch-all: all more-specific handles above match first.
         handle {
             forward_auth oauth2-proxy:4180 {
                 uri /oauth2/auth
-                copy_headers X-Auth-Request-Email X-Auth-Request-User X-Auth-Request-Preferred-Username
                 @unauth status 401
                 handle_response @unauth {
                     redir * /oauth2/start?rd={http.request.uri} 302
@@ -168,8 +170,8 @@
             }
             reverse_proxy openwebui:8080 {
                 flush_interval -1
-                header_up X-Forwarded-Email {http.request.header.X-Auth-Request-Email}
-                header_up X-Forwarded-User {http.request.header.X-Auth-Request-User}
+                header_up X-Auth-Request-Email "support@inet.vn"
+                header_up X-Auth-Request-Preferred-Username "admin"
             }
         }
     }
@@ -196,11 +198,10 @@ http://webui.local {
                 flush_interval -1
             }
         }
-        # OpenWebUI — forward_auth gated on webui.local too
+        # OpenWebUI — forward_auth gated on webui.local, shared admin identity
         handle {
             forward_auth oauth2-proxy:4180 {
                 uri /oauth2/auth
-                copy_headers X-Auth-Request-Email X-Auth-Request-User X-Auth-Request-Preferred-Username
                 @unauth status 401
                 handle_response @unauth {
                     redir * /oauth2/start?rd={http.request.uri} 302
@@ -208,8 +209,8 @@ http://webui.local {
             }
             reverse_proxy openwebui:8080 {
                 flush_interval -1
-                header_up X-Forwarded-Email {http.request.header.X-Auth-Request-Email}
-                header_up X-Forwarded-User {http.request.header.X-Auth-Request-User}
+                header_up X-Auth-Request-Email "support@inet.vn"
+                header_up X-Auth-Request-Preferred-Username "admin"
             }
         }
     }

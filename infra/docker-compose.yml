@@ -560,7 +560,9 @@ services:
       # ENABLE_SIGNUP=false above blocks direct form signup; trusted header bypass
       # is the ONLY provisioning path after admin bootstrap.
       WEBUI_AUTH_TRUSTED_EMAIL_HEADER: X-Auth-Request-Email
-      WEBUI_AUTH_TRUSTED_NAME_HEADER: X-Auth-Request-User
+      WEBUI_AUTH_TRUSTED_NAME_HEADER: X-Auth-Request-Preferred-Username
+      # Sign out → chain through oauth2-proxy to clear IAP cookie + Zitadel session
+      WEBUI_AUTH_SIGNOUT_REDIRECT_URL: /oauth2/sign_out?rd=/
 
       # MCP wired via mcpo bridge (separate service). Two paths to register:
       # 1. Auto — set TOOL_SERVER_CONNECTIONS env below (JSON array).

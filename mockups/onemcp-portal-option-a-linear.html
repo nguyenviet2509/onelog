@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OneMCP Portal — Option A · Linear-style minimal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { darkMode: 'class' };
+</script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #fafafa;
+    --panel-2: #f4f4f5;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+    --text: #18181b;
+    --text-dim: #52525b;
+    --text-mute: #a1a1aa;
+    --brand: #5b5bd6;
+    --brand-soft: #eeeeff;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --danger: #dc2626;
+  }
+  .dark {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --panel-2: #171717;
+    --border: #262626;
+    --border-strong: #333333;
+    --text: #fafafa;
+    --text-dim: #a1a1aa;
+    --text-mute: #71717a;
+    --brand: #a5a5ff;
+    --brand-soft: #1a1a3a;
+  }
+  html, body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    letter-spacing: -0.005em;
+  }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .subtle-b { border-bottom: 1px solid var(--border); }
+  .subtle-r { border-right: 1px solid var(--border); }
+  .chip { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:4px; font-size:11px; font-weight:500; border:1px solid var(--border-strong); color:var(--text-dim); background:var(--panel-2); }
+  .chip-brand { background:var(--brand-soft); color:var(--brand); border-color:transparent; }
+  .chip-ok { color:var(--ok); border-color:transparent; background: color-mix(in oklab, var(--ok) 12%, transparent); }
+  .chip-warn { color:var(--warn); border-color:transparent; background: color-mix(in oklab, var(--warn) 12%, transparent); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:6px; font-size:13px; border:1px solid var(--border-strong); background:var(--panel); color:var(--text); cursor:pointer; font-weight:500; transition: all .12s; }
+  .btn:hover { background: var(--panel-2); }
+  .btn-primary { background:var(--text); border-color:var(--text); color:var(--bg); }
+  .btn-primary:hover { opacity: .9; background: var(--text); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+  .btn-ghost:hover { background: var(--panel-2); color: var(--text); }
+  .input { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; color: var(--text); width: 100%; }
+  .input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 15%, transparent); }
+  .kbd { font-family: ui-monospace, monospace; font-size: 10px; padding: 1px 5px; border:1px solid var(--border-strong); border-radius:3px; background:var(--panel-2); color:var(--text-mute); }
+  .nav-item { display:flex; align-items:center; gap:9px; padding:5px 10px; border-radius:5px; color:var(--text-dim); font-size:13px; cursor:pointer; font-weight:450; }
+  .nav-item:hover { background: var(--panel-2); color: var(--text); }
+  .nav-item.active { background: var(--panel-2); color: var(--text); font-weight:500; }
+  .nav-section { font-size:11px; color:var(--text-mute); text-transform:uppercase; letter-spacing:.08em; padding:14px 10px 4px; font-weight:600; }
+  .screen { display:none; }
+  .screen.active { display:block; }
+  .tab-btn { padding: 4px 10px; border-radius: 5px; font-size: 12px; color: var(--text-dim); cursor: pointer; font-weight:500; }
+  .tab-btn.active { background: var(--panel-2); color: var(--text); }
+  .row-hover:hover { background: var(--panel-2); }
+  .stat-num { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  code, .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+  .review-banner { background: color-mix(in oklab, var(--brand) 8%, var(--bg)); border-bottom: 1px solid var(--border); }
+  a { color: var(--brand); }
+  .icon-btn { padding:5px; border-radius:5px; color:var(--text-dim); cursor:pointer; }
+  .icon-btn:hover { background:var(--panel-2); color:var(--text); }
+  .divider-v { width:1px; background:var(--border); height:16px; margin:0 4px; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="review-banner px-6 py-2.5 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-sm font-semibold">OneMCP Portal — Option A</span>
+    <span class="chip chip-brand">Linear-style · Minimal</span>
+    <span class="text-xs" style="color:var(--text-mute)">Focus: typography, whitespace, monochrome</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button class="btn btn-ghost text-xs" onclick="document.documentElement.classList.toggle('dark')">☾ Toggle theme</button>
+    <a href="onemcp-portal-option-b-notion.html" class="text-xs">→ Option B</a>
+    <a href="onemcp-portal-option-c-command.html" class="text-xs">→ Option C</a>
+  </div>
+</div>
+
+<div class="subtle-b px-6 py-1.5 flex items-center gap-1 flex-wrap" style="background:var(--panel)">
+  <span class="text-xs mr-2" style="color:var(--text-mute)">Screens:</span>
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="artifacts">Artifacts</button>
+  <button class="tab-btn" data-tab="detail">Artifact detail</button>
+  <button class="tab-btn" data-tab="search">Search</button>
+</div>
+
+<div class="flex" style="min-height: calc(100vh - 84px)">
+  <!-- SIDEBAR -->
+  <aside class="subtle-r" style="width:236px; background:var(--panel)">
+    <div class="px-4 py-3.5 subtle-b flex items-center gap-2">
+      <div class="w-6 h-6 rounded" style="background:var(--text)"></div>
+      <div>
+        <div class="text-sm font-semibold leading-tight">OneMCP</div>
+        <div class="text-xs" style="color:var(--text-mute)">iNET · Support</div>
+      </div>
+      <button class="icon-btn ml-auto text-xs">⌄</button>
+    </div>
+    <div class="p-2">
+      <div class="relative mb-2">
+        <input class="input pl-7 text-xs py-1.5" placeholder="Search or jump to..." />
+        <span class="absolute left-2 top-1.5 text-xs" style="color:var(--text-mute)">⌕</span>
+        <span class="kbd absolute right-2 top-1.5">⌘K</span>
+      </div>
+      <div class="nav-item active">◐ Dashboard</div>
+      <div class="nav-item">✎ New artifact</div>
+      <div class="nav-item">☰ Artifacts <span class="ml-auto text-xs" style="color:var(--text-mute)">248</span></div>
+      <div class="nav-item">⌕ Search</div>
+
+      <div class="nav-section">Workspace</div>
+      <div class="nav-item">◉ Spaces</div>
+      <div class="nav-item">⌗ Templates</div>
+      <div class="nav-item">⚏ Skills</div>
+
+      <div class="nav-section">Account</div>
+      <div class="nav-item">⚿ API keys</div>
+      <div class="nav-item">☺ Profile</div>
+      <div class="nav-item">◈ Health</div>
+    </div>
+    <div class="absolute bottom-0 p-3 subtle-b w-[236px]" style="border-top:1px solid var(--border)">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold" style="background:var(--brand-soft); color:var(--brand)">CD</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-medium truncate">chuongdt</div>
+          <div class="text-xs" style="color:var(--text-mute)">Admin</div>
+        </div>
+        <button class="icon-btn text-xs">⋯</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="flex-1" style="background:var(--bg)">
+
+    <!-- DASHBOARD -->
+    <section class="screen active" data-screen="dashboard">
+      <div class="px-8 py-6 max-w-6xl">
+        <div class="flex items-baseline justify-between mb-6">
+          <div>
+            <h1 class="text-xl font-semibold tracking-tight">Good morning, Chuong</h1>
+            <p class="text-sm mt-1" style="color:var(--text-dim)">248 artifacts · 3 spaces · updated 2 min ago</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn"><span>⌘</span> Command</button>
+            <button class="btn btn-primary">✎ New artifact</button>
+          </div>
+        </div>
+
+        <!-- STATS -->
+        <div class="grid grid-cols-4 gap-3 mb-6">
+          <div class="panel p-4">
+            <div class="text-xs" style="color:var(--text-mute)">Total artifacts</div>
+            <div class="stat-num mt-1.5">248</div>
+            <div class="text-xs mt-1" style="color:var(--ok)">+12 this week</div>
+          </div>
+          <div class="panel p-4">
+            <div class="text-xs" style="color:var(--text-mute)">Draft</div>
+            <div class="stat-num mt-1.5">14</div>
+            <div class="text-xs mt-1" style="color:var(--text-mute)">5 chờ review</div>
+          </div>
+          <div class="panel p-4">
+            <div class="text-xs" style="color:var(--text-mute)">Search / ngày</div>
+            <div class="stat-num mt-1.5">1,842</div>
+            <div class="text-xs mt-1" style="color:var(--ok)">↑ 8%</div>
+          </div>
+          <div class="panel p-4">
+            <div class="text-xs" style="color:var(--text-mute)">Active users</div>
+            <div class="stat-num mt-1.5">17</div>
+            <div class="text-xs mt-1" style="color:var(--text-mute)">của 24</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+          <div class="col-span-2 panel">
+            <div class="px-4 py-3 subtle-b flex items-center justify-between">
+              <div class="text-sm font-semibold">Recent activity</div>
+              <a class="text-xs">View all →</a>
+            </div>
+            <div class="divide-y" style="border-color:var(--border)">
+              <div class="px-4 py-2.5 row-hover flex items-center gap-3">
+                <div class="w-1 h-6 rounded-full" style="background:var(--brand)"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm truncate"><span class="font-medium">chuongdt</span> cập nhật <a class="font-medium">Sepay webhook signature validation</a></div>
+                  <div class="text-xs" style="color:var(--text-mute)">v3 · 2 phút trước · +42 −18</div>
+                </div>
+                <span class="chip">runbook</span>
+              </div>
+              <div class="px-4 py-2.5 row-hover flex items-center gap-3">
+                <div class="w-1 h-6 rounded-full" style="background:var(--ok)"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm truncate"><span class="font-medium">hongnt</span> tạo mới <a class="font-medium">iNET DNS zone transfer procedure</a></div>
+                  <div class="text-xs" style="color:var(--text-mute)">v1 · 18 phút trước</div>
+                </div>
+                <span class="chip">procedure</span>
+              </div>
+              <div class="px-4 py-2.5 row-hover flex items-center gap-3">
+                <div class="w-1 h-6 rounded-full" style="background:var(--warn)"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm truncate"><span class="font-medium">tuannt</span> chuyển <a class="font-medium">OTP fallback flow</a> sang draft</div>
+                  <div class="text-xs" style="color:var(--text-mute)">1 giờ trước · cần review</div>
+                </div>
+                <span class="chip chip-warn">draft</span>
+              </div>
+              <div class="px-4 py-2.5 row-hover flex items-center gap-3">
+                <div class="w-1 h-6 rounded-full" style="background:var(--text-mute)"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm truncate"><span class="font-medium">system</span> auto-tag artifact <a class="font-medium">GitLab runner registration</a></div>
+                  <div class="text-xs" style="color:var(--text-mute)">3 giờ trước</div>
+                </div>
+                <span class="chip">infra</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="panel">
+              <div class="px-4 py-3 subtle-b text-sm font-semibold">Top viewed · 7d</div>
+              <div class="p-3 space-y-1">
+                <div class="flex items-center gap-3 p-2 rounded row-hover">
+                  <span class="text-xs w-4" style="color:var(--text-mute)">1</span>
+                  <div class="flex-1 min-w-0 text-sm truncate">Sepay webhook signature validation</div>
+                  <span class="text-xs" style="color:var(--text-mute)">324</span>
+                </div>
+                <div class="flex items-center gap-3 p-2 rounded row-hover">
+                  <span class="text-xs w-4" style="color:var(--text-mute)">2</span>
+                  <div class="flex-1 min-w-0 text-sm truncate">OTP fallback flow</div>
+                  <span class="text-xs" style="color:var(--text-mute)">198</span>
+                </div>
+                <div class="flex items-center gap-3 p-2 rounded row-hover">
+                  <span class="text-xs w-4" style="color:var(--text-mute)">3</span>
+                  <div class="flex-1 min-w-0 text-sm truncate">GitLab runner registration</div>
+                  <span class="text-xs" style="color:var(--text-mute)">142</span>
+                </div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="px-4 py-3 subtle-b text-sm font-semibold">Tags</div>
+              <div class="p-4 flex flex-wrap gap-1.5">
+                <span class="chip">runbook · 84</span>
+                <span class="chip">procedure · 52</span>
+                <span class="chip">infra · 41</span>
+                <span class="chip">sepay · 24</span>
+                <span class="chip">otp · 18</span>
+                <span class="chip">gitlab · 15</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ARTIFACTS -->
+    <section class="screen" data-screen="artifacts">
+      <div class="subtle-b px-8 py-4 flex items-center justify-between">
+        <div>
+          <h1 class="text-lg font-semibold">Artifacts</h1>
+          <p class="text-xs mt-0.5" style="color:var(--text-mute)">248 items in Support space</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="relative w-72">
+            <input class="input pl-7 text-xs" placeholder="Filter by title, tag, author..." />
+            <span class="absolute left-2 top-1.5 text-xs" style="color:var(--text-mute)">⌕</span>
+          </div>
+          <button class="btn text-xs">⌗ Filter</button>
+          <div class="divider-v"></div>
+          <button class="btn btn-primary text-xs">✎ New</button>
+        </div>
+      </div>
+      <div class="px-8 py-3 flex items-center gap-3 text-xs subtle-b" style="color:var(--text-dim)">
+        <span>Status: <span class="text-white">All</span></span>
+        <span>Type: <span class="text-white">All</span></span>
+        <span>Author: <span class="text-white">Everyone</span></span>
+        <span>Sort: <span class="text-white">Updated ↓</span></span>
+        <span class="ml-auto">Showing 24 of 248 · <button class="text-xs" style="color:var(--brand)">Bulk actions</button></span>
+      </div>
+      <div class="divide-y" style="border-color:var(--border)">
+        <template id="row"></template>
+        <div class="px-8 py-3 row-hover grid grid-cols-[24px_1fr_120px_100px_80px] gap-4 items-center">
+          <input type="checkbox" class="rounded" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">Sepay webhook signature validation flow</div>
+            <div class="text-xs mt-0.5 truncate" style="color:var(--text-mute)">Xử lý webhook Sepay đến /api/webhooks/sepay, verify HMAC-SHA256 với secret...</div>
+          </div>
+          <div class="flex gap-1"><span class="chip">runbook</span><span class="chip">sepay</span></div>
+          <div class="text-xs" style="color:var(--text-mute)">chuongdt</div>
+          <div class="text-xs text-right" style="color:var(--text-mute)">2m</div>
+        </div>
+        <div class="px-8 py-3 row-hover grid grid-cols-[24px_1fr_120px_100px_80px] gap-4 items-center">
+          <input type="checkbox" class="rounded" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">iNET DNS zone transfer procedure</div>
+            <div class="text-xs mt-0.5 truncate" style="color:var(--text-mute)">Cách chuyển zone giữa các NS server, xử lý propagation delay và verify SOA...</div>
+          </div>
+          <div class="flex gap-1"><span class="chip">procedure</span><span class="chip">dns</span></div>
+          <div class="text-xs" style="color:var(--text-mute)">hongnt</div>
+          <div class="text-xs text-right" style="color:var(--text-mute)">18m</div>
+        </div>
+        <div class="px-8 py-3 row-hover grid grid-cols-[24px_1fr_120px_100px_80px] gap-4 items-center">
+          <input type="checkbox" class="rounded" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate flex items-center gap-2">OTP fallback flow <span class="chip chip-warn">draft</span></div>
+            <div class="text-xs mt-0.5 truncate" style="color:var(--text-mute)">Khi SMS gateway fail, fallback qua voice call rồi email...</div>
+          </div>
+          <div class="flex gap-1"><span class="chip">runbook</span><span class="chip">otp</span></div>
+          <div class="text-xs" style="color:var(--text-mute)">tuannt</div>
+          <div class="text-xs text-right" style="color:var(--text-mute)">1h</div>
+        </div>
+        <div class="px-8 py-3 row-hover grid grid-cols-[24px_1fr_120px_100px_80px] gap-4 items-center">
+          <input type="checkbox" class="rounded" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">GitLab runner registration on onelog-vps</div>
+            <div class="text-xs mt-0.5 truncate" style="color:var(--text-mute)">Register shell + docker executor, config concurrent, cleanup policy...</div>
+          </div>
+          <div class="flex gap-1"><span class="chip">infra</span><span class="chip">gitlab</span></div>
+          <div class="text-xs" style="color:var(--text-mute)">chuongdt</div>
+          <div class="text-xs text-right" style="color:var(--text-mute)">3h</div>
+        </div>
+        <div class="px-8 py-3 row-hover grid grid-cols-[24px_1fr_120px_100px_80px] gap-4 items-center">
+          <input type="checkbox" class="rounded" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">Postgres backup + PITR strategy</div>
+            <div class="text-xs mt-0.5 truncate" style="color:var(--text-mute)">pg_basebackup + WAL archiving to R2, restore drill hàng tháng...</div>
+          </div>
+          <div class="flex gap-1"><span class="chip">infra</span><span class="chip">db</span></div>
+          <div class="text-xs" style="color:var(--text-mute)">chuongdt</div>
+          <div class="text-xs text-right" style="color:var(--text-mute)">Yesterday</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DETAIL -->
+    <section class="screen" data-screen="detail">
+      <div class="px-8 py-4 subtle-b">
+        <div class="text-xs flex items-center gap-1.5 mb-2" style="color:var(--text-mute)">
+          <a>Artifacts</a><span>/</span><a>Runbooks</a><span>/</span><span style="color:var(--text)">Sepay webhook signature validation flow</span>
+        </div>
+        <div class="flex items-start justify-between">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Sepay webhook signature validation flow</h1>
+            <div class="flex items-center gap-3 mt-2 text-xs" style="color:var(--text-dim)">
+              <span class="chip chip-ok">published</span>
+              <span>v3</span>
+              <span>·</span>
+              <span>Updated by <span style="color:var(--text)">chuongdt</span> 2 phút trước</span>
+              <span>·</span>
+              <span>Space: Support</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn text-xs">☆ Star</button>
+            <button class="btn text-xs">⎘ Copy link</button>
+            <button class="btn text-xs">◔ Versions</button>
+            <button class="btn btn-primary text-xs">✎ Edit</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-[1fr_260px]">
+        <article class="px-8 py-6 max-w-3xl prose prose-invert prose-sm">
+          <p style="color:var(--text-dim)">Runbook mô tả cách verify chữ ký HMAC-SHA256 cho webhook đến từ Sepay, xử lý idempotency và fallback khi gateway timeout.</p>
+          <h2 class="text-lg font-semibold mt-6 mb-2">1. Cấu hình secret</h2>
+          <p style="color:var(--text-dim)">Secret nằm trong <code style="background:var(--panel-2); padding:2px 4px; border-radius:3px">SEPAY_WEBHOOK_SECRET</code> ở env của service <code style="background:var(--panel-2); padding:2px 4px; border-radius:3px">onelog-action</code>. Rotate 90 ngày/lần theo lịch với PM.</p>
+          <h2 class="text-lg font-semibold mt-6 mb-2">2. Verify signature</h2>
+          <pre class="panel p-3 text-xs" style="overflow-x:auto"><code class="mono">const sig = req.headers['x-sepay-signature'];
+const body = JSON.stringify(req.body);
+const expected = crypto
+  .createHmac('sha256', SECRET)
+  .update(body).digest('hex');
+if (!crypto.timingSafeEqual(
+  Buffer.from(sig), Buffer.from(expected))) {
+  return res.status(401).send('bad sig');
+}</code></pre>
+          <h2 class="text-lg font-semibold mt-6 mb-2">3. Idempotency</h2>
+          <p style="color:var(--text-dim)">Sepay có thể retry nhiều lần với cùng <code style="background:var(--panel-2); padding:2px 4px; border-radius:3px">transaction_id</code>. Dùng Redis SETNX với TTL 24h để deduplicate.</p>
+        </article>
+        <aside class="subtle-r px-4 py-6 space-y-5" style="border-left:1px solid var(--border)">
+          <div>
+            <div class="text-xs mb-2 font-semibold" style="color:var(--text-mute)">TAGS</div>
+            <div class="flex flex-wrap gap-1"><span class="chip">runbook</span><span class="chip">sepay</span><span class="chip">webhook</span></div>
+          </div>
+          <div>
+            <div class="text-xs mb-2 font-semibold" style="color:var(--text-mute)">RELATED</div>
+            <div class="space-y-1.5 text-sm">
+              <a class="block">→ Sepay payment reconciliation</a>
+              <a class="block">→ Webhook retry policy</a>
+              <a class="block">→ HMAC key rotation runbook</a>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs mb-2 font-semibold" style="color:var(--text-mute)">ACTIVITY</div>
+            <div class="space-y-2 text-xs" style="color:var(--text-dim)">
+              <div><span style="color:var(--text)">chuongdt</span> edited · 2m</div>
+              <div><span style="color:var(--text)">hongnt</span> viewed · 12m</div>
+              <div><span style="color:var(--text)">system</span> auto-tagged · 3h</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="screen" data-screen="search">
+      <div class="max-w-3xl mx-auto px-6 py-10">
+        <div class="text-center mb-8">
+          <h1 class="text-2xl font-semibold tracking-tight mb-1">Search OneMCP</h1>
+          <p class="text-sm" style="color:var(--text-dim)">Hybrid semantic + keyword search across 248 artifacts</p>
+        </div>
+        <div class="relative">
+          <input class="input py-3 pl-11 text-base" placeholder="Ask anything..." value="webhook signature verify" />
+          <span class="absolute left-4 top-3.5 text-lg" style="color:var(--text-mute)">⌕</span>
+          <span class="kbd absolute right-3 top-3.5">Enter</span>
+        </div>
+        <div class="flex items-center gap-2 mt-3 text-xs" style="color:var(--text-mute)">
+          <span>Filters:</span>
+          <span class="chip">Space: Support</span>
+          <span class="chip">Type: runbook</span>
+          <button class="text-xs" style="color:var(--brand)">+ Add filter</button>
+        </div>
+
+        <div class="mt-8">
+          <div class="text-xs mb-3" style="color:var(--text-mute)">4 results · 42ms · hybrid mode</div>
+          <div class="space-y-3">
+            <div class="panel p-4 row-hover cursor-pointer">
+              <div class="flex items-center justify-between mb-1">
+                <a class="text-sm font-semibold">Sepay webhook signature validation flow</a>
+                <span class="text-xs" style="color:var(--text-mute)">0.94</span>
+              </div>
+              <p class="text-sm" style="color:var(--text-dim)">...verify chữ ký <mark style="background:color-mix(in oklab, var(--brand) 30%, transparent); color:var(--text); padding:0 2px">HMAC-SHA256</mark> cho <mark style="background:color-mix(in oklab, var(--brand) 30%, transparent); color:var(--text); padding:0 2px">webhook</mark> đến từ Sepay, xử lý idempotency...</p>
+              <div class="flex items-center gap-2 mt-2 text-xs" style="color:var(--text-mute)">
+                <span class="chip">runbook</span><span>·</span><span>chuongdt · v3 · 2m</span>
+              </div>
+            </div>
+            <div class="panel p-4 row-hover cursor-pointer">
+              <div class="flex items-center justify-between mb-1">
+                <a class="text-sm font-semibold">HMAC key rotation runbook</a>
+                <span class="text-xs" style="color:var(--text-mute)">0.87</span>
+              </div>
+              <p class="text-sm" style="color:var(--text-dim)">Rotate secret HMAC 90 ngày/lần, đảm bảo grace period 15 phút cho các <mark style="background:color-mix(in oklab, var(--brand) 30%, transparent); color:var(--text); padding:0 2px">webhook</mark> in-flight...</p>
+              <div class="flex items-center gap-2 mt-2 text-xs" style="color:var(--text-mute)">
+                <span class="chip">runbook</span><span>·</span><span>chuongdt · v2 · 3d</span>
+              </div>
+            </div>
+            <div class="panel p-4 row-hover cursor-pointer">
+              <div class="flex items-center justify-between mb-1">
+                <a class="text-sm font-semibold">Webhook retry policy</a>
+                <span class="text-xs" style="color:var(--text-mute)">0.79</span>
+              </div>
+              <p class="text-sm" style="color:var(--text-dim)">Exponential backoff cho các endpoint <mark style="background:color-mix(in oklab, var(--brand) 30%, transparent); color:var(--text); padding:0 2px">webhook</mark> downstream fail, max 5 retries...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const t = btn.dataset.tab;
+      document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.dataset.screen === t));
+    });
+  });
+</script>
+</body>
+</html>

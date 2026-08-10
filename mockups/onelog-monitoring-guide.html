@@ -43,9 +43,38 @@
   .anchor{scroll-margin-top:24px}
   .num-pill{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
     border-radius:50%;background:#1f1a3a;color:#c4b5fd;font-size:11px;font-weight:700}
+  /* Sticky right-side TOC */
+  .toc{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;
+       background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .toc h5{font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--mut);margin:0 0 10px}
+  .toc a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;
+         font-size:12.5px;color:#cdd2d8;text-decoration:none;line-height:1.3}
+  .toc a:hover{background:#15151a;color:var(--acc)}
+  .toc a.active{background:#082f3f;color:var(--acc)}
+  .toc a .n{display:inline-flex;width:18px;height:18px;border-radius:50%;
+            background:#1f1a3a;color:#c4b5fd;font-size:10px;font-weight:700;
+            align-items:center;justify-content:center;flex-shrink:0}
+  .toc-wrap{display:none}
+  @media (min-width:1180px){
+    .toc-wrap{display:block;position:fixed;right:16px;top:16px;width:220px;z-index:20}
+  }
 </style>
 </head>
 <body class="min-h-screen">
+
+<!-- Sticky TOC (right side, lg+) -->
+<aside class="toc-wrap">
+  <nav class="toc" id="toc">
+    <h5>Mục lục</h5>
+    <a href="#pipeline"><span class="n">1</span>Pipeline Health</a>
+    <a href="#host"><span class="n">2</span>VPS Host</a>
+    <a href="#deep-dive"><span class="n">3</span>Deep dive metric</a>
+    <a href="#troubleshoot"><span class="n">4</span>Troubleshooting</a>
+    <a href="#alert-flow"><span class="n">5</span>Alert flow</a>
+    <a href="#commands"><span class="n">6</span>Command nhanh</a>
+    <a href="#playbook"><span class="n">7</span>Playbook 5 phút</a>
+  </nav>
+</aside>
 
 <div class="max-w-6xl mx-auto p-6">
 
@@ -58,7 +87,7 @@
         <p class="mut text-sm mt-2 max-w-3xl">Hướng dẫn ops đọc 2 dashboard chính của OneLog: <b class="acc">Pipeline Health</b> và <b class="acc">VPS Host</b>. Kèm ngưỡng cần lưu ý, dấu hiệu sớm, và cách xử lý khi bất thường.</p>
       </div>
       <div class="text-right text-xs mut">
-        <div>Version: 2026-07-22</div>
+        <div>Version: 2026-07-22 (rev.2)</div>
         <div>Stack: VictoriaMetrics + node_exporter + Grafana 11.4</div>
       </div>
     </div>
@@ -260,10 +289,161 @@ ssh onelog-vps <span class="s">"grep ^GRAFANA_ADMIN_PASSWORD /opt/onelog/infra/.
     </div>
   </section>
 
+  <!-- Deep dive: metric interpretation -->
+  <section class="mb-6 anchor" id="deep-dive">
+    <div class="flex items-baseline gap-3 mb-3">
+      <span class="num-pill">3</span>
+      <h2 class="text-xl font-bold">Deep dive — đọc chi tiết từng metric</h2>
+      <span class="pill vio">reference</span>
+    </div>
+    <p class="mut text-sm mb-4 max-w-3xl">Chi tiết hơn phần "VPS Host" bên trên. Dùng khi cần tra ngưỡng chính xác hoặc chưa hiểu vì sao 1 metric bất thường.</p>
+
+    <!-- CPU modes -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">CPU % (by mode) — hiểu từng "mode"</h3>
+      <p class="text-sm mut mb-3">CPU chia thời gian thành nhiều mode. Chỉ nhìn <b class="ok">idle</b> là đủ để biết CPU có bận không; nhìn các mode khác để biết <em>ai</em> đang ăn CPU.</p>
+      <table class="k">
+        <thead><tr><th>Mode</th><th>Ý nghĩa</th><th>Ngưỡng cảnh giác</th></tr></thead>
+        <tbody>
+          <tr><td class="mono ok">idle</td><td>CPU rảnh, không làm gì</td><td><span class="thr warn">&lt; 20% = CPU đang bận</span></td></tr>
+          <tr><td class="mono">user</td><td>Chạy code app (python, container process)</td><td><span class="thr warn">&gt; 60% kéo dài = app nặng</span></td></tr>
+          <tr><td class="mono">system</td><td>Kernel work (syscalls, driver)</td><td><span class="thr warn">&gt; 20% = I/O hoặc network bận</span></td></tr>
+          <tr><td class="mono warn">iowait</td><td>CPU chờ disk/network trả về — <b>chỉ báo bottleneck sớm nhất</b></td><td><span class="thr crit">&gt; 10% = disk chậm, nguy hiểm</span></td></tr>
+          <tr><td class="mono">softirq / irq</td><td>Xử lý interrupt (mỗi packet network là 1 irq)</td><td><span class="thr warn">&gt; 15% = network flood</span></td></tr>
+          <tr><td class="mono err">steal</td><td>Bị hypervisor lấy CPU đưa cho VM khác (chỉ trên VPS shared)</td><td><span class="thr crit">&gt; 5% = neighbor giành CPU</span></td></tr>
+          <tr><td class="mono">nice</td><td>Low-priority process</td><td>Hiếm khi cao</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs mut mt-3"><b>Ví dụ đọc chart:</b> idle 99% + spike ngắn xuống 87% ≈ 1s = docker healthcheck, bình thường. Nếu idle drop &lt; 20% kéo dài 5m → mở <span class="mono">docker stats</span> xem container nào ăn.</p>
+    </div>
+
+    <!-- Load average -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Load average — số process chờ CPU/disk</h3>
+      <p class="text-sm mut mb-3">Trung bình process đang <b>chạy hoặc chờ CPU/disk</b> trong 1m / 5m / 15m. So sánh với <b>số core</b> (kiểm tra bằng <span class="mono">nproc</span>).</p>
+      <table class="k">
+        <thead><tr><th>Load so với core</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">&lt; cores × 0.7</td><td class="ok">nhàn</td></tr>
+          <tr><td class="mono">≈ cores</td><td class="lime">full load, vẫn OK</td></tr>
+          <tr><td class="mono">&gt; cores × 1.5</td><td class="warn">quá tải, có process bị chờ — alert HostLoadHigh fire</td></tr>
+          <tr><td class="mono">&gt; cores × 2</td><td class="err">nghiêm trọng</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs mut mt-3"><b>Đọc 3 đường 1m/5m/15m:</b></p>
+      <ul class="text-xs mut ml-5 list-disc space-y-1">
+        <li>1m cao, 15m thấp → spike ngắn, đã qua</li>
+        <li>15m cao mãi → tải liên tục, cần scale hoặc điều tra</li>
+        <li>Cả 3 cùng cao → đang trong cơn tải nặng</li>
+      </ul>
+    </div>
+
+    <!-- Memory -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Memory — đọc kiểu Linux, không giống Windows</h3>
+      <table class="k">
+        <thead><tr><th>Field</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td class="mono warn">used</td><td>App thực sự đang dùng</td></tr>
+          <tr><td class="mono acc">cached + buffers</td><td>Kernel cache file để đọc nhanh — <b>KHÔNG phải rò rỉ</b>, tự nhả khi app cần</td></tr>
+          <tr><td class="mono ok">free</td><td>Chưa dùng gì</td></tr>
+        </tbody>
+      </table>
+      <div class="cmd mt-3"><span class="c"># cách tính đúng "% RAM thực sự hết"</span>
+% used = used / total × 100
+<span class="c"># cached KHÔNG tính vào used vì có thể nhả</span></div>
+      <p class="text-xs mut mt-3"><b>Alert:</b> HostMemoryHigh &gt; 85% (10m), HostMemoryCritical &gt; 93% (5m) — dùng <span class="mono">MemAvailable</span> chuẩn kernel (đã trừ reclaimable cache).</p>
+      <p class="text-xs mut mt-2"><b>Ví dụ:</b> used 14/16 GiB trông "cao" nhưng OneLog stack chạy 15+ container — baseline hợp lý. Chỉ lo khi (1) used tăng dần đều theo giờ không giảm → leak, (2) free chạm 0 và swap bắt đầu tăng.</p>
+    </div>
+
+    <!-- Swap -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Swap used — dùng disk làm RAM</h3>
+      <p class="text-sm mut mb-3">Swap chậm hơn RAM <b>1000×</b>. Khi swap bị dùng nhiều → OS "thrash" → server chậm khủng khiếp.</p>
+      <table class="k">
+        <thead><tr><th>Trạng thái</th><th>Ý nghĩa</th></tr></thead>
+        <tbody>
+          <tr><td class="ok">0 B</td><td>RAM còn dư, tốt (VPS này hiện tại)</td></tr>
+          <tr><td class="warn">&gt; 0 nhưng không tăng</td><td>Process cũ bị swap ra rồi ngủ, OK</td></tr>
+          <tr><td class="err">Tăng liên tục</td><td>RAM sắp cạn — alert HostSwapInUse fire khi &gt; 100 MiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Root disk -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Root disk used % — dung lượng <span class="mono">/</span></h3>
+      <table class="k">
+        <thead><tr><th>%</th><th>Trạng thái</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">&lt; 60%</td><td class="ok">Tốt</td><td>—</td></tr>
+          <tr><td class="mono">60–75%</td><td class="lime">Chú ý</td><td>Kiểm tra log rotation</td></tr>
+          <tr><td class="mono">&gt; 75%</td><td class="warn">Warn</td><td>Alert HostDiskRootWarn — dọn log/docker images</td></tr>
+          <tr><td class="mono">&gt; 85%</td><td class="err">Critical</td><td>Alert HostDiskRootCritical — dọn NGAY</td></tr>
+          <tr><td class="mono">&gt; 90%</td><td class="err">Any mount</td><td>Alert HostDiskAnyMountCritical</td></tr>
+          <tr><td class="mono">100%</td><td class="err">Server chết</td><td>Docker không ghi được, service crash</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs mut mt-3"><b>Dọn nhanh khi cao:</b></p>
+      <div class="cmd mt-2">docker system prune -a --volumes   <span class="c"># cẩn thận, xoá volume unused</span>
+journalctl --vacuum-time=7d         <span class="c"># rotate journald</span>
+du -sh /opt/onelog/infra/data/* | sort -h  <span class="c"># tìm folder nặng nhất</span></div>
+    </div>
+
+    <!-- Network -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Network throughput — rx / tx bytes/s</h3>
+      <p class="text-sm mut mb-3"><b>rx</b> = nhận vào, <b>tx</b> = gửi đi. Đơn vị Byte/s (× 8 = bit/s). Ngưỡng phụ thuộc bandwidth VPS (thường 100 Mbps ≈ 12 MB/s).</p>
+      <table class="k">
+        <thead><tr><th>Throughput</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">&lt; 1 MB/s</td><td class="ok">Bình thường</td></tr>
+          <tr><td class="mono">Sustain &gt; 50% bandwidth</td><td class="warn">Chú ý</td></tr>
+          <tr><td class="mono">Sustain &gt; 80% bandwidth</td><td class="err">Nghẽn, service chậm</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs mut mt-3"><b>Alert:</b> HostNetworkErrorsRising (NIC lỗi), HostNetworkDropsRising (buffer đầy / firewall drop).</p>
+      <p class="text-xs mut mt-2"><b>Baseline hiện tại ≈ 500 B/s</b> = ambient chatter giữa container. Sẽ tăng khi có fleet push log thật vào.</p>
+    </div>
+
+    <!-- Disk I/O -->
+    <div class="card p-5 mb-4">
+      <h3 class="text-lg font-bold mb-2">Disk I/O bytes/s — read / write per device</h3>
+      <p class="text-sm mut mb-3">Ngưỡng phụ thuộc <b>loại disk</b>. Kiểm tra bằng <span class="mono">lsblk -d -o name,rota</span> (rota=0 là SSD).</p>
+      <table class="k">
+        <thead><tr><th>Loại</th><th>Sustain OK</th><th>Warn</th></tr></thead>
+        <tbody>
+          <tr><td>HDD (rotational)</td><td class="mono">&lt; 50 MB/s</td><td class="mono warn">&gt; 80 MB/s</td></tr>
+          <tr><td>SSD SATA</td><td class="mono">&lt; 300 MB/s</td><td class="mono warn">&gt; 400 MB/s</td></tr>
+          <tr><td>NVMe</td><td class="mono">&lt; 2 GB/s</td><td class="mono warn">&gt; 3 GB/s</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs mut mt-3"><b>Quan trọng hơn throughput:</b> nếu <span class="mono warn">iowait</span> (chart CPU) cao mà disk I/O cũng cao → disk là bottleneck. Nếu iowait thấp mà I/O cao → disk khoẻ.</p>
+      <p class="text-xs mut mt-2"><b>Baseline OneLog:</b> write spike 1–2 MB/s là VL/VM flush data — bình thường. Read gần 0 nghĩa là data trong page cache, không cần đọc disk.</p>
+    </div>
+
+    <!-- Symptom -> check table -->
+    <div class="card p-5">
+      <h3 class="text-lg font-bold mb-2">Symptom → kiểm tra ngay</h3>
+      <table class="k">
+        <thead><tr><th>Triệu chứng</th><th>Kiểm tra ngay</th></tr></thead>
+        <tbody>
+          <tr><td>CPU idle drop</td><td class="mono">docker stats — container nào ăn CPU</td></tr>
+          <tr><td>Load spike, CPU idle vẫn cao</td><td>Process bị chờ I/O — check iowait mode</td></tr>
+          <tr><td>Memory tăng dần theo giờ</td><td class="mono">docker stats — container nào leak RAM</td></tr>
+          <tr><td>Swap &gt; 0 tăng</td><td class="mono">free -h, giết container ít quan trọng</td></tr>
+          <tr><td>Disk &gt; 85%</td><td class="mono">du -sh /var/lib/docker/*, prune</td></tr>
+          <tr><td>Network drops</td><td class="mono">dmesg | grep -i eth, kiểm tra NIC</td></tr>
+          <tr><td>iowait &gt; 10%</td><td class="mono">iotop — process nào ghi/đọc disk</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- Troubleshooting -->
   <section class="card p-5 mb-6 anchor" id="troubleshoot">
     <div class="flex items-baseline gap-3 mb-3">
-      <span class="num-pill">3</span>
+      <span class="num-pill">4</span>
       <h2 class="text-xl font-bold">Troubleshooting nhanh</h2>
     </div>
     <table class="k">
@@ -326,7 +506,7 @@ ssh onelog-vps <span class="s">"grep ^GRAFANA_ADMIN_PASSWORD /opt/onelog/infra/.
   <!-- Alert flow -->
   <section class="card p-5 mb-6 anchor" id="alert-flow">
     <div class="flex items-baseline gap-3 mb-3">
-      <span class="num-pill">4</span>
+      <span class="num-pill">5</span>
       <h2 class="text-xl font-bold">Alert flow — từ metric sang Telegram</h2>
     </div>
     <pre class="cmd">VictoriaLogs / VictoriaMetrics
@@ -348,7 +528,7 @@ docker exec ragstack-alertmanager amtool alert add TestAlert \
   <!-- Useful commands -->
   <section class="card p-5 mb-6 anchor" id="commands">
     <div class="flex items-baseline gap-3 mb-3">
-      <span class="num-pill">5</span>
+      <span class="num-pill">6</span>
       <h2 class="text-xl font-bold">Command nhanh (SSH lên VPS)</h2>
     </div>
     <div class="grid md:grid-cols-2 gap-3">
@@ -382,7 +562,7 @@ curl -sS <span class="s">'http://127.0.0.1:8428/api/v1/label/__name__/values'</s
   <!-- Playbook triage -->
   <section class="card p-5 mb-6 anchor" id="playbook">
     <div class="flex items-baseline gap-3 mb-3">
-      <span class="num-pill">6</span>
+      <span class="num-pill">7</span>
       <h2 class="text-xl font-bold">Playbook triage 5 phút</h2>
     </div>
     <ol class="text-sm space-y-2 list-decimal ml-5">
@@ -401,5 +581,19 @@ curl -sS <span class="s">'http://127.0.0.1:8428/api/v1/label/__name__/values'</s
   </footer>
 </div>
 
+<script>
+  // Highlight active TOC entry on scroll
+  const links = document.querySelectorAll('#toc a');
+  const sections = [...links].map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const id = '#' + e.target.id;
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === id));
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+  sections.forEach(s => io.observe(s));
+</script>
 </body>
 </html>

@@ -562,7 +562,12 @@ services:
       WEBUI_AUTH_TRUSTED_EMAIL_HEADER: X-Auth-Request-Email
       WEBUI_AUTH_TRUSTED_NAME_HEADER: X-Auth-Request-Preferred-Username
       # Sign out → chain through oauth2-proxy to clear IAP cookie + Zitadel session
-      WEBUI_AUTH_SIGNOUT_REDIRECT_URL: /oauth2/sign_out?rd=/
+      # Signout chain: clear WebUI JWT → oauth2-proxy clear IAP cookie → land on /signed-out (public).
+      # Zitadel session intentionally preserved (SSO semantic — user still signed in at IdP
+      # so can jump to other apps without re-login). To fully clear Zitadel session, click
+      # "Đăng nhập lại" on /signed-out and use Zitadel's own logout, or navigate to
+      # http://10.200.0.125/oidc/v1/end_session directly.
+      WEBUI_AUTH_SIGNOUT_REDIRECT_URL: /oauth2/sign_out?rd=/signed-out
 
       # MCP wired via mcpo bridge (separate service). Two paths to register:
       # 1. Auto — set TOOL_SERVER_CONNECTIONS env below (JSON array).

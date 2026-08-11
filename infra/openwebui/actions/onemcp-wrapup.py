@@ -138,14 +138,19 @@ def _soft_redact(text: str) -> RedactResult:
 
 
 def _is_english_transcript(transcript: str) -> bool:
-    """Heuristic: if >55% chars are ASCII alpha → treat as EN transcript."""
+    """Detect language: any Vietnamese diacritic → VN. Otherwise EN nếu >=50 alpha.
+    Ratio-based cũ (55% ASCII) false-positive nhiều với chat VN kỹ thuật
+    (code/command/service name/error msg đẩy ratio lên 60-70%)."""
     if not transcript:
         return False
-    alpha_chars = [c for c in transcript if c.isalpha()]
-    if not alpha_chars:
+    _VN_DIACRITICS = set(
+        "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
+        "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ"
+    )
+    if any(c in _VN_DIACRITICS for c in transcript):
         return False
-    ascii_alpha = sum(1 for c in alpha_chars if ord(c) < 128)
-    return (ascii_alpha / len(alpha_chars)) > 0.55
+    alpha_chars = [c for c in transcript if c.isalpha()]
+    return len(alpha_chars) >= 50
 
 
 _CLASSIFIER_PROMPT_VN = """Bạn là classifier phân loại chat session để lưu vào knowledge base.

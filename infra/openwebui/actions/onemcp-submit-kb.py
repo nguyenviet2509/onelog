@@ -535,6 +535,10 @@ class Action:
             return None
 
         try:
+            # Loading indicator ngay đầu để user thấy action đã start (status header nhỏ dễ miss).
+            await toast("info", "⏳ Đang tóm tắt chat và submit KB (~10-30s)...")
+            await status("⏳ Bắt đầu tạo KB entry...")
+
             # Phase 1C: resolve per-user attribution before any network calls.
             onemcp_user, attribution = await self._resolve_username(body)
 

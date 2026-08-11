@@ -1071,6 +1071,10 @@ class Action:
                 )
 
         try:
+            # Loading indicator ngay đầu để user thấy action đã start (status header nhỏ dễ miss).
+            await toast("info", "⏳ Đang phân tích session và tạo artifact (~10-30s)...")
+            await status("⏳ Bắt đầu wrap-up...")
+
             # --- Resolve user ---
             onemcp_user, attribution = await self._resolve_username(body)
 

@@ -598,15 +598,27 @@ _TYPE_LABEL: dict[str, str] = {
 
 class Action:
     class Valves(BaseModel):
-        ONEMCP_URL: str = Field(default="https://oneconnector.000nethost.com")
+        ONEMCP_URL: str = Field(
+            default="https://10.200.0.44",
+            description=(
+                "OneMCP internal URL (eth1 private network). Onelog-vps ↔ onemcp-vps "
+                "public IPs BLOCKED bởi DC firewall (proven 2026-08-11 test), phải "
+                "dùng eth1 10.200.0.x. Nginx serve Sectigo wildcard cho *.000nethost.com "
+                "→ verify hostname với IP 10.200.0.44 sẽ FAIL → set VERIFY_TLS=False."
+            ),
+        )
         BOT_USER: str = Field(default="openwebui-bot")
+        VERIFY_TLS: bool = Field(
+            default=False,
+            description=(
+                "Verify TLS certificate. False cho internal IP (10.200.0.44 vs Sectigo "
+                "wildcard cho *.000nethost.com — hostname mismatch). True nếu URL đúng "
+                "domain trong SAN của cert (VD https://oneconnector.000nethost.com)."
+            ),
+        )
         ONEMCP_CA_PATH: str = Field(
             default="",
-            description=(
-                "Path tới CA cert (dùng khi OneMCP dùng self-signed hoặc private CA). "
-                "Rỗng = dùng system CA bundle (certifi) — Sectigo wildcard đang deploy prod. "
-                "Set '/opt/onemcp-ca.crt' nếu quay lại self-signed internal URL."
-            ),
+            description="Path CA cert nếu private CA. Rỗng = dùng VERIFY_TLS setting.",
         )
         TIMEOUT_SEC: float = Field(default=30.0)
         CLASSIFIER_MODEL: str = Field(
@@ -657,7 +669,7 @@ class Action:
 
         try:
             ensure_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/users/ensure"
-            verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or True
+            verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or self.valves.VERIFY_TLS
             async with httpx.AsyncClient(verify=verify_arg, timeout=self.valves.TIMEOUT_SEC) as c:
                 r = await c.post(ensure_url, json={"email": email})
                 r.raise_for_status()
@@ -683,7 +695,7 @@ class Action:
         # (backend feature TBD) or move actions to portal-authenticated calls.
         headers = {"X-Onemcp-User": username, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or True
+        verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or self.valves.VERIFY_TLS
         async with httpx.AsyncClient(verify=verify_arg, timeout=self.valves.TIMEOUT_SEC) as c:
             r = await c.post(url, json=payload, headers=headers)
             r.raise_for_status()

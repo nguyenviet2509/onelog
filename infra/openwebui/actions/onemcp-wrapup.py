@@ -598,11 +598,15 @@ _TYPE_LABEL: dict[str, str] = {
 
 class Action:
     class Valves(BaseModel):
-        ONEMCP_URL: str = Field(default="https://10.200.0.44")
+        ONEMCP_URL: str = Field(default="https://oneconnector.000nethost.com")
         BOT_USER: str = Field(default="openwebui-bot")
         ONEMCP_CA_PATH: str = Field(
-            default="/opt/onemcp-ca.crt",
-            description="Path tới OneMCP self-signed cert. Rỗng = disable verify.",
+            default="",
+            description=(
+                "Path tới CA cert (dùng khi OneMCP dùng self-signed hoặc private CA). "
+                "Rỗng = dùng system CA bundle (certifi) — Sectigo wildcard đang deploy prod. "
+                "Set '/opt/onemcp-ca.crt' nếu quay lại self-signed internal URL."
+            ),
         )
         TIMEOUT_SEC: float = Field(default=30.0)
         CLASSIFIER_MODEL: str = Field(
@@ -653,7 +657,7 @@ class Action:
 
         try:
             ensure_url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/users/ensure"
-            verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
+            verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or True
             async with httpx.AsyncClient(verify=verify_arg, timeout=self.valves.TIMEOUT_SEC) as c:
                 r = await c.post(ensure_url, json={"email": email})
                 r.raise_for_status()
@@ -668,14 +672,18 @@ class Action:
             return self.valves.BOT_USER, "bot"
 
     async def _rpc(self, method: str, params: dict[str, Any], username: str) -> dict[str, Any]:
-        """JSON-RPC 2.0 call to OneMCP /api/mcp."""
-        url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
+        """JSON-RPC 2.0 call to OneMCP via public /mcp/ endpoint.
+        Uses /mcp/ (not /api/mcp) to bypass nginx oauth2-proxy IAP — this path is
+        public-Bearer-auth by design. Nginx forwards X-Onemcp-User verbatim
+        (unlike /api/ which overrides it with oauth2-proxy identity).
+        """
+        url = f"{self.valves.ONEMCP_URL.rstrip('/')}/mcp/"
         # TODO(sso-phase3): X-Onemcp-User path deprecated. Backend accepts it in
         # SSO mode per waiver. Long-term: add per-user API key impersonation
         # (backend feature TBD) or move actions to portal-authenticated calls.
         headers = {"X-Onemcp-User": username, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
+        verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or True
         async with httpx.AsyncClient(verify=verify_arg, timeout=self.valves.TIMEOUT_SEC) as c:
             r = await c.post(url, json=payload, headers=headers)
             r.raise_for_status()

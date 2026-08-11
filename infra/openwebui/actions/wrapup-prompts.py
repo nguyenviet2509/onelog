@@ -22,15 +22,20 @@ from typing import Any, Callable
 # ============================================================================
 
 def _is_english_transcript(transcript: str) -> bool:
-    """Heuristic: if >55% chars are ASCII alpha → treat as EN transcript.
-    Threshold 55% because VN text still uses many ASCII chars (spaces, numbers, code)."""
+    """Detect language: nếu transcript chứa BẤT KỲ ký tự Việt có dấu → VN.
+    Chat kỹ thuật VN thường 60-70% ASCII alpha (code, command, service name) —
+    ratio-based threshold false-positive nhiều. Chỉ tin EN khi ZERO ký tự VN
+    và transcript đủ dài để có ý nghĩa (> 50 alpha chars)."""
     if not transcript:
         return False
-    alpha_chars = [c for c in transcript if c.isalpha()]
-    if not alpha_chars:
+    # Vietnamese diacritic charset — bất kỳ ký tự nào trong này = VN
+    vn_chars = set("àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
+                   "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ")
+    if any(c in vn_chars for c in transcript):
         return False
-    ascii_alpha = sum(1 for c in alpha_chars if ord(c) < 128)
-    return (ascii_alpha / len(alpha_chars)) > 0.55
+    # Không có ký tự VN — có thể EN thuần, hoặc chat quá ngắn / toàn code
+    alpha_chars = [c for c in transcript if c.isalpha()]
+    return len(alpha_chars) >= 50
 
 
 def _lang_note(transcript: str) -> str:

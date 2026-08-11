@@ -28,7 +28,7 @@ INTERNAL FLOW
 ═══════════════════════════════════════════════════════════════════════════════
 
   1. Get last N=40 messages
-  2. Skip if < 5 messages total (too short)
+  2. Skip if < 3 messages total (too short)
   3. hard block + soft redact → redacted_transcript
   4. classify(redacted_transcript) via CLASSIFIER_MODEL
      └─ SKIP / low confidence → toast + audit wrapup.skipped_classifier → exit
@@ -405,12 +405,12 @@ _TODO_PATTERN = re.compile(r"\bTODO\b|\bFIXME\b|\bTBD\b|\bXXX\b")
 _GATEKEEPER_RULES: dict[str, dict] = {
     "kb": {
         "min_body": 200,
-        "min_msg": 5,
+        "min_msg": 3,
         "require_concrete_fix": True,
     },
     "report": {
         "min_body": 150,
-        "min_msg": 5,
+        "min_msg": 3,
         "require_outcome": True,
     },
     "research": {

@@ -137,20 +137,11 @@ def _soft_redact(text: str) -> RedactResult:
 # ============================================================================
 
 
-def _is_english_transcript(transcript: str) -> bool:
-    """Detect language: any Vietnamese diacritic → VN. Otherwise EN nếu >=50 alpha.
-    Ratio-based cũ (55% ASCII) false-positive nhiều với chat VN kỹ thuật
-    (code/command/service name/error msg đẩy ratio lên 60-70%)."""
-    if not transcript:
-        return False
-    _VN_DIACRITICS = set(
-        "àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
-        "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ"
-    )
-    if any(c in _VN_DIACRITICS for c in transcript):
-        return False
-    alpha_chars = [c for c in transcript if c.isalpha()]
-    return len(alpha_chars) >= 50
+def _is_english_transcript(_transcript: str) -> bool:
+    """OneMCP là tool nội bộ team VN → output LUÔN VN kể cả khi transcript EN.
+    Prompt VN đã có instruction "dịch sang VN khi viết" — LLM sẽ tuân theo.
+    Hardcode False = luôn dùng VN prompt (KISS)."""
+    return False
 
 
 _CLASSIFIER_PROMPT_VN = """Bạn là classifier phân loại chat session để lưu vào knowledge base.
@@ -262,9 +253,11 @@ SCHEMA (JSON thuần):
   "tags": ["tag1"] /* max 5, snake_case */
 }
 
-NGÔN NGỮ OUTPUT:
-- Viết title/problem/solution bằng TIẾNG VIỆT có dấu cho phần văn xuôi mô tả (triệu chứng, ngữ cảnh, giải thích, bước làm).
-- GIỮ NGUYÊN tiếng Anh cho technical terms không có nghĩa VN tương đương: tên service/tool (nginx, crowdsec, docker, systemd...), error code (502, OOM, SIGKILL), config key (proxy_read_timeout, api_key), path (/etc/..., /opt/...), command, exit code, HTTP verb, log keyword.
+NGÔN NGỮ OUTPUT (BẮT BUỘC):
+- title/problem/solution: TIẾNG VIỆT có dấu cho VĂN XUÔI mô tả (triệu chứng, ngữ cảnh, giải thích, bước làm).
+- BẮT BUỘC output tiếng Việt KỂ CẢ khi transcript là tiếng Anh — audience là dev VN nội bộ, phải DỊCH prose sang VN khi viết.
+- GIỮ NGUYÊN tiếng Anh cho technical terms không có nghĩa VN tương đương: tên service/tool (nginx, crowdsec, docker, systemd, zimbra, mailboxd...), error code (502, OOM, SIGKILL), config key (proxy_read_timeout, api_key), path (/etc/..., /opt/...), command, exit code, HTTP verb, log keyword.
+- Trong ``` code block ``` giữ NGUYÊN 100% (không thêm ký tự VN vào commands/queries).
 - KHÔNG dịch máy móc kiểu "thời gian chờ đọc proxy" hay "cửa sổ trượt".
 - Tags LUÔN snake_case tiếng Anh (VD: bouncer_disconnected, http_502, oom_kill).
 
@@ -305,9 +298,11 @@ SCHEMA (JSON thuần):
   "tags": ["tag1"] /* max 5, snake_case */
 }
 
-NGÔN NGỮ OUTPUT:
-- Viết title/context/work_done/outcome/next_steps bằng TIẾNG VIỆT có dấu cho phần văn xuôi (mục tiêu, background, quyết định, kết quả).
+NGÔN NGỮ OUTPUT (BẮT BUỘC):
+- title/context/work_done/outcome/next_steps: TIẾNG VIỆT có dấu cho VĂN XUÔI (mục tiêu, background, quyết định, kết quả).
+- BẮT BUỘC output tiếng Việt KỂ CẢ khi transcript là tiếng Anh — audience là dev VN nội bộ, phải DỊCH prose sang VN.
 - GIỮ NGUYÊN tiếng Anh cho technical terms: tên service/tool (nginx, postgres, k8s...), command, path, config key, metric, HTTP verb, error code.
+- Trong ``` code block ``` giữ NGUYÊN 100%.
 - KHÔNG dịch máy móc technical terms (VD giữ "restart container", không dịch "khởi động lại container").
 - Tags LUÔN snake_case tiếng Anh (VD: migration_done, rollout_prod, backup_verified).
 
@@ -349,8 +344,9 @@ SCHEMA (JSON thuần):
   "conclusion": "markdown: tổng kết + recommendation cuối, gom tất cả action items"
 }
 
-NGÔN NGỮ OUTPUT:
-- Viết title/question/hypothesis/findings/conclusion bằng TIẾNG VIỆT có dấu cho phần văn xuôi (câu hỏi nghiên cứu, giả thuyết, phân tích, kết luận, recommendation).
+NGÔN NGỮ OUTPUT (BẮT BUỘC):
+- title/question/hypothesis/findings/conclusion: TIẾNG VIỆT có dấu cho VĂN XUÔI (câu hỏi nghiên cứu, giả thuyết, phân tích, kết luận, recommendation).
+- BẮT BUỘC output tiếng Việt KỂ CẢ khi transcript là tiếng Anh — audience là dev VN nội bộ, phải DỊCH prose sang VN.
 - GIỮ NGUYÊN tiếng Anh cho technical terms: tên service/tool (crowdsec, ssmtp, rsyslog, systemd, victorialogs...), error code (OOM, SIGKILL, 502), config key (proxy_read_timeout, MaxSessions), path (/opt/, /var/log/), command, query, log keyword, metric name.
 - KHÔNG dịch máy móc technical terms (giữ "session systemd đầy", không dịch "phiên systemd đầy"; giữ "disk usage > 80%", không đổi thành "sử dụng đĩa vượt 80 phần trăm").
 - Trong code block ``` giữ NGUYÊN 100% (không thêm ký tự VN vào commands/queries).

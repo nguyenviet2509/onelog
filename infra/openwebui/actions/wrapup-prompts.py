@@ -21,21 +21,11 @@ from typing import Any, Callable
 # Language detection
 # ============================================================================
 
-def _is_english_transcript(transcript: str) -> bool:
-    """Detect language: nếu transcript chứa BẤT KỲ ký tự Việt có dấu → VN.
-    Chat kỹ thuật VN thường 60-70% ASCII alpha (code, command, service name) —
-    ratio-based threshold false-positive nhiều. Chỉ tin EN khi ZERO ký tự VN
-    và transcript đủ dài để có ý nghĩa (> 50 alpha chars)."""
-    if not transcript:
-        return False
-    # Vietnamese diacritic charset — bất kỳ ký tự nào trong này = VN
-    vn_chars = set("àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ"
-                   "ÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ")
-    if any(c in vn_chars for c in transcript):
-        return False
-    # Không có ký tự VN — có thể EN thuần, hoặc chat quá ngắn / toàn code
-    alpha_chars = [c for c in transcript if c.isalpha()]
-    return len(alpha_chars) >= 50
+def _is_english_transcript(_transcript: str) -> bool:
+    """OneMCP là tool nội bộ team VN → output LUÔN VN kể cả khi transcript EN.
+    VN prompts đã có instruction "BẮT BUỘC output VN, dịch prose sang VN" —
+    LLM tuân theo. Hardcode False = luôn dùng VN prompt (KISS)."""
+    return False
 
 
 def _lang_note(transcript: str) -> str:
@@ -161,7 +151,7 @@ VÍ DỤ OUTPUT HỢP LỆ:
   "tags": ["nginx", "http_502", "timeout", "upstream"]
 }
 
-NGÔN NGỮ: Viết title/problem/solution bằng TIẾNG VIỆT có dấu cho phần văn xuôi. Giữ nguyên EN cho: tên service/tool, error code, config key, path, command, HTTP verb, log keyword. Tags LUÔN snake_case tiếng Anh.
+NGÔN NGỮ OUTPUT (BẮT BUỘC): title/problem/solution TIẾNG VIỆT có dấu cho VĂN XUÔI. BẮT BUỘC output VN kể cả khi transcript EN — audience dev VN, phải DỊCH prose sang VN. Giữ nguyên EN cho: tên service/tool (nginx, docker, zimbra, mailboxd...), error code (502, OOM, SIGKILL), config key (proxy_read_timeout, api_key), path, command, HTTP verb, log keyword. Trong ``` code block giữ NGUYÊN 100%. Tags LUÔN snake_case tiếng Anh.
 
 TRANSCRIPT:
 ---

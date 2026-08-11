@@ -274,13 +274,23 @@ class Action:
             '"solution": str (markdown, ĐÃ VERIFIED steps + commands cụ thể trong ```), '
             '"related": str (markdown, links optional), '
             '"tags": [str] (max 5, snake_case, service + error type)}\n\n"'
-            "NGÔN NGỮ OUTPUT: Viết title/problem/solution bằng TIẾNG VIỆT có dấu cho phần "
-            "văn xuôi mô tả (triệu chứng, ngữ cảnh, giải thích, bước làm). GIỮ NGUYÊN "
-            "tiếng Anh cho technical terms không có nghĩa VN tương đương: tên service/tool "
-            "(nginx, crowdsec, docker...), error code (502, OOM, SIGKILL), config key "
-            "(proxy_read_timeout, api_key), path (/etc/...), command, exit code, HTTP verb, "
-            "log keyword. KHÔNG dịch máy móc kiểu 'thời gian chờ đọc proxy'. "
-            "Tags LUÔN snake_case tiếng Anh (VD: bouncer_disconnected, http_502).\n\n"
+            "═══ NGÔN NGỮ OUTPUT — BẮT BUỘC ═══\n"
+            "• title / problem / solution / related: PHẢI viết TIẾNG VIỆT CÓ DẤU cho phần văn xuôi mô tả.\n"
+            "• BẮT BUỘC output tiếng Việt KỂ CẢ khi transcript là tiếng Anh — audience là dev VN nội bộ.\n"
+            "• Nếu transcript EN → DỊCH sang VN khi viết (không copy nguyên EN prose).\n"
+            "• GIỮ NGUYÊN tiếng Anh CHỈ cho: tên service/tool (nginx, crowdsec, docker, systemd, zimbra, "
+            "mailboxd, postgres...), error code (502, OOM, SIGKILL, ENOENT), config key "
+            "(proxy_read_timeout, api_key, zimbra_mailboxd_java_options), path (/etc/..., /opt/..., "
+            "/var/log/...), command, exit code, HTTP verb (GET/POST), log keyword, metric name.\n"
+            "• KHÔNG dịch máy móc technical terms (KHÔNG 'thời gian chờ đọc proxy', 'phiên systemd đầy').\n"
+            "• Trong ``` code block ``` giữ NGUYÊN 100% (commands/queries/config không thêm ký tự VN).\n"
+            "• Tags LUÔN snake_case tiếng Anh (VD: bouncer_disconnected, http_502, mailboxd_overload).\n\n"
+            "VÍ DỤ ĐÚNG (transcript có thể EN nhưng output VN):\n"
+            '  "problem": "External probe từ sg-node-1 tới https://mailer-0104.inet.vn/ timeout sau 10s '
+            '(context deadline exceeded), fail 3 consecutive checks. Host còn sống (postfix/amavis '
+            'logs active) nhưng mailboxd (Jetty) bị overload: saslauthd timeout liên tục (curl error 28)..."\n'
+            '  "solution": "Restart mailboxd để tạm giải phóng overload:\\n```\\nsu zimbra\\nzmmailboxdctl '
+            'stop\\n...\\n```\\nSau restart xác nhận: `curl -skI https://localhost:443`..."\n\n'
             "Không suy diễn. Chỉ trích chính xác từ chat. Nghi ngờ = not_kb_worthy.\n\n"
             f"Chat transcript:\n---\n{transcript}\n---"
         )

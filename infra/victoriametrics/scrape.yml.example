@@ -112,3 +112,22 @@ scrape_configs:
       - targets: ["alertmanager:9093"]
         labels:
           component: alertmanager
+
+  # cAdvisor — per-container CPU/RAM/net/disk on :8080. High-cardinality by
+  # nature (per-container labels); rely on --docker_only + no container_labels
+  # in the compose service to keep it bounded.
+  - job_name: onelog-cadvisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          component: cadvisor
+
+  # NATS — prometheus-nats-exporter exposes gnatsd_varz_* / connz_* / jsz_*
+  # on :7777 (bridged from NATS monitor endpoint :8222).
+  - job_name: onelog-nats
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["nats-exporter:7777"]
+        labels:
+          component: nats

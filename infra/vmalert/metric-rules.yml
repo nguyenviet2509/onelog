@@ -361,3 +361,100 @@ groups:
         annotations:
           summary: "Alertmanager notification failures > 0.1/s for 10m"
           description: "Check AM logs for SMTP/webhook errors. Verify Telegram bot token + chat_id."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # CONTAINER HEALTH — cAdvisor-sourced. Focus on hard failure signals (OOM,
+  # restart loop) + sustained CPU throttling. Skip byte-throughput alerts —
+  # they need per-container baselines.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: container-health
+    interval: 30s
+    rules:
+      - alert: ContainerOOMKilled
+        # container_oom_events_total = cumulative OOM kills. Any increment
+        # matters — indicates memory limit too tight or a leak.
+        expr: increase(container_oom_events_total{name!=""}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: capacity
+          component: container
+        annotations:
+          summary: "OOM kill in container {{ $labels.name }}"
+          description: "Container was killed by OOM. `docker logs {{ $labels.name }}` and inspect memory limit."
+
+      - alert: ContainerRestartLoop
+        # >3 starts in 15m = crash loop. `changes()` counts value changes on
+        # start-time metric — each restart bumps it.
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          category: reliability
+          component: container
+        annotations:
+          summary: "Container {{ $labels.name }} restarted > 3× in 15m"
+          description: "Crash loop. `docker logs --tail 100 {{ $labels.name }}` for stack trace."
+
+      - alert: ContainerCpuThrottleHigh
+        # CPU CFS throttling > 0.5 sec/sec sustained 10m = container hits CPU
+        # limit constantly. Either raise limit or optimize workload.
+        expr: |
+          rate(container_cpu_cfs_throttled_seconds_total{name!=""}[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          category: capacity
+          component: container
+        annotations:
+          summary: "Container {{ $labels.name }} CPU throttled > 50% for 10m"
+          description: "Container CPU limit too tight. Consider raising limit or profile workload."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # NATS HEALTH — indexer queue backbone. Slow consumer / lagging JetStream
+  # consumer = indexer falling behind ingest. JetStream storage cap warning
+  # protects against runaway stream growth.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: nats-health
+    interval: 30s
+    rules:
+      - alert: NatsDown
+        expr: up{job="onelog-nats"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: reliability
+          component: nats
+        annotations:
+          summary: "NATS DOWN > 2m — indexer queue backbone lost"
+          description: "Ingest pipeline stalls without NATS. `docker restart ragstack-nats` after checking logs."
+
+      - alert: NatsSlowConsumer
+        # gnatsd_varz_slow_consumers = cumulative count of slow consumers
+        # (message backlog exceeded pending limit). Any increment worth
+        # investigating.
+        expr: increase(gnatsd_varz_slow_consumers[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: reliability
+          component: nats
+        annotations:
+          summary: "NATS slow consumer detected"
+          description: "A subscriber can't keep up. Usually indexer batch stalled — check indexer logs."
+
+      - alert: NatsJetstreamStorageHigh
+        # Guard against runaway stream growth. absent() prevents alerting when
+        # JS storage limit unset (0).
+        expr: |
+          gnatsd_varz_jetstream_max_storage > 0
+          and
+          (gnatsd_varz_jetstream_storage / gnatsd_varz_jetstream_max_storage) > 0.85
+        for: 30m
+        labels:
+          severity: warning
+          category: capacity
+          component: nats
+        annotations:
+          summary: "NATS JetStream storage > 85% ({{ $value | humanizePercentage }})"
+          description: "Stream approaching quota. Review retention or raise max_bytes."

@@ -55,6 +55,14 @@ route:
         - component=~"data-disk|root-partition|disk-probe"
       receiver: telegram-trend
 
+    # ── Mail-server fleet (mailer-*, mta3, store.mailer, zmhn*.onemail.vn)
+    # → Mail-Server topic (thread 5228). Đặt trước event/critical/notify_style
+    # để mail hosts KHÔNG lọt về Client-Server topic (thread 6). Continue=false
+    # (default): mail alert chỉ đi vào topic 5228, không fanout Telegram khác.
+    - matchers:
+        - host=~"mailer-.*\\.inet\\.vn|mta3\\.inet\\.vn|store\\.mailer\\.inet\\.vn|zmhn.*\\.onemail\\.vn"
+      receiver: telegram-mail-server
+
     # ── Fleet event-style (OomKillEvent, DiskFullErrors, NewUserOrSudoer,
     # LsphpSegfault) → Client-Server topic, send_resolved=false. Event đã xảy
     # ra rồi, RESOLVED chỉ nói "không có thêm trong 5m" → noise.
@@ -132,6 +140,18 @@ receivers:
       - bot_token: "__TELEGRAM_BOT_TOKEN__"
         chat_id: __TELEGRAM_CHAT_ID__
         message_thread_id: __TELEGRAM_THREAD_ID_CLIENT_SERVER__
+        parse_mode: HTML
+        send_resolved: true
+        message: *telegram_message_template
+
+  # Mail-server fleet alerts → separate topic (thread 5228). Hardcode thread_id
+  # vì đây là topic cố định cho ops mail team. send_resolved=true đồng nhất với
+  # client-server style (ops thấy khi service phục hồi).
+  - name: telegram-mail-server
+    telegram_configs:
+      - bot_token: "__TELEGRAM_BOT_TOKEN__"
+        chat_id: __TELEGRAM_CHAT_ID__
+        message_thread_id: 5228
         parse_mode: HTML
         send_resolved: true
         message: *telegram_message_template

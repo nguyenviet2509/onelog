@@ -13,7 +13,8 @@
 #   /message*              → Bearer forward_auth (mcp-semantic) — unchanged
 #   /llm/*                 → no auth (LiteLLM master key) — unchanged
 #   /select/* (non-vmui)   → no added auth (machine API tools) — unchanged
-#   /insert/*, /health, /metrics, /.well-known/* → no added auth — unchanged
+#   /insert/*, /health, /.well-known/* → no added auth — unchanged
+#   /metrics, /grafana/metrics → 404 at edge (VM scrapes via docker DNS internally)
 
 {
     # global options
@@ -84,15 +85,18 @@
             reverse_proxy victorialogs:9428
         }
 
-        # ── VictoriaLogs insert + health + metrics — no added auth ──
+        # ── VictoriaLogs insert + health — no added auth ──
         handle /insert/* {
             reverse_proxy victorialogs:9428
         }
         handle /health {
             reverse_proxy victorialogs:9428
         }
+        # /metrics blocked at edge — VM scrapes VictoriaLogs internally via
+        # docker DNS (victorialogs:9428). Public path leaks runtime metadata
+        # (version, cardinality, cache hit rates) — no user need for it.
         handle /metrics {
-            reverse_proxy victorialogs:9428
+            respond "not found" 404
         }
 
         # ── MCP endpoints — Bearer forward_auth (unchanged) ──
@@ -130,6 +134,14 @@
             reverse_proxy litellm-proxy:4000 {
                 flush_interval -1
             }
+        }
+
+        # /grafana/metrics blocked at edge — VM scrapes it internally via
+        # docker DNS (grafana:3000). Even under SSO, no user-facing reason
+        # to expose Grafana runtime metadata (build_info, feature toggles,
+        # request histograms) to browser.
+        handle /grafana/metrics {
+            respond "not found" 404
         }
 
         # ── Grafana — forward_auth gated ──

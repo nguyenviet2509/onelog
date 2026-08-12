@@ -39,7 +39,6 @@ Configured in [scrape.yml](../infra/victoriametrics/scrape.yml):
 | `onelog-grafana` | `grafana:3000/grafana/metrics` | Subpath because `GF_SERVER_SERVE_FROM_SUB_PATH=true`. Unauthenticated. |
 | `onelog-oauth2-proxy` | `oauth2-proxy:44180` | Requires `--metrics-address=0.0.0.0:44180` flag in compose command. |
 | `onelog-alertmanager` | `alertmanager:9093` | Native `/metrics`. Self-health + notification-failure counters. |
-| `onelog-cadvisor` | `cadvisor:8080` | Per-container CPU/RAM/net/disk. `--docker_only`, no container_labels, `--housekeeping_interval=30s` for cardinality control. |
 | `onelog-nats` | `nats-exporter:7777` | Bridge from NATS `:8222` JSON monitor (`gnatsd_varz_*`, `_connz_*`, `_jsz_*`). |
 
 ## Retention & cardinality
@@ -72,7 +71,6 @@ Metric-side rules in [vmalert/metric-rules.yml](../infra/vmalert/metric-rules.ym
 - **scrape-health** — `ScrapeTargetDown`, `NodeExporterDown`, `CriticalServiceDown`.
 - **edge-health** — `CaddyDown`, `CaddyUpstream5xxHigh`, `GrafanaDown`, `OAuth2ProxyAuthFailureSpike`.
 - **alertmanager-health** — `AlertmanagerDown` (silence-of-silence guard, watch Grafana panel since AM can't page itself), `AlertmanagerNotificationFailing`.
-- **container-health** — `ContainerOOMKilled`, `ContainerRestartLoop`, `ContainerCpuThrottleHigh` (via cAdvisor).
 - **nats-health** — `NatsDown`, `NatsSlowConsumer`, `NatsJetstreamStorageHigh`.
 - **qdrant-log-templates** — `QdrantTemplateGrowthHigh`, `QdrantTemplateHardCap`.
 
@@ -108,3 +106,4 @@ Metric-side rules in [vmalert/metric-rules.yml](../infra/vmalert/metric-rules.ym
 
 - Vector metrics — Vector exposes some stats at `/health` + `/graphql` but no native Prometheus endpoint. Enabling `prometheus_exporter` sink adds a port + config. Deferred.
 - Alert routing — new AnyEventsStale currently uses default receiver. If SRE wants separate escalation, add matcher in `alertmanager.yml` for `component: ingest-pipeline`.
+- **Container-level metrics** — cAdvisor v0.49 attempted 2026-08-12, removed. VPS runs Docker with containerd snapshotter (`Storage Driver: overlayfs`, `driver-type: io.containerd.snapshotter.v1`) which cAdvisor doesn't understand → 0 container metrics visible. Alternatives to evaluate: `docker_stats_exporter`, newer cAdvisor version, or scrape containerd directly.

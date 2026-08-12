@@ -364,54 +364,6 @@ groups:
           description: "Check AM logs for SMTP/webhook errors. Verify Telegram bot token + chat_id."
 
   # ─────────────────────────────────────────────────────────────────────────
-  # CONTAINER HEALTH — cAdvisor-sourced. Focus on hard failure signals (OOM,
-  # restart loop) + sustained CPU throttling. Skip byte-throughput alerts —
-  # they need per-container baselines.
-  # ─────────────────────────────────────────────────────────────────────────
-  - name: container-health
-    interval: 30s
-    rules:
-      - alert: ContainerOOMKilled
-        # container_oom_events_total = cumulative OOM kills. Any increment
-        # matters — indicates memory limit too tight or a leak.
-        expr: increase(container_oom_events_total{name!=""}[5m]) > 0
-        for: 0m
-        labels:
-          severity: critical
-          category: capacity
-          component: container
-        annotations:
-          summary: "OOM kill in container {{ $labels.name }}"
-          description: "Container was killed by OOM. `docker logs {{ $labels.name }}` and inspect memory limit."
-
-      - alert: ContainerRestartLoop
-        # >3 starts in 15m = crash loop. `changes()` counts value changes on
-        # start-time metric — each restart bumps it.
-        expr: changes(container_start_time_seconds{name!=""}[15m]) > 3
-        for: 5m
-        labels:
-          severity: warning
-          category: reliability
-          component: container
-        annotations:
-          summary: "Container {{ $labels.name }} restarted > 3× in 15m"
-          description: "Crash loop. `docker logs --tail 100 {{ $labels.name }}` for stack trace."
-
-      - alert: ContainerCpuThrottleHigh
-        # CPU CFS throttling > 0.5 sec/sec sustained 10m = container hits CPU
-        # limit constantly. Either raise limit or optimize workload.
-        expr: |
-          rate(container_cpu_cfs_throttled_seconds_total{name!=""}[5m]) > 0.5
-        for: 10m
-        labels:
-          severity: warning
-          category: capacity
-          component: container
-        annotations:
-          summary: "Container {{ $labels.name }} CPU throttled > 50% for 10m"
-          description: "Container CPU limit too tight. Consider raising limit or profile workload."
-
-  # ─────────────────────────────────────────────────────────────────────────
   # NATS HEALTH — indexer queue backbone. Slow consumer / lagging JetStream
   # consumer = indexer falling behind ingest. JetStream storage cap warning
   # protects against runaway stream growth.

@@ -180,41 +180,11 @@ services:
       timeout: 5s
       retries: 3
 
-  # cAdvisor — per-container CPU/RAM/network/disk. node-exporter covers host-
-  # wide only; without this we can't tell WHICH container is eating resources
-  # during a spike. --docker_only + --store_container_labels=false keep
-  # cardinality bounded (~40 metrics × current 30-container fleet ≈ 1200 series).
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: ragstack-cadvisor
-    restart: unless-stopped
-    profiles: [monitoring]
-    # --disable_metrics=disk drops the disk-per-container collector which
-    # needs docker's classic layerdb path (fails on modern overlay2 driver
-    # → 'failed to identify the read-write layer ID' errors flooding logs).
-    # docker.sock mount lets cAdvisor discover containers via docker API
-    # instead of parsing /var/lib/docker cgroup paths directly.
-    command:
-      - "--housekeeping_interval=30s"
-      - "--docker_only=true"
-      - "--store_container_labels=false"
-      - "--disable_metrics=disk,tcp,udp,percpu,sched,process"
-    # NOTE: /var/lib/docker intentionally NOT mounted. cAdvisor v0.49 tries to
-    # parse image layerdb from that path but overlay2 driver on this VPS puts
-    # layer info at /var/lib/docker/overlay2/, not the classic layerdb path.
-    # Without the mount, cAdvisor falls back to docker.sock API discovery
-    # which works correctly.
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /dev/disk/:/dev/disk:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+  # cAdvisor tried & removed 2026-08-12: Docker on this VPS uses containerd
+  # image-store mode (`Storage Driver: overlayfs`, driver-type=containerd
+  # snapshotter v1). cAdvisor v0.49 hardcodes classic /var/lib/docker/image/
+  # layerdb parsing → 0 container metrics visible. Revisit when cAdvisor
+  # supports containerd snapshotter, or switch to a different exporter.
 
   # prometheus-nats-exporter — bridges NATS `/varz`+`/connz`+`/jsz` JSON monitor
   # endpoints (port 8222) to Prometheus format on :7777. NATS JetStream is

@@ -278,20 +278,21 @@ groups:
   - name: edge-health
     interval: 30s
     rules:
-      - alert: CaddyUpstream5xxHigh
-        # Caddy exposes caddy_reverse_proxy_upstreams_healthy per upstream +
-        # caddy_http_request_duration_seconds_count by status. 5xx > 1/s for 5m
-        # = real backend issue, not a browser blip.
-        expr: |
-          sum by (upstream) (rate(caddy_http_request_errors_total{job="onelog-caddy"}[5m])) > 1
-        for: 5m
+      - alert: CaddyUpstreamUnhealthy
+        # Admin API /metrics exposes caddy_reverse_proxy_upstreams_healthy per
+        # upstream (1=healthy, 0=unhealthy from active health checks). Per-
+        # request 5xx counters live on the SERVER metrics endpoint which
+        # requires `servers { metrics }` in Caddyfile — that exposes /metrics
+        # on the public :80 handler (unsafe). We stick to admin metrics.
+        expr: caddy_reverse_proxy_upstreams_healthy{job="onelog-caddy"} < 1
+        for: 3m
         labels:
           severity: warning
           category: edge
           component: caddy
         annotations:
-          summary: "Caddy 5xx > 1/s for 5m on upstream {{ $labels.upstream }}"
-          description: "Backend returning errors. `docker logs ragstack-caddy` and check upstream health."
+          summary: "Caddy upstream {{ $labels.upstream }} unhealthy > 3m"
+          description: "Reverse-proxy active health check failing. Verify upstream container status."
 
       - alert: OAuth2ProxyAuthFailureSpike
         # oauth2-proxy exposes oauth2_proxy_requests_total{code="401"|"403"}.
@@ -444,17 +445,19 @@ groups:
           description: "A subscriber can't keep up. Usually indexer batch stalled — check indexer logs."
 
       - alert: NatsJetstreamStorageHigh
-        # Guard against runaway stream growth. absent() prevents alerting when
-        # JS storage limit unset (0).
+        # Actual exporter metric names:
+        #   gnatsd_varz_jetstream_stats_memory / _config_max_memory
+        #   gnatsd_varz_jetstream_stats_storage_used / _config_max_storage
+        # Trigger when file-storage utilization > 85% of configured cap.
         expr: |
-          gnatsd_varz_jetstream_max_storage > 0
+          gnatsd_varz_jetstream_config_max_storage > 0
           and
-          (gnatsd_varz_jetstream_storage / gnatsd_varz_jetstream_max_storage) > 0.85
+          (gnatsd_varz_jetstream_stats_storage_used / gnatsd_varz_jetstream_config_max_storage) > 0.85
         for: 30m
         labels:
           severity: warning
           category: capacity
           component: nats
         annotations:
-          summary: "NATS JetStream storage > 85% ({{ $value | humanizePercentage }})"
+          summary: "NATS JetStream storage > 85% of configured cap"
           description: "Stream approaching quota. Review retention or raise max_bytes."

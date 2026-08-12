@@ -189,16 +189,23 @@ services:
     container_name: ragstack-cadvisor
     restart: unless-stopped
     profiles: [monitoring]
+    # --disable_metrics=disk drops the disk-per-container collector which
+    # needs docker's classic layerdb path (fails on modern overlay2 driver
+    # → 'failed to identify the read-write layer ID' errors flooding logs).
+    # docker.sock mount lets cAdvisor discover containers via docker API
+    # instead of parsing /var/lib/docker cgroup paths directly.
     command:
       - "--housekeeping_interval=30s"
       - "--docker_only=true"
       - "--store_container_labels=false"
+      - "--disable_metrics=disk,tcp,udp,percpu,sched,process"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
       interval: 30s

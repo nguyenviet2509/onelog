@@ -199,11 +199,15 @@ services:
       - "--docker_only=true"
       - "--store_container_labels=false"
       - "--disable_metrics=disk,tcp,udp,percpu,sched,process"
+    # NOTE: /var/lib/docker intentionally NOT mounted. cAdvisor v0.49 tries to
+    # parse image layerdb from that path but overlay2 driver on this VPS puts
+    # layer info at /var/lib/docker/overlay2/, not the classic layerdb path.
+    # Without the mount, cAdvisor falls back to docker.sock API discovery
+    # which works correctly.
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:

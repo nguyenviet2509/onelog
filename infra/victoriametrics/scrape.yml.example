@@ -76,3 +76,39 @@ scrape_configs:
       - targets: ["node-exporter:9101"]
         labels:
           component: host
+
+  # Caddy — /metrics via admin API :2019 (admin bound to :2019 inside container,
+  # NOT published to host). Requires Caddyfile global option `admin :2019`.
+  - job_name: onelog-caddy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["caddy:2019"]
+        labels:
+          component: caddy
+
+  # Grafana — subpath /grafana/metrics because GF_SERVER_SERVE_FROM_SUB_PATH=true
+  # and GF_SERVER_ROOT_URL ends with /grafana/. Unauthenticated by default.
+  - job_name: onelog-grafana
+    metrics_path: /grafana/metrics
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          component: grafana
+
+  # oauth2-proxy — requires --metrics-address=0.0.0.0:44180 in service command.
+  # No host port publish; only reachable inside ragstack network.
+  - job_name: onelog-oauth2-proxy
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["oauth2-proxy:44180"]
+        labels:
+          component: auth
+
+  # Alertmanager — native /metrics on :9093. Self-scrape covers notification
+  # failure counters (alertmanager_notifications_failed_total).
+  - job_name: onelog-alertmanager
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels:
+          component: alertmanager

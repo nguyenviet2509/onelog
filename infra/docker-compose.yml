@@ -163,6 +163,9 @@ services:
       - "-promscrape.config=/etc/vm/scrape.yml"
       - "-httpListenAddr=:8428"
       - "-memory.allowedBytes=256MB"
+      # Query guard — reject queries that fan out beyond 100k unique series.
+      # At current cardinality (~5.6k series) this only trips on runaway PromQL.
+      - "-search.maxUniqueTimeseries=100000"
     ports:
       - "127.0.0.1:8428:8428"
     environment:
@@ -616,7 +619,12 @@ services:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
     container_name: ragstack-oauth2-proxy
     restart: unless-stopped
-    command: ["--config=/etc/oauth2-proxy.cfg"]
+    # --metrics-address exposes /metrics on :44180 for VictoriaMetrics self-scrape.
+    # Container-internal only (no host publish) — reachable via oauth2-proxy:44180
+    # within ragstack network.
+    command:
+      - "--config=/etc/oauth2-proxy.cfg"
+      - "--metrics-address=0.0.0.0:44180"
     volumes:
       - ./oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
     networks:

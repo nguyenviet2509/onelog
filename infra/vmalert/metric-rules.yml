@@ -269,3 +269,95 @@ groups:
         annotations:
           summary: "Qdrant log_templates > 500k points ({{ $value | humanize }})"
           description: "~6.5 GB RAM footprint. Enable scalar quantization (int8) hoặc on-disk HNSW."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # EDGE HEALTH — Caddy (reverse proxy) + oauth2-proxy (SSO) + Grafana. These
+  # sit on the user-facing edge; loss = user-visible outage. Threshold values
+  # are initial guesses; tune after 1-week baseline per project convention.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: edge-health
+    interval: 30s
+    rules:
+      - alert: CaddyUpstream5xxHigh
+        # Caddy exposes caddy_reverse_proxy_upstreams_healthy per upstream +
+        # caddy_http_request_duration_seconds_count by status. 5xx > 1/s for 5m
+        # = real backend issue, not a browser blip.
+        expr: |
+          sum by (upstream) (rate(caddy_http_request_errors_total{job="onelog-caddy"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: edge
+          component: caddy
+        annotations:
+          summary: "Caddy 5xx > 1/s for 5m on upstream {{ $labels.upstream }}"
+          description: "Backend returning errors. `docker logs ragstack-caddy` and check upstream health."
+
+      - alert: OAuth2ProxyAuthFailureSpike
+        # oauth2-proxy exposes oauth2_proxy_requests_total{code="401"|"403"}.
+        # 3× baseline error rate over 10m suggests brute force or Zitadel misconfig.
+        expr: |
+          sum(rate(oauth2_proxy_requests_total{job="onelog-oauth2-proxy", code=~"4.."}[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          category: security
+          component: auth
+        annotations:
+          summary: "oauth2-proxy 4xx rate > 0.5/s for 10m"
+          description: "Check Zitadel availability and unusual client source IPs."
+
+      - alert: GrafanaDown
+        expr: up{job="onelog-grafana"} == 0
+        for: 3m
+        labels:
+          severity: warning
+          category: monitoring
+          component: grafana
+        annotations:
+          summary: "Grafana DOWN > 3m — dashboards unreachable"
+          description: "`docker ps | grep grafana` and `docker logs ragstack-grafana`."
+
+      - alert: CaddyDown
+        expr: up{job="onelog-caddy"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: edge
+          component: caddy
+        annotations:
+          summary: "CRITICAL: Caddy DOWN > 1m — all HTTPS traffic broken"
+          description: "User-facing outage. `docker restart ragstack-caddy` immediately after checking logs."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ALERTMANAGER SELF-HEALTH — silence-of-silence guard. If AM dies, no other
+  # alert reaches Telegram. Grafana panel is the fallback signal since AM
+  # can't page itself when it's down.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: alertmanager-health
+    interval: 30s
+    rules:
+      - alert: AlertmanagerDown
+        expr: up{job="onelog-alertmanager"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: monitoring
+          component: alertmanager
+        annotations:
+          summary: "CRITICAL: Alertmanager DOWN > 2m — no alerts will notify"
+          description: "Paradox: this alert can't page (AM is the pager). Watch Grafana firing panel. `docker restart ragstack-alertmanager`."
+
+      - alert: AlertmanagerNotificationFailing
+        # Fires when > 0.1 notifications/sec fail sustained. SMTP down, Telegram
+        # 429 rate limit, or webhook 5xx are common causes.
+        expr: |
+          sum(rate(alertmanager_notifications_failed_total[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          category: monitoring
+          component: alertmanager
+        annotations:
+          summary: "Alertmanager notification failures > 0.1/s for 10m"
+          description: "Check AM logs for SMTP/webhook errors. Verify Telegram bot token + chat_id."

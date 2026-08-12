@@ -18,7 +18,10 @@
 {
     # global options
     auto_https off  # for app.local LAN; remove for real domain to get LE TLS
-    admin off
+    # admin API bound to :2019 inside container only (NOT published on host).
+    # Needed for VictoriaMetrics to scrape Caddy /metrics on caddy:2019.
+    # Reachable only from ragstack docker network — no external surface.
+    admin :2019
 }
 
 # LAN HTTP (no TLS) — uncomment for app.local testing

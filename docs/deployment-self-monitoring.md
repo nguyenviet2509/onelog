@@ -34,6 +34,23 @@ Configured in [scrape.yml](../infra/victoriametrics/scrape.yml):
 | `onelog-vmalert` | `vmalert:8880` | Alert eval loop stats. |
 | `onelog-litellm` | `litellm-proxy:4000` | Requires `callbacks: [prometheus]` in `litellm/config.yaml`. |
 | `victoriametrics` | self | Sanity. |
+| `onelog-host` | `node-exporter:9101` | Host CPU/RAM/net/disk. |
+| `onelog-caddy` | `caddy:2019` | Admin API `/metrics`. Requires `admin :2019` in Caddyfile global block. |
+| `onelog-grafana` | `grafana:3000/grafana/metrics` | Subpath because `GF_SERVER_SERVE_FROM_SUB_PATH=true`. Unauthenticated. |
+| `onelog-oauth2-proxy` | `oauth2-proxy:44180` | Requires `--metrics-address=0.0.0.0:44180` flag in compose command. |
+| `onelog-alertmanager` | `alertmanager:9093` | Native `/metrics`. Self-health + notification-failure counters. |
+
+## Retention & cardinality
+
+VictoriaMetrics tunables in [docker-compose.yml](../infra/docker-compose.yml) `victoriametrics` service:
+
+| Flag | Value | Rationale |
+|------|-------|-----------|
+| `-retentionPeriod` | `${VM_RETENTION:-30d}` | 30d default. Current ~5.6k series → ~1GB projected/year. Raise to 90d if history matters more than disk. |
+| `-memory.allowedBytes` | `256MB` | Enough for < 10k series. Bump if cardinality grows. |
+| `-search.maxUniqueTimeseries` | `100000` | Query-time guard against runaway PromQL fanout. Ingest is not throttled. |
+
+Watch cardinality: `docker exec ragstack-vm wget -qO- 'http://127.0.0.1:8428/api/v1/status/tsdb'` → check `seriesCountByMetricName` top 10. Reduce labels at scrape source via `metric_relabel_configs` when a metric dominates.
 
 ## Alerts
 
@@ -46,6 +63,14 @@ Existing rules that cover self-health:
 - `VictoriaLogsSelfError` (VL err burst)
 - `OpenWebUIDbProbeStale`
 - `DiskProbeStale`
+
+Metric-side rules in [vmalert/metric-rules.yml](../infra/vmalert/metric-rules.yml) (against VictoriaMetrics via `vmalert-metrics` service):
+
+- **host-capacity / host-disk / host-network** — node-exporter thresholds (CPU 80/92%, mem 85/93%, disk 75/85%, network err/drop).
+- **scrape-health** — `ScrapeTargetDown`, `NodeExporterDown`, `CriticalServiceDown`.
+- **edge-health** — `CaddyDown`, `CaddyUpstream5xxHigh`, `GrafanaDown`, `OAuth2ProxyAuthFailureSpike`.
+- **alertmanager-health** — `AlertmanagerDown` (silence-of-silence guard, watch Grafana panel since AM can't page itself), `AlertmanagerNotificationFailing`.
+- **qdrant-log-templates** — `QdrantTemplateGrowthHigh`, `QdrantTemplateHardCap`.
 
 ## Dashboard
 

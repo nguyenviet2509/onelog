@@ -5,6 +5,9 @@ infra/litellm/.env.llm
 infra/litellm/.env.cost
 infra/docker-compose.override.yml
 infra/victoriametrics/scrape.yml
+# Caddy runtime state (autosave.json, cert cache) — populated after admin API enabled
+infra/caddy/config/
+infra/caddy/data/
 
 # Ad-hoc session scripts under plans/reports/ (deploy/debug throwaways).
 # .md reports/audits stay tracked as design records. If a .sh proves

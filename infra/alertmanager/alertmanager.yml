@@ -55,12 +55,14 @@ route:
         - component=~"data-disk|root-partition|disk-probe"
       receiver: telegram-trend
 
-    # ── Mail-server fleet (mailer-*, mta3, store.mailer, zmhn*.onemail.vn)
+    # ── Mail-server fleet (mailer-*, mta3, store.mailer, zmhn*)
     # → Mail-Server topic (thread 5228). Đặt trước event/critical/notify_style
     # để mail hosts KHÔNG lọt về Client-Server topic (thread 6). Continue=false
     # (default): mail alert chỉ đi vào topic 5228, không fanout Telegram khác.
+    # Regex match cả short name (host label từ rsyslog/Vector) lẫn FQDN, đề
+    # phòng host tương lai gửi kèm domain suffix.
     - matchers:
-        - host=~"mailer-.*\\.inet\\.vn|mta3\\.inet\\.vn|store\\.mailer\\.inet\\.vn|zmhn.*\\.onemail\\.vn"
+        - host=~"mailer-[0-9]+(\\.inet\\.vn)?|mta3(\\.inet\\.vn)?|store\\.mailer(\\.inet\\.vn)?|zmhn[a-z0-9]+(\\.onemail\\.vn)?"
       receiver: telegram-mail-server
 
     # ── Fleet event-style (OomKillEvent, DiskFullErrors, NewUserOrSudoer,

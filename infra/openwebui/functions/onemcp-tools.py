@@ -51,12 +51,17 @@ class Tools:
         self.valves = self.Valves()
 
     async def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        """POST /api/mcp — JSON-RPC 2.0. Trả .result (không unwrap error để LLM thấy)."""
+        """POST /mcp/ — JSON-RPC 2.0. Trả .result (không unwrap error để LLM thấy).
+
+        Path /mcp/ là public (Bearer/API-key auth) — nginx rewrite sang backend
+        /api/mcp/*. KHÔNG dùng /api/mcp: prefix /api/ bị oauth2-proxy IAP wall
+        (Zitadel session cookie), gọi từ bot → 302 → /oauth2/start.
+        """
         # Phase 0 instrumentation (plan 260724-0805): đo per-call latency để verify
         # hypothesis "network overhead + multi-query = bottleneck chat". Xoá sau Phase 4.
         t0 = time.perf_counter()
         tool_name = params.get("name", method) if isinstance(params, dict) else method
-        url = f"{self.valves.ONEMCP_URL.rstrip('/')}/api/mcp"
+        url = f"{self.valves.ONEMCP_URL.rstrip('/')}/mcp/"
         # Dual-auth: prefer API key (SSO-native) when valve is set, else legacy bot user.
         if self.valves.BOT_KEY:
             auth_headers = {"X-Onemcp-Key": self.valves.BOT_KEY}

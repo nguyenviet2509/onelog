@@ -41,9 +41,10 @@ class Tools:
             "Bot contributor role — submit pending only.",
         )
         ONEMCP_CA_PATH: str = Field(
-            default="/opt/onemcp-ca.crt",
-            description="Path tới OneMCP self-signed cert mounted vào container. "
-            "Đặt rỗng để tắt TLS verify (chỉ dev-local).",
+            default="off",
+            description="Path tới CA cert. Đặt 'off' (hoặc 'false'/'none') để tắt TLS verify — "
+            "OK vì eth1 (10.200.0.0/24) là private link nội bộ. "
+            "Nếu dùng domain public + Sectigo, đặt 'system' để dùng system CA bundle.",
         )
         TIMEOUT_SEC: float = Field(default=5.0, description="HTTP timeout per RPC call.")
 
@@ -69,7 +70,16 @@ class Tools:
             auth_headers = {"X-Onemcp-User": self.valves.BOT_USER}
         headers = {**auth_headers, "Content-Type": "application/json"}
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-        verify_arg: bool | str = self.valves.ONEMCP_CA_PATH or False
+        # ONEMCP_CA_PATH sentinels: "off"/"false"/"none"/"" → verify=False;
+        # "system"/"true" → verify=True (dùng system CA bundle);
+        # anything else → treated as CA file path.
+        _ca = (self.valves.ONEMCP_CA_PATH or "").strip().lower()
+        if _ca in ("", "off", "false", "none", "no", "0"):
+            verify_arg: bool | str = False
+        elif _ca in ("system", "true", "yes", "1"):
+            verify_arg = True
+        else:
+            verify_arg = self.valves.ONEMCP_CA_PATH
         status = "ok"
         try:
             async with httpx.AsyncClient(

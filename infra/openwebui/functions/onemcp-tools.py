@@ -172,7 +172,9 @@ class Tools:
 
     async def onemcp_load_skill(self, skill_id: str) -> str:
         """Load SKILL.md body của 1 skill. Dùng khi muốn áp dụng skill vào task hiện tại."""
+        # MCP tool schema: load_skill expects {"name": <str>} (required). Wrapper
+        # giữ param name `skill_id` cho DX ổn định, map sang `name` khi gọi RPC.
         res = await self._rpc(
-            "tools/call", {"name": "load_skill", "arguments": {"id": skill_id}}
+            "tools/call", {"name": "load_skill", "arguments": {"name": skill_id}}
         )
         return json.dumps(res, ensure_ascii=False)

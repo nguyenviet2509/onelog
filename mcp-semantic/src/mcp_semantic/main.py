@@ -145,7 +145,15 @@ async def auth_verify(request: Request) -> Response:
 def _hit_to_dict(point: Any, vmui_base: str, time_range: str | None = None) -> dict[str, Any]:
     payload = point.payload or {}
     service = payload.get("service")
-    host = payload.get("host")
+    # Point mới (Aug-2026+): array `hosts` (multi-host collapsed).
+    # Point cũ trong retention window: scalar `host`.
+    hosts = payload.get("hosts")
+    if not hosts:
+        legacy = payload.get("host")
+        hosts = [legacy] if legacy else []
+    # VMUI link chỉ nhận 1 host — pick first (representative). Nếu cần fan-out
+    # per-host, agent gọi lại với host arg cụ thể.
+    vmui_host = hosts[0] if hosts else None
     severity = payload.get("severity")
     window_start = payload.get("window_start")
     window_end = payload.get("window_end")
@@ -153,7 +161,7 @@ def _hit_to_dict(point: Any, vmui_base: str, time_range: str | None = None) -> d
         "score": round(float(point.score), 4),
         "template": payload.get("template"),
         "service": service,
-        "host": host,
+        "hosts": hosts,
         "severity": severity,
         "count": payload.get("count"),
         "window_start": window_start,
@@ -162,7 +170,7 @@ def _hit_to_dict(point: Any, vmui_base: str, time_range: str | None = None) -> d
         "vmui_url": build_vmui_url(
             vmui_base,
             service=service,
-            host=host,
+            host=vmui_host,
             severity=severity,
             window_start=window_start,
             window_end=window_end,
@@ -221,8 +229,10 @@ async def search_log_templates(
                     status="empty_query", query=query)
         return []
 
+    # Schema arg `host` → payload key `hosts` (keyword-array). Qdrant MatchValue
+    # trên array field khớp nếu value nằm trong array.
     must: list[qm.FieldCondition] = []
-    for field, val in (("service", service), ("host", host), ("severity", severity)):
+    for field, val in (("service", service), ("hosts", host), ("severity", severity)):
         if val:
             must.append(qm.FieldCondition(key=field, match=qm.MatchValue(value=str(val))))
     qfilter = qm.Filter(must=must) if must else None

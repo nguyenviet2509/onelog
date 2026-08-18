@@ -29,7 +29,7 @@ schema: dict[str, Any] = {
         "properties": {
             "query": {"type": "string", "description": "Free-form query, e.g. 'mysql aborted connection'"},
             "service": {"type": "string", "description": "Optional service filter (e.g. mock-mysql)"},
-            "host": {"type": "string", "description": "Optional host filter"},
+            "host": {"type": "string", "description": "Optional host filter (matches nếu host nằm trong payload.hosts[])"},
             "severity": {"type": "string", "description": "Optional severity filter (warning, err, ...)"},
             "limit": {"type": "integer", "description": "Top-K (default 10, max 20)", "default": 10},
         },
@@ -59,6 +59,27 @@ class _Runner:
 _runner = _Runner()
 
 
+def _shape_hit(r: Any) -> dict[str, Any]:
+    """Normalize payload sang schema mới (`hosts` list). Points cũ scalar `host`
+    (pre-Aug-2026) vẫn còn trong retention window → fallback wrap thành list."""
+    p = r.payload or {}
+    hosts = p.get("hosts")
+    if not hosts:
+        legacy = p.get("host")
+        hosts = [legacy] if legacy else []
+    return {
+        "score": round(float(r.score), 4),
+        "template": p.get("template"),
+        "service": p.get("service"),
+        "hosts": hosts,
+        "severity": p.get("severity"),
+        "count": p.get("count"),
+        "window_start": p.get("window_start"),
+        "window_end": p.get("window_end"),
+        "sample": p.get("sample"),
+    }
+
+
 async def run(args: dict[str, Any]) -> dict[str, Any]:
     qdrant, embed = _runner._clients()
     query = str(args.get("query", "")).strip()
@@ -67,11 +88,14 @@ async def run(args: dict[str, Any]) -> dict[str, Any]:
 
     limit = max(1, min(20, int(args.get("limit", 10))))
 
+    # payload key mapping: schema `host` → payload array `hosts` (Qdrant MatchValue
+    # trên keyword-array field khớp nếu value nằm trong array — không cần MatchAny).
+    _KEY_MAP = {"service": "service", "host": "hosts", "severity": "severity"}
     must: list[qm.FieldCondition] = []
-    for field in ("service", "host", "severity"):
+    for field, payload_key in _KEY_MAP.items():
         val = args.get(field)
         if val:
-            must.append(qm.FieldCondition(key=field, match=qm.MatchValue(value=str(val))))
+            must.append(qm.FieldCondition(key=payload_key, match=qm.MatchValue(value=str(val))))
     qfilter = qm.Filter(must=must) if must else None
 
     vector = await embed.embed(query)
@@ -85,19 +109,6 @@ async def run(args: dict[str, Any]) -> dict[str, Any]:
         with_payload=True,
     )
 
-    hits = [
-        {
-            "score": round(float(r.score), 4),
-            "template": (r.payload or {}).get("template"),
-            "service": (r.payload or {}).get("service"),
-            "host": (r.payload or {}).get("host"),
-            "severity": (r.payload or {}).get("severity"),
-            "count": (r.payload or {}).get("count"),
-            "window_start": (r.payload or {}).get("window_start"),
-            "window_end": (r.payload or {}).get("window_end"),
-            "sample": (r.payload or {}).get("sample"),
-        }
-        for r in resp.points
-    ]
+    hits = [_shape_hit(r) for r in resp.points]
     log.info("tool.search_log_templates", query=query, hits=len(hits))
     return {"hits": hits}

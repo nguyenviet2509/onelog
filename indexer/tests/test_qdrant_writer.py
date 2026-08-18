@@ -9,7 +9,7 @@ def _point(template_id: int = 42, window: str = "2026-06-23T10:00:00+00:00") -> 
         template_id=template_id,
         template="GET <*> HTTP/1.1 <*>",
         service="nginx",
-        host="srv-01",
+        hosts=["srv-01"],
         severity="warning",
         window_start=window,
         window_end=window,

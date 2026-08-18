@@ -167,11 +167,18 @@ def _track_provenance(
             if not isinstance(it, dict):
                 continue
             svc = it.get("service")
-            host = it.get("host")
             if isinstance(svc, str):
                 seen_services.add(svc)
-            if isinstance(host, str):
-                seen_hosts.add(host)
+            # search_log_templates giờ trả về `hosts` (list). Fallback `host` (scalar)
+            # cho VMUI-derived hit hoặc raw LogsQL line.
+            hosts = it.get("hosts")
+            if isinstance(hosts, list):
+                for h in hosts:
+                    if isinstance(h, str):
+                        seen_hosts.add(h)
+            legacy_host = it.get("host")
+            if isinstance(legacy_host, str):
+                seen_hosts.add(legacy_host)
 
 
 def _extract_valid_citations(

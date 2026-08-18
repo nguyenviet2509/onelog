@@ -61,8 +61,11 @@ async def _process_batch(
     metrics.last_batch_size.set(len(events))
 
     # Group by (service, template_id) within the window so each cluster→1 Qdrant point.
-    # `aggregated[key]` accumulates count + first sample + window min/max ts.
-    aggregated: dict[tuple[str, str, int], dict[str, Any]] = {}
+    # KHÔNG include host trong key: point_id downstream = sha1(service|template_id|window),
+    # nếu aggregate theo host thì N host cùng template → N slot mà chỉ có 1 point_id,
+    # last-writer-wins ăn mất N-1 slots. Collapse per-host tại đây, giữ danh sách hosts
+    # trong payload để agent còn filter được theo host.
+    aggregated: dict[tuple[str, int], dict[str, Any]] = {}
     unmatched = 0
 
     for ev in events:
@@ -78,7 +81,7 @@ async def _process_batch(
         if cluster.change_type == "cluster_created":
             unmatched += 1
 
-        key = (service, host, cluster.template_id)
+        key = (service, cluster.template_id)
         slot = aggregated.get(key)
         ts = _event_ts(ev)
         if slot is None:
@@ -87,7 +90,7 @@ async def _process_batch(
                 "template_id": cluster.template_id,
                 "template": cluster.template,
                 "service": service,
-                "host": host,
+                "hosts": {host},
                 "severity": severity,
                 "ts_min": ts,
                 "ts_max": ts,
@@ -96,6 +99,7 @@ async def _process_batch(
             }
         else:
             slot["count"] += 1
+            slot["hosts"].add(host)
             slot["ts_min"] = min(slot["ts_min"], ts)
             slot["ts_max"] = max(slot["ts_max"], ts)
             # Promote highest severity for the cluster in this window.
@@ -115,7 +119,7 @@ async def _process_batch(
             template_id=slot["template_id"],
             template=slot["template"],
             service=slot["service"],
-            host=slot["host"],
+            hosts=sorted(slot["hosts"]),
             severity=slot["severity"],
             window_start=_bucket_iso(slot["ts_min"]),
             window_end=_iso(slot["ts_max"]),

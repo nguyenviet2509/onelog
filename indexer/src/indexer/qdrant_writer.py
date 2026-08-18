@@ -27,7 +27,9 @@ class TemplatePoint:
     template_id: int
     template: str
     service: str
-    host: str
+    # Collapse per-host tại indexer (point_id không có host, tránh last-writer-wins).
+    # Payload lưu list để agent còn filter được theo host.
+    hosts: list[str]
     severity: str
     window_start: str
     window_end: str
@@ -59,10 +61,11 @@ class QdrantWriter:
                 distance=qm.Distance.COSINE,
             ),
         )
-        # Payload indexes — speed up filter by service/host/severity/ts in agent retrieval.
+        # Payload indexes — speed up filter by service/hosts/severity/ts in agent retrieval.
+        # hosts = array-of-keyword (Qdrant tự handle: filter match value trên mọi phần tử).
         for field, schema in (
             ("service", qm.PayloadSchemaType.KEYWORD),
-            ("host", qm.PayloadSchemaType.KEYWORD),
+            ("hosts", qm.PayloadSchemaType.KEYWORD),
             ("severity", qm.PayloadSchemaType.KEYWORD),
             ("template_id", qm.PayloadSchemaType.INTEGER),
             ("window_start", qm.PayloadSchemaType.KEYWORD),
@@ -84,7 +87,7 @@ class QdrantWriter:
                     "template_id": p.template_id,
                     "template": p.template,
                     "service": p.service,
-                    "host": p.host,
+                    "hosts": p.hosts,
                     "severity": p.severity,
                     "window_start": p.window_start,
                     "window_end": p.window_end,

@@ -45,10 +45,22 @@ class QdrantWriter:
             api_key=settings.qdrant_api_key or None,
         )
 
+    # Payload indexes cần thiết cho agent filter. Đặt ở class-level để reuse
+    # giữa `ensure_collection` (fresh create) và `_ensure_indexes` (upgrade path
+    # cho collection đã tồn tại — bổ sung index thiếu, không recreate index cũ).
+    _PAYLOAD_INDEXES = (
+        ("service", qm.PayloadSchemaType.KEYWORD),
+        ("hosts", qm.PayloadSchemaType.KEYWORD),
+        ("severity", qm.PayloadSchemaType.KEYWORD),
+        ("template_id", qm.PayloadSchemaType.INTEGER),
+        ("window_start", qm.PayloadSchemaType.KEYWORD),
+    )
+
     async def ensure_collection(self) -> None:
         try:
             await self._client.get_collection(settings.qdrant_collection)
             log.info("qdrant.collection_exists", name=settings.qdrant_collection)
+            await self._ensure_indexes()
             return
         except (UnexpectedResponse, ValueError):
             pass
@@ -61,15 +73,16 @@ class QdrantWriter:
                 distance=qm.Distance.COSINE,
             ),
         )
-        # Payload indexes — speed up filter by service/hosts/severity/ts in agent retrieval.
-        # hosts = array-of-keyword (Qdrant tự handle: filter match value trên mọi phần tử).
-        for field, schema in (
-            ("service", qm.PayloadSchemaType.KEYWORD),
-            ("hosts", qm.PayloadSchemaType.KEYWORD),
-            ("severity", qm.PayloadSchemaType.KEYWORD),
-            ("template_id", qm.PayloadSchemaType.INTEGER),
-            ("window_start", qm.PayloadSchemaType.KEYWORD),
-        ):
+        await self._ensure_indexes()
+
+    async def _ensure_indexes(self) -> None:
+        """Idempotent — chỉ tạo index nếu chưa có. Cho upgrade path (schema drift)."""
+        info = await self._client.get_collection(settings.qdrant_collection)
+        existing = set((info.payload_schema or {}).keys())
+        for field, schema in self._PAYLOAD_INDEXES:
+            if field in existing:
+                continue
+            log.info("qdrant.creating_payload_index", field=field)
             await self._client.create_payload_index(
                 collection_name=settings.qdrant_collection,
                 field_name=field,

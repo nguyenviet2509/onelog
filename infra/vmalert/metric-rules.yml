@@ -243,18 +243,20 @@ groups:
     interval: 5m
     rules:
       - alert: QdrantTemplateGrowthHigh
-        # Growth rate cao kéo dài 12h → drain3 không hội tụ (sim_th quá chặt
-        # hoặc log format churn). Threshold 1000/day = ~3× baseline healthy.
-        expr: increase(collection_points{id="log_templates"}[24h]) > 1000
-        for: 12h
+        # Growth cao kéo dài → drain3 không hội tụ (sim_th quá chặt hoặc log format
+        # churn upstream). Threshold 3k/day sau khi Vector redact high-cardinality
+        # noise (paths/dates/hex) + Fix 4B (aggregation collapse per-host).
+        # Healthy baseline hậu tối ưu: ~1-2k/day cho fleet 3-50 host.
+        expr: increase(collection_points{id="log_templates"}[24h]) > 3000
+        for: 6h
         labels:
           severity: warning
           category: capacity
           component: qdrant
           host: logserver
         annotations:
-          summary: "Qdrant log_templates growth > 1000/day sustained 12h"
-          description: "Drain3 dedup không hội tụ. Check indexer + drain3 sim_th. Current: {{ $value | humanize }}/24h."
+          summary: "Qdrant log_templates growth > 3000/day sustained 6h"
+          description: "Drain3 dedup không hội tụ. Check Vector redact patterns + drain sim_th. Runbook: plans/reports/debugger-260818-0822-qdrant-log-templates-growth.md. Current: {{ $value | humanize }}/24h."
 
       - alert: QdrantTemplateHardCap
         # Ngưỡng dung lượng — 500k points ≈ 6.5 GB RAM. Cảnh báo trước để bật

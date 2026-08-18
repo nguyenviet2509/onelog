@@ -375,6 +375,41 @@ transforms:
       # cho mọi vendor không có dedicated pattern. Underscore/dash đều OK (api_key|api-key).
       msg = replace(msg, r'(?i)\b(token|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|client[_-]?secret|refresh[_-]?token)\s*[:=]\s*\S+', "<TOKEN>")
 
+      # ────────────────────────────────────────────────────────────────
+      # High-cardinality noise scrub — CHỐNG template explosion downstream.
+      # Không phải PII; mục tiêu là giúp drain3 cluster tốt hơn ở indexer.
+      # KISS: literal replace, không dùng backref (Vector env-var interp risk).
+      # ────────────────────────────────────────────────────────────────
+
+      # Shared hosting user + domain segments trong path Unix:
+      #   /home/qlkxcqkihosting/domains/phatquocvanthanh.com/wp-content/...
+      # → /home/<USER>/domains/<SITE>/wp-content/... (giữ suffix để drain phân biệt plugin/vendor)
+      msg = replace(msg, r'/home/[A-Za-z0-9_]{5,32}/domains/[A-Za-z0-9._-]+', "/home/<USER>/domains/<SITE>")
+      # Plesk/cPanel style vhost paths:
+      #   /var/www/vhosts/example.com  |  /var/www/{user}/public_html
+      msg = replace(msg, r'/var/www/vhosts/[A-Za-z0-9._-]+', "/var/www/vhosts/<SITE>")
+      msg = replace(msg, r'/var/www/[A-Za-z0-9_]{5,32}/', "/var/www/<USER>/")
+
+      # WordPress DB prefix ngẫu nhiên: "xxxxxxxxhosting_xxx.<table>" → "<HOSTING_DB>.<table>"
+      msg = replace(msg, r'\b[a-z]{6,12}hosting_[a-z0-9_]+\.', "<HOSTING_DB>.")
+
+      # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
+      msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")
+
+      # Kernel hex bytes dump: "Code: 08 85 d2 7f c6 41 ..." (4+ hex bytes → coi là dump)
+      msg = replace(msg, r'\bCode:(?:\s+[0-9a-fA-F<>*]{2}){4,}', "Code: <HEX_DUMP>")
+
+      # Kernel function+offset: "ksys_read+0x4f/0xb0" → "ksys_read+<OFFSET>"
+      msg = replace(msg, r'\+0x[0-9a-fA-F]+/0x[0-9a-fA-F]+', "+<OFFSET>")
+
+      # Long hex ID (UUID không dấu / MD5 / SHA1 fragment / kernel addr): 24+ hex chars.
+      # Đặt SAU pattern hex dump / offset để không đè lên chúng.
+      msg = replace(msg, r'\b[0-9a-fA-F]{24,}\b', "<HEX_ID>")
+
+      # WordPress request query ID (postmeta / option_id / user_id numeric > 6 digits).
+      # Giữ số nhỏ (HTTP status, port) để không mất context.
+      msg = replace(msg, r'\b\d{7,}\b', "<BIGINT>")
+
       # Đánh dấu event đã bị redact để query observability:
       # `redacted:true | stats count() by (service)` xem service nào leak nhiều.
       if msg != original { .redacted = true }

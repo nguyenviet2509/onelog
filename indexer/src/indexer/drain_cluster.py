@@ -44,10 +44,13 @@ class DrainPool:
     def _make_miner(self, service: str) -> TemplateMiner:
         cfg = TemplateMinerConfig()
         # Defaults are sensible for syslog-shaped messages. Tighten if unmatched_ratio creeps up.
-        cfg.drain_sim_th = 0.4
+        # sim_th 0.5 (was 0.4): reduce false-merge sau khi Vector redact high-cardinality
+        # noise (paths/dates/hex) — token stream ổn định hơn, có thể chặt tay hơn.
+        # max_clusters 10000 (was 5000): headroom cho fleet ~50 host, tránh evict → churn.
+        cfg.drain_sim_th = 0.5
         cfg.drain_depth = 4
         cfg.drain_max_children = 100
-        cfg.drain_max_clusters = 5000
+        cfg.drain_max_clusters = 10000
         persistence = FilePersistence(str(self._path(service)))
         miner = TemplateMiner(persistence_handler=persistence, config=cfg)
         clusters = len(miner.drain.clusters)

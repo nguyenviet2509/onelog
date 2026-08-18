@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily prune of Qdrant log_templates old points
+Requires=qdrant-log-templates-prune.service
+
+[Timer]
+# Chạy 03:30 UTC (10:30 ICT) — sau snapshot-daily (02:00 UTC cron) để tránh
+# ghi đè state khi backup đang chạy.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+AccuracySec=1min
+Unit=qdrant-log-templates-prune.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Prune Qdrant log_templates points older than RETENTION_DAYS
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# RETENTION_DAYS default 30 trong script — override qua drop-in nếu cần.
+# Env RETENTION_DAYS / DRY_RUN pass qua Environment= line.
+Environment=RETENTION_DAYS=30
+ExecStart=/opt/onelog/infra/scripts/qdrant-log-templates-prune.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

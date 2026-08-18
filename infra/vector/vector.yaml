@@ -402,9 +402,13 @@ transforms:
       # Kernel function+offset: "ksys_read+0x4f/0xb0" → "ksys_read+<OFFSET>"
       msg = replace(msg, r'\+0x[0-9a-fA-F]+/0x[0-9a-fA-F]+', "+<OFFSET>")
 
-      # Long hex ID (UUID không dấu / MD5 / SHA1 fragment / kernel addr): 24+ hex chars.
+      # Long hex ID (UUID không dấu / MD5 / SHA1 fragment): 24+ hex chars.
       # Đặt SAU pattern hex dump / offset để không đè lên chúng.
       msg = replace(msg, r'\b[0-9a-fA-F]{24,}\b', "<HEX_ID>")
+      # Kernel register/memory addresses: 12-20 hex chars có leading 0 hoặc mã pattern.
+      # Match kernel dump kiểu "RAX: 0000000000fdf000" hoặc bare "00007f0da3cba590".
+      # Đặt sau <HEX_ID> để không đè.
+      msg = replace(msg, r'\b0[xX]?[0-9a-fA-F]{11,23}\b', "<HEX_ADDR>")
 
       # WordPress request query ID (postmeta / option_id / user_id numeric > 6 digits).
       # Giữ số nhỏ (HTTP status, port) để không mất context.

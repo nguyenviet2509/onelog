@@ -243,16 +243,14 @@ groups:
     interval: 5m
     rules:
       - alert: QdrantTemplateGrowthHigh
-        # Growth kéo dài → drain3 không hội tụ (sim_th quá chặt / log format churn
-        # upstream / redact pattern miss). Threshold 5k/day sau khi rollout:
-        # - Vector VRL noise scrub (paths/dates/hex-dumps/register-addr).
-        # - drain sim_th 0.5 + max_clusters 10000.
-        # - indexer aggregation Option B (collapse per-host).
-        # - retention 30d cap (~150k points steady-state).
-        # TODO 2026-08-19: re-tune xuống 3k/day sau 24h observation window
-        # (drain hội tụ full) — hiện đang trong discovery phase, cluster count
-        # còn grow log-decay từ 300 → ~500-800.
-        expr: increase(collection_points{id="log_templates"}[24h]) > 5000
+        # Threshold 8k/day sau full rollout Phase 1-6. Empirical baseline:
+        # - Cluster count converged 6000 → ~250-300 (20× improvement).
+        # - Points/hour (1 hour bucket) ~250 → ~6000/day. Buffer 30% cho spike.
+        # - Retention 30d caps 8000 × 30 = 240k points (~3.1GB RAM), dưới hard
+        #   cap 500k (6.5GB).
+        # Redact stack: WP tables + PHP stack + SQL body/URL/INT + kernel Code
+        # hex + register addr + firewall MAC/IP.
+        expr: increase(collection_points{id="log_templates"}[24h]) > 8000
         for: 6h
         labels:
           severity: warning
@@ -260,7 +258,7 @@ groups:
           component: qdrant
           host: logserver
         annotations:
-          summary: "Qdrant log_templates growth > 5000/day sustained 6h"
+          summary: "Qdrant log_templates growth > 8000/day sustained 6h"
           description: "Drain3 dedup không hội tụ. Check Vector redact + drain sim_th. Runbook: plans/reports/debugger-260818-0822-qdrant-log-templates-growth.md. Current: {{ $value | humanize }}/24h."
 
       - alert: QdrantTemplateHardCap

@@ -439,6 +439,15 @@ transforms:
       # để không nuốt phone numbers / port numbers ở bare context.
       msg = replace(msg, "'\\d+'", "'<INT>'")
 
+      # Kernel iptables/firewall log: MAC + SRC + DST + LEN vary per packet.
+      # Format: "Firewall: *TCP_IN Blocked* IN=em1 OUT= MAC=... SRC=... DST=... LEN=..."
+      msg = replace(msg, r'\bMAC=[0-9a-fA-F:]{17,}', "MAC=<MAC>")
+      msg = replace(msg, r'\b(?:SRC|DST)=\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', "<PKT_IP>")
+      msg = replace(msg, r'\bLEN=\d+', "LEN=<LEN>")
+      msg = replace(msg, r'\bTTL=\d+', "TTL=<TTL>")
+      msg = replace(msg, r'\bID=\d+', "ID=<ID>")
+      msg = replace(msg, r'\b(?:SPT|DPT|WINDOW)=\d+', "<PORT>")
+
       # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
       msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")
 

@@ -393,11 +393,25 @@ transforms:
       # WordPress DB prefix ngẫu nhiên: "xxxxxxxxhosting_xxx.<table>" → "<HOSTING_DB>.<table>"
       msg = replace(msg, r'\b[a-z]{6,12}hosting_[a-z0-9_]+\.', "<HOSTING_DB>.")
 
+      # WordPress custom prefix + default* tables (Wordfence + Ninja Forms style):
+      #   bCH_defaultusermeta, zVU_defaultposts, fjM_defaultrank_math_analytics_objects
+      # → <WP_TBL>
+      msg = replace(msg, r'\b[a-zA-Z0-9]{2,8}_default[a-z_]+\b', "<WP_TBL>")
+
+      # WordPress prefix + known suffix tables (2-6 alphanumeric prefix + known suffix):
+      #   hcv_options, el_options, vay_actionscheduler_logs, XYZ_yoast_..., ABC_rank_math_...
+      # → <WP_TBL>. Suffix set = các bảng WP core + plugin phổ biến.
+      msg = replace(msg, r'\b[a-zA-Z0-9]{2,8}_(options|users|usermeta|posts|postmeta|comments|commentmeta|terms|termmeta|links|redirects|actionscheduler_[a-z]+|yoast_[a-z_]+|rank_math_[a-z_]+|wc_[a-z_]+|woocommerce_[a-z_]+|itsec_[a-z_]+|fspg_[a-z_]+|statistics_[a-z_]+|wpforms_[a-z_]+|elementor_[a-z_]+)\b', "<WP_TBL>")
+
+      # SQL string literal `LIKE '%value%'` → LIKE '%<VAL>%' (search terms varies per query).
+      msg = replace(msg, r"LIKE\s+'%[^']*%'", "LIKE '%<VAL>%'")
+
       # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
       msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")
 
-      # Kernel hex bytes dump: "Code: 08 85 d2 7f c6 41 ..." (4+ hex bytes → coi là dump)
-      msg = replace(msg, r'\bCode:(?:\s+[0-9a-fA-F<>*]{2}){4,}', "Code: <HEX_DUMP>")
+      # Kernel hex bytes dump: "Code: XX XX XX ... <NN> XX XX" — greedy consume hex
+      # bytes + `<NN>` RIP markers + whitespace. Prev pattern break sớm ở `<50>` markers.
+      msg = replace(msg, r'\bCode:[\s0-9a-fA-F<>*]{20,}', "Code: <HEX_DUMP>")
 
       # Kernel function+offset: "ksys_read+0x4f/0xb0" → "ksys_read+<OFFSET>"
       msg = replace(msg, r'\+0x[0-9a-fA-F]+/0x[0-9a-fA-F]+', "+<OFFSET>")

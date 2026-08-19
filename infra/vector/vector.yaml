@@ -404,7 +404,9 @@ transforms:
       msg = replace(msg, r'\b[a-zA-Z0-9]{2,8}_(options|users|usermeta|posts|postmeta|comments|commentmeta|terms|termmeta|links|redirects|actionscheduler_[a-z]+|yoast_[a-z_]+|rank_math_[a-z_]+|wc_[a-z_]+|woocommerce_[a-z_]+|itsec_[a-z_]+|fspg_[a-z_]+|statistics_[a-z_]+|wpforms_[a-z_]+|elementor_[a-z_]+)\b', "<WP_TBL>")
 
       # SQL string literal `LIKE '%value%'` → LIKE '%<VAL>%' (search terms varies per query).
-      msg = replace(msg, r"LIKE\s+'%[^']*%'", "LIKE '%<VAL>%'")
+      # VRL raw string chỉ hỗ trợ single-quote, mà regex chứa ' → dùng double-quoted
+      # string với escape backslash.
+      msg = replace(msg, "LIKE\\s+'%[^']*%'", "LIKE '%<VAL>%'")
 
       # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
       msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")

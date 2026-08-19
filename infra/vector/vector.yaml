@@ -425,6 +425,20 @@ transforms:
       # class collapse. Chỉ áp cho line KHỞI ĐẦU bằng SQL keyword phổ biến.
       msg = replace(msg, r'^(?:SELECT|INSERT|UPDATE|DELETE|WHERE|AND|OR|FROM|JOIN|INNER\s+JOIN|LEFT\s+JOIN|ORDER\s+BY|GROUP\s+BY|LIMIT|ON|SET|VALUES|HAVING)\s+.{10,}', "<SQL_FRAG>")
 
+      # WordPress "... for query <SQL body>" — SQL body varies theo mỗi call site
+      # (SELECT vs INSERT vs UPDATE + WHERE clause). Collapse toàn bộ body sau "for
+      # query" thành "<QUERY>". Giữ prefix ("Table X doesn't exist") — mới là thông
+      # tin chính. Đặt trước SQL_FRAG để ăn full line SQL trước khi frag pattern hit.
+      msg = replace(msg, r'\bfor query\s+.+', "for query <QUERY>")
+
+      # URL literal trong SQL string values: 'https://site.com/path' → '<URL>'.
+      # Domain + path varies per site → nhiều template chỉ khác chỗ này.
+      msg = replace(msg, "'https?://[^']+'", "'<URL>'")
+
+      # Integer trong SQL string values: '123', '65' → '<INT>'. Chỉ match trong quotes
+      # để không nuốt phone numbers / port numbers ở bare context.
+      msg = replace(msg, "'\\d+'", "'<INT>'")
+
       # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
       msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")
 

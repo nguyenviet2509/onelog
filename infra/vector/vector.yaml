@@ -408,6 +408,23 @@ transforms:
       # string với escape backslash.
       msg = replace(msg, "LIKE\\s+'%[^']*%'", "LIKE '%<VAL>%'")
 
+      # PHP stack trace frame: "#N /path/file.php(NN): Class::method()" — mỗi frame
+      # = 1 template riêng (function name + file path varies theo call site). Collapse
+      # whole frame về "#N <STACK_FRAME>" để 1 stack trace ~15 frame = ~2-3 template
+      # thay vì 15. Giữ số `#N` để phân biệt depth khi debug.
+      msg = replace(msg, r'^#\d+\s+/\S+\([0-9]+\):\s+\S+', "#N <STACK_FRAME>")
+
+      # WordPress Yoast + WooCommerce + ActionScheduler table names (no prefix, đã bị
+      # <HOSTING_DB> ăn hoặc naked): yoast_wp_seo_models_*, wc_*, actionscheduler_*.
+      # Collapse để mọi table trong 1 plugin = 1 template.
+      msg = replace(msg, r'\byoast_wp_seo_models_[a-z_]+\b', "<YOAST_TBL>")
+      msg = replace(msg, r'\bactionscheduler_[a-z_]+\b', "<AS_TBL>")
+
+      # Bare SQL fragment lines từ multi-line query bị rsyslog split: ORDER BY,
+      # WHERE, INNER JOIN, ... . Nhóm về "<SQL_FRAG>" để nhiều fragment same query
+      # class collapse. Chỉ áp cho line KHỞI ĐẦU bằng SQL keyword phổ biến.
+      msg = replace(msg, r'^(?:SELECT|INSERT|UPDATE|DELETE|WHERE|AND|OR|FROM|JOIN|INNER\s+JOIN|LEFT\s+JOIN|ORDER\s+BY|GROUP\s+BY|LIMIT|ON|SET|VALUES|HAVING)\s+.{10,}', "<SQL_FRAG>")
+
       # PHP/WordPress error datetime bracket: [12-Aug-2026 03:22:11 UTC]
       msg = replace(msg, r'\[\d{1,2}-[A-Za-z]{3}-\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[A-Z]{2,5}\]', "[<DATETIME>]")
 

@@ -44,10 +44,11 @@ class DrainPool:
     def _make_miner(self, service: str) -> TemplateMiner:
         cfg = TemplateMinerConfig()
         # Defaults are sensible for syslog-shaped messages. Tighten if unmatched_ratio creeps up.
-        # sim_th 0.5 (was 0.4): reduce false-merge sau khi Vector redact high-cardinality
-        # noise (paths/dates/hex) — token stream ổn định hơn, có thể chặt tay hơn.
-        # max_clusters 10000 (was 5000): headroom cho fleet ~50 host, tránh evict → churn.
-        cfg.drain_sim_th = 0.5
+        # sim_th 0.4 (revert from 0.5): với heavy redact upstream, drain vẫn thấy N
+        # cluster từ PHP stack + SQL fragments không collapse hết → chấp nhận merge
+        # aggressive hơn (thấp = tolerate diff nhiều hơn) để giảm cluster count.
+        # max_clusters 10000: headroom cho fleet ~50 host, tránh evict → churn.
+        cfg.drain_sim_th = 0.4
         cfg.drain_depth = 4
         cfg.drain_max_children = 100
         cfg.drain_max_clusters = 10000

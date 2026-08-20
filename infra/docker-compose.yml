@@ -733,7 +733,13 @@ services:
       GF_AUTH_PROXY_HEADERS: "Email:X-Auth-Request-Email Name:X-Auth-Request-User"
       GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "true"
       GF_AUTH_PROXY_WHITELIST: "172.16.0.0/12,10.0.0.0/8"
-      GF_AUTH_BASIC_ENABLED: "false"
+      # Basic auth bật để (a) API tool + grafana-cli + Terraform provider work,
+      # (b) break-glass local admin login khi Zitadel/auth_proxy down.
+      # Truy cập break-glass: SSH tunnel trực tiếp tới grafana:3000 (bypass Caddy)
+      #   ssh -L 3000:127.0.0.1:3000 onelog-vps
+      #   Browser: http://127.0.0.1:3000/grafana/login → form work, admin/password
+      # Path prod `/grafana*` qua Caddy vẫn bị auth_proxy inject header đè login form.
+      GF_AUTH_BASIC_ENABLED: "true"
       # Login form giữ enable để render OAuth button (Zitadel) — auth_proxy vẫn
       # ưu tiên khi có header, users không thấy form. Retire ở Phase 4.
       GF_AUTH_DISABLE_LOGIN_FORM: "false"

@@ -91,7 +91,29 @@ Deploy: theo host-sync-policy — commit local → push → VPS reset → docker
 2. Nếu chưa có grant project: **+ New** → chọn project + tick role
 3. Nếu đã có grant: **Edit** → tick/untick role
 4. Save
-5. User cần **sign-out + sign-in lại app** để role mới có hiệu lực (Grafana đọc userinfo tại thời điểm login, không poll)
+5. User cần **sign-out + sign-in lại app** để role mới có hiệu lực (app đọc userinfo tại thời điểm login, không poll)
+
+## Known caveats
+
+### Browser cache sau role change (Grafana + tương tự SPA khác)
+
+Sau khi user sign-out + sign-in lại Grafana với role mới, UI có thể vẫn hiển thị permission cũ. DB đã update ngay lập tức, nhưng browser JS bundle + Redux state cache cũ.
+
+**Workaround**:
+- **Ctrl+Shift+R** (hard reload) sau khi sign-in, HOẶC
+- Test trong **incognito window** (mỗi session mới không cache), HOẶC
+- Navigate qua 1-2 trang khác nhau → Grafana tự refresh state
+
+**Impact prod**: role change hiếm khi xảy ra (admin action). Khi cần đổi role user, admin thông báo user "sign-out + hard reload". Không đáng optimize thêm bằng cache header vì tradeoff perf.
+
+### Folder permission auto-adds creator as Admin
+
+Grafana **auto-add user tạo folder làm Admin explicit** trong folder permissions. Explicit user-level permission **override** role-level → dù đổi Zitadel role về Viewer, user vẫn có Admin trên folder do mình tạo.
+
+**Workaround**:
+- Khi test role-based folder restriction: manual remove `<creator> = Admin` row trong Manage permissions dialog
+- Khi rollout prod: dùng **Team-based permission** thay role-based — tạo Team, add user vào team, gán team permission. Team membership sync qua Zitadel role không tạo user-level override.
+- Hoặc: tạo folder bằng admin account riêng biệt (VD `grafana-admin@internal`) không phải account SSO của user thực → creator explicit không đụng user cần restrict.
 
 ## Actions v2 mapping service (defer)
 

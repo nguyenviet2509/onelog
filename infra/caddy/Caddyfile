@@ -144,6 +144,17 @@
             respond "not found" 404
         }
 
+        # ── Grafana OIDC login callback — bypass IAP (plan 260819-1628 Phase 2) ──
+        # OIDC flow: Grafana redirect user → Zitadel → callback về /grafana/login/generic_oauth
+        # Callback KHÔNG có oauth2-proxy cookie (user chưa qua IAP) → forward_auth sẽ redirect
+        # /oauth2/start → loop. Bypass path này để Grafana tự handle code exchange.
+        # MUST đứng TRƯỚC handle /grafana* để Caddy match order ưu tiên.
+        handle /grafana/login/* {
+            reverse_proxy grafana:3000 {
+                header_up X-Forwarded-Prefix /grafana
+            }
+        }
+
         # ── Grafana — forward_auth gated ──
         # GF_AUTH_PROXY_ENABLED=true trusts X-Auth-Request-Email for auto-provision.
         # Sub-path /grafana: Grafana serves assets at own sub-path (GF_SERVER_ROOT_URL).

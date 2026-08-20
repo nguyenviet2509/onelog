@@ -28,9 +28,24 @@ Phase 2 của plan [260819-1628-zitadel-native-oidc-multi-app-rollout](../../pla
 - Dual-mode giữ IAP an toàn — nếu OIDC fail user vẫn login được qua auth_proxy. Retire IAP ở Phase 4 sau khi soak.
 - `role_attribute_path` JMESPath fallback = Viewer → không lock-out user chưa được gán role đúng.
 
+## Update 2026-08-20 (sau journal ban đầu 30 phút) — role change verified + gotcha #4
+
+Test đổi role Zitadel `sale`→`admin`, re-login: role Grafana KHÔNG đổi. Debug log level cho thấy userinfo response chỉ chứa **raw claim** `urn:zitadel:iam:org:project:roles` (object verbose), KHÔNG có claim `roles` flat array — Action `complementRolesClaim` (Actions v1) KHÔNG chạy dù state=active + attach flow đúng.
+
+**Root cause nghi ngờ**: instance feature `login_v2=true` (Zitadel v4.16.1 default) bypass Actions v1 execution. Chưa verify chính thức. Xem plan Unresolved.
+
+**Fix workaround** (đã ship commit `651bde6`): JMESPath dùng `keys()` đọc trực tiếp raw claim:
+```
+contains(keys("urn:zitadel:iam:org:project:roles"), 'admin') && 'GrafanaAdmin' || ...
+```
+
+Verified end-to-end: Zitadel role `admin` → Grafana `is_admin=1, role=Admin` (GrafanaAdmin server-level).
+
+**Impact toàn plan**: mọi phase sau đọc claim `roles` (Phase 1 OpenWebUI, Phase 3 OneMCP backend JWT verify) đều phải theo pattern raw claim. Phase 0 revisit: cần điều tra Actions v2 migrate hoặc chấp nhận pattern workaround làm chuẩn.
+
 ## Còn nợ
 
-- Test đổi role Zitadel (`sale` → `ops`) → re-login → Grafana role change (`Viewer` → `Editor`) — chưa verify, cần Zitadel Console.
+- ~~Test đổi role Zitadel~~ ✅ done (nhưng hit Actions v1 bypass — xem update trên).
 - Test SSO cross-app khi Phase 1 (OpenWebUI) xong: login OpenWebUI → mở Grafana → silent auth.
 - Central logout chain khi cả 2 app OIDC.
 - 48h soak để confirm không có regression IAP path.

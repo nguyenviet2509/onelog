@@ -763,6 +763,10 @@ services:
       GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(roles[*], 'admin') && 'GrafanaAdmin' || contains(roles[*], 'ops') && 'Editor' || 'Viewer'"
       GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT: "false"
       GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "true"
+      # Link OAuth user vào user hiện có theo email (đã provision qua auth_proxy)
+      # thay vì tạo record mới → conflict "user already exists". Bắt buộc khi
+      # dual-mode auth_proxy + OAuth cùng tồn tại.
+      GF_AUTH_OAUTH_ALLOW_INSECURE_EMAIL_LOOKUP: "true"
     depends_on:
       - victorialogs
     logging:

@@ -97,7 +97,30 @@ Nếu SSH authway-vps mất → cloud console để access (Vultr/GCP dashboard)
 
 ## Backup schedule
 
-TODO: chưa có cron pg_dump chính thức. Follow-up trong plan riêng.
+Daily snapshot script: `/opt/authway/infra/authway-vps/scripts/snapshot-daily.sh`
+(mirror OneLog `snapshot-daily.sh` pattern — age-encrypted, S3 offsite, MANIFEST + SHA256SUMS embedded).
+
+- Cron: `0 2 * * *` (root crontab on authway-vps)
+- Log: `/var/log/authway-snapshot.log`
+- S3 bucket: `s3://backups-authway-server/daily/` (endpoint `drive-storagehns3st.000nethost.com`)
+- Filename: `authway-YYYYMMDD-HHMM.tar.gz.age`
+- Retention: 5 daily copies (`BACKUP_S3_KEEP_DAYS=5` trong `.env`)
+- Encryption: age asymmetric — pubkey `infra/backup/backup-age.pub` (shared với OneLog master key custody)
+
+Contents:
+- `zitadel.sql.gz` — pg_dump zitadel event store (CRITICAL — source of truth)
+- `zitadel-bootstrap.tar` — login-client PAT volume
+- `traefik-logs.tar` — Traefik data (empty trong HTTP pilot; forward-compat)
+- `secrets/.env`, `secrets/zitadel-*.runtime.yaml` — self-contained restore
+- `MANIFEST.json` — git commit + image tags + timestamp
+- `SHA256SUMS` — integrity check
+
+Restore procedure: xem `infra/backup/README.md` trong authway repo.
+
+Manual run (ad-hoc):
+```bash
+ssh authway-vps 'bash /opt/authway/infra/authway-vps/scripts/snapshot-daily.sh'
+```
 
 ## Related
 

@@ -121,3 +121,71 @@ scrape_configs:
       - targets: ["nats-exporter:7777"]
         labels:
           component: nats
+
+  # ─── Authway-vps cross-VPS scrape (plan 260821-1013) ───────────────────────
+  # Targets on private network 10.200.0.125. See authway/infra/authway-vps/
+  # docker-compose.yml for exporter binding config.
+
+  - job_name: authway_node
+    static_configs:
+      - targets: ["10.200.0.125:9100"]
+        labels:
+          host: authway-vps
+          cluster: authway
+          component: host
+
+  - job_name: authway_cadvisor
+    static_configs:
+      - targets: ["10.200.0.125:8081"]
+        labels:
+          host: authway-vps
+          cluster: authway
+          component: cadvisor
+
+  - job_name: authway_zitadel
+    metrics_path: /debug/metrics
+    static_configs:
+      - targets: ["10.200.0.125:2112"]
+        labels:
+          host: authway-vps
+          cluster: authway
+          service: zitadel
+
+  # Synthetic HTTP probe — Zitadel discovery endpoints via blackbox_exporter.
+  - job_name: authway_blackbox_http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://10.200.0.125/.well-known/openid-configuration
+          - http://10.200.0.125/oauth/v2/keys
+          - http://10.200.0.125/oidc/v1/userinfo
+        labels:
+          cluster: authway
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # LDAP TCP probe — Zimbra LDAP dependency for JIT provisioning.
+  - job_name: authway_blackbox_tcp_ldap
+    scrape_interval: 60s
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets: ["103.57.220.98:389"]
+        labels:
+          cluster: authway
+          service: ldap-zimbra
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

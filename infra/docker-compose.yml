@@ -17,6 +17,7 @@ services:
       - -memory.allowedBytes=512MB
     ports:
       - "127.0.0.1:9428:9428"   # HTTP API (web/agent)
+      - "10.200.0.30:9428:9428" # Private net — authway-vps vector agent ingest
     volumes:
       - ./data/victorialogs:/victoria-logs-data
     healthcheck:
@@ -202,6 +203,19 @@ services:
       - "http://nats:8222"
     depends_on:
       - nats
+
+  # blackbox_exporter — HTTP + TCP synthetic probes for cross-VPS endpoints.
+  # Plan 260821-1013 — probe authway Zitadel discovery + Zimbra LDAP.
+  # Scraped by victoriametrics jobs authway_blackbox_{http,tcp_ldap}.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: ragstack-blackbox-exporter
+    restart: unless-stopped
+    profiles: [monitoring]
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - "--config.file=/etc/blackbox_exporter/config.yml"
 
   # node-exporter — host-level metrics (CPU, RAM, network, disk I/O, load avg).
   # Reads /proc, /sys, and / via bind mounts (not network_mode: host) so the

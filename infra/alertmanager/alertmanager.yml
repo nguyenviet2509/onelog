@@ -55,6 +55,14 @@ route:
         - component=~"data-disk|root-partition|disk-probe"
       receiver: telegram-trend
 
+    # ── Authway-vps monitor (plan 260821-1013) → Log-Server topic (thread 880).
+    # Reuse receiver telegram-trend: authway = infra self-monitoring ngữ nghĩa
+    # đồng nhất với log-server. Phải đặt TRƯỚC event/severity routes để authway
+    # alerts không bị hijack sang Client-Server topic.
+    - matchers:
+        - cluster="authway"
+      receiver: telegram-trend
+
     # ── Mail-server fleet (mailer-*, mta3, store.mailer, zmhn*)
     # → Mail-Server topic (thread 5228). Đặt trước event/critical/notify_style
     # để mail hosts KHÔNG lọt về Client-Server topic (thread 6). Continue=false

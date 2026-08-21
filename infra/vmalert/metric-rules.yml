@@ -418,3 +418,112 @@ groups:
         annotations:
           summary: "NATS JetStream storage > 85% of configured cap"
           description: "Stream approaching quota. Review retention or raise max_bytes."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # AUTHWAY-VPS — Zitadel IdP monitoring (plan 260821-1013).
+  # All rules carry `cluster: authway` → routed to Log-Server topic (880) via
+  # alertmanager matcher. Runbook: docs/authway-runbook.md.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: authway-critical
+    interval: 30s
+    rules:
+      - alert: AuthwayZitadelDown
+        # `absent()` guards against vmagent scrape failure (up{} disappears
+        # instead of going to 0 when target is unreachable).
+        expr: |
+          up{job="authway_zitadel"} == 0 or absent(up{job="authway_zitadel"})
+        for: 1m
+        labels:
+          severity: critical
+          cluster: authway
+          service: zitadel
+        annotations:
+          summary: "Zitadel down > 1m — new logins blocked"
+          description: "Zitadel {{ $labels.instance }} unscrapeable. Check container `authway-prod-zitadel-1` on authway-vps."
+          runbook: "docs/authway-runbook.md#zitadel-down"
+
+      - alert: AuthwayHttpsProbeFail
+        expr: probe_success{job="authway_blackbox_http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          cluster: authway
+        annotations:
+          summary: "Zitadel HTTPS endpoint {{ $labels.instance }} probe fail > 2m"
+          description: "End-to-end synthetic probe fails — login flow broken."
+          runbook: "docs/authway-runbook.md#https-probe-fail"
+
+      - alert: AuthwayNodeDown
+        expr: |
+          up{job="authway_node"} == 0 or absent(up{job="authway_node"})
+        for: 2m
+        labels:
+          severity: critical
+          cluster: authway
+        annotations:
+          summary: "authway-vps host unreachable (node_exporter down > 2m)"
+          description: "node_exporter on 10.200.0.125:9100 not scrapeable — VPS may be down or network partitioned."
+          runbook: "docs/authway-runbook.md#host-down"
+
+  - name: authway-warning
+    interval: 60s
+    rules:
+      - alert: AuthwayLdapBindFail
+        expr: probe_success{job="authway_blackbox_tcp_ldap"} == 0
+        for: 3m
+        labels:
+          severity: warning
+          cluster: authway
+          service: ldap-zimbra
+        annotations:
+          summary: "LDAP Zimbra 103.57.220.98:389 unreachable > 3m"
+          description: "New JIT provisioning / LDAP-backed logins will fail. Active sessions unaffected."
+          runbook: "docs/authway-runbook.md#ldap-fail"
+
+      - alert: AuthwayCertExpiringSoon
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="authway_blackbox_http"} - time()) < 7 * 24 * 3600
+          and
+          probe_ssl_earliest_cert_expiry{job="authway_blackbox_http"} > 0
+        for: 1h
+        labels:
+          severity: warning
+          cluster: authway
+        annotations:
+          summary: "Traefik cert authway-vps expiring in < 7d"
+          description: "Check ACME renewal: `docker logs authway-prod-traefik-1 | grep -i acme`."
+
+      - alert: AuthwayDiskLow
+        expr: |
+          (node_filesystem_avail_bytes{job="authway_node",fstype!~"tmpfs|overlay|squashfs"}
+           /
+           node_filesystem_size_bytes{job="authway_node",fstype!~"tmpfs|overlay|squashfs"}) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+          cluster: authway
+        annotations:
+          summary: "authway-vps disk < 15% free on {{ $labels.mountpoint }}"
+          description: "Postgres grows. Backup / vacuum / expand disk."
+
+      - alert: AuthwayHostCpuHigh
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{job="authway_node", mode="idle"}[2m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          cluster: authway
+        annotations:
+          summary: "authway-vps CPU > 85% for 5m"
+          description: "Sustained CPU pressure. `docker stats --no-stream` on authway-vps to find the culprit."
+
+      - alert: AuthwayHostMemoryHigh
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes{job="authway_node"} / node_memory_MemTotal_bytes{job="authway_node"})) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          cluster: authway
+        annotations:
+          summary: "authway-vps memory > 90% for 5m"
+          description: "Check Postgres shared_buffers / Zitadel heap. OOM risk imminent."

@@ -8,6 +8,7 @@ Quy tắc đồng bộ giữa source code local và các host của phòng KT (O
 |---|---|---|---|
 | **onelog-vps** | onelog | **Production** OneLog (edge, Caddy, TLS) | ↔ 2 chiều local↔VPS |
 | **onemcp-vps** | onemcp | **Production** OneMCP (portal, MCP servers) | ↔ 2 chiều local↔VPS |
+| **authway-vps** | authway | **Production** Authway (Zitadel v4 IdP) | ↔ 2 chiều local↔VPS (git init 2026-08-21) |
 | **onedocs-vps** *(TBD)* | onedocs | **Production** OneDocs (docs portal) | ↔ 2 chiều local↔VPS |
 | **onelog-source** *(192.168.122.53)* | onelog / cross-project | **Lab / test** OneLog (throw-away) | ↓ 1 chiều local→source |
 | **onemcp-source** *(192.168.122.56)* | onemcp / onedocs / cross-project | **Lab / test** OneMCP + OneDocs (throw-away) | ↓ 1 chiều local→source |
@@ -24,7 +25,7 @@ Quy tắc đồng bộ giữa source code local và các host của phòng KT (O
 - Được phép: `git push lab` / `rsync` / SSH edit từ local xuống lab để test
 
 ### 2. `*-vps` (prod) = hai chiều, có kỷ luật
-Áp dụng cho **cả `onelog-vps`, `onemcp-vps`, `onedocs-vps` (khi có)**:
+Áp dụng cho **cả `onelog-vps`, `onemcp-vps`, `authway-vps`, `onedocs-vps` (khi có)**:
 - Sau bất kỳ SSH edit nào trên prod → commit về local repo tương ứng → push `origin/master|main` → reset VPS về remote
 - VPS end-state = `git status` sạch, khớp remote
 - Chỉ prod VPS mới được coi là canonical infra state
@@ -45,6 +46,7 @@ Khi cook chạm nhiều repo:
 |---|---|---|
 | OneLog | onelog-vps | onelog-source |
 | OneMCP | onemcp-vps | onemcp-source |
+| Authway | authway-vps | (chưa có lab riêng) |
 | OneDocs | onedocs-vps (TBD) | **onemcp-source** (dùng chung, không tách lab riêng) |
 
 **OneDocs lab dùng chung `onemcp-source`** để tiết kiệm resource (docs site nhẹ, không xung đột port với OneMCP lab). Prod tách hẳn `onedocs-vps` riêng khi cấp.

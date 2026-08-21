@@ -6,6 +6,16 @@ Grafana admin local (bypass OIDC) → `http://10.200.0.30/grafana/login`.
 Related plan: [`plans/260821-1013-authway-vps-monitor-integration/`](../plans/260821-1013-authway-vps-monitor-integration/)
 Convention: [`docs/observability-log-forwarding-convention.md`](observability-log-forwarding-convention.md)
 
+## Repo layout on VPS
+
+`/opt/authway` = git clone `https://github.com/nguyenviet2509/authway.git` (initialized 2026-08-21). Two-way sync qua git — sau bất kỳ SSH edit, commit local → push → `git reset --hard origin/master` trên VPS. `git status` end-state phải clean.
+
+Runtime files (gitignored, không sync qua git):
+- `infra/authway-vps/.env` — secrets (POSTGRES_ADMIN_PASSWORD, ZITADEL_MASTERKEY, etc.)
+- `infra/authway-vps/*.runtime.yaml` — rendered từ template + envsubst
+
+Backup path: `/root/authway-backup-YYYY-MM-DD-HHMM.tar.gz` (tạo trước khi init git 2026-08-21).
+
 ## Quick health check
 
 ```bash

@@ -194,6 +194,60 @@
         {"expr": "sum by (name) (rate(container_network_transmit_bytes_total{job=\"authway_cadvisor\",name!=\"\"}[1m]))", "legendFormat": "{{name}} tx", "refId": "B"}
       ],
       "fieldConfig": {"defaults": {"unit": "Bps"}}
+    },
+    {
+      "id": 40,
+      "title": "Log volume by service (VictoriaLogs)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 28, "w": 12, "h": 8},
+      "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+      "targets": [
+        {"expr": "host:\"authway\" | stats by (service) count()", "queryType": "stats", "refId": "A", "legendFormat": "{{service}}"}
+      ]
+    },
+    {
+      "id": 41,
+      "title": "Error/Warn events per minute (Zitadel + Postgres)",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 28, "w": 12, "h": 8},
+      "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+      "targets": [
+        {"expr": "host:\"authway\" (level:\"ERROR\" OR level:\"error\" OR _msg:*ERROR*) | stats by (service) count()", "queryType": "stats", "refId": "A", "legendFormat": "{{service}} ERROR"},
+        {"expr": "host:\"authway\" (level:\"WARN\" OR level:\"warn\" OR _msg:*WARN*) | stats by (service) count()", "queryType": "stats", "refId": "B", "legendFormat": "{{service}} WARN"}
+      ]
+    },
+    {
+      "id": 42,
+      "title": "Recent Zitadel logs (last 50)",
+      "type": "logs",
+      "gridPos": {"x": 0, "y": 36, "w": 24, "h": 12},
+      "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+      "targets": [
+        {"expr": "host:\"authway\" service:\"zitadel\"", "queryType": "instant", "refId": "A", "maxLines": 50}
+      ],
+      "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending"}
+    },
+    {
+      "id": 43,
+      "title": "Recent Postgres logs (last 30)",
+      "type": "logs",
+      "gridPos": {"x": 0, "y": 48, "w": 12, "h": 10},
+      "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+      "targets": [
+        {"expr": "host:\"authway\" service:\"postgres\"", "queryType": "instant", "refId": "A", "maxLines": 30}
+      ],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
+    },
+    {
+      "id": 44,
+      "title": "Recent Traefik logs (last 30)",
+      "type": "logs",
+      "gridPos": {"x": 12, "y": 48, "w": 12, "h": 10},
+      "datasource": {"type": "victoriametrics-logs-datasource", "uid": "victorialogs"},
+      "targets": [
+        {"expr": "host:\"authway\" service:\"traefik\"", "queryType": "instant", "refId": "A", "maxLines": 30}
+      ],
+      "options": {"showTime": true, "wrapLogMessage": true, "sortOrder": "Descending"}
     }
   ]
 }

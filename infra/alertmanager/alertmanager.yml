@@ -63,6 +63,12 @@ route:
         - cluster="authway"
       receiver: telegram-trend
 
+    # ── OneMCP-vps monitor (plan 260821-1346) → Log-Server topic (thread 880).
+    # Same rationale as authway — MCP connector hub is infra self-monitoring.
+    - matchers:
+        - cluster="onemcp"
+      receiver: telegram-trend
+
     # ── Mail-server fleet (mailer-*, mta3, store.mailer, zmhn*)
     # → Mail-Server topic (thread 5228). Đặt trước event/critical/notify_style
     # để mail hosts KHÔNG lọt về Client-Server topic (thread 6). Continue=false

@@ -1,0 +1,199 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "title": "OneMCP Overview",
+  "uid": "onemcp-overview",
+  "schemaVersion": 39,
+  "tags": ["onemcp", "monitoring"],
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "30s",
+  "templating": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Backend UP",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [{"expr": "up{job=\"onemcp_backend\"}", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Postgres UP",
+      "type": "stat",
+      "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [{"expr": "up{job=\"onemcp_postgres\"}", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Redis UP",
+      "type": "stat",
+      "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [{"expr": "up{job=\"onemcp_redis\"}", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "HTTP probe success",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [{"expr": "probe_success{job=\"onemcp_blackbox_http\"}", "legendFormat": "{{instance}}", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "FAIL", "color": "red"}, "1": {"text": "OK", "color": "green"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "MinIO container UP (via cadvisor)",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [{"expr": "max(container_last_seen{name=~\".*minio.*\",job=\"onemcp_cadvisor\"} > (time() - 60))", "refId": "A"}],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}},
+            {"type": "special", "options": {"match": "null", "result": {"text": "N/A", "color": "orange"}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Backend HTTP request rate (by status)",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "sum by (status_code) (rate(onemcp_http_requests_total{job=\"onemcp_backend\"}[5m]))", "legendFormat": "{{status_code}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Backend request duration p95",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le,route) (rate(onemcp_http_request_duration_seconds_bucket{job=\"onemcp_backend\"}[5m])))", "legendFormat": "p95 {{route}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 20,
+      "title": "Postgres transactions/s",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 12, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "sum by (datname) (rate(pg_stat_database_xact_commit{job=\"onemcp_postgres\"}[5m]))", "legendFormat": "{{datname}} commit", "refId": "A"},
+        {"expr": "sum by (datname) (rate(pg_stat_database_xact_rollback{job=\"onemcp_postgres\"}[5m]))", "legendFormat": "{{datname}} rollback", "refId": "B"}
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Postgres connections",
+      "type": "timeseries",
+      "gridPos": {"x": 8, "y": 12, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "sum by (datname) (pg_stat_database_numbackends{job=\"onemcp_postgres\"})", "legendFormat": "{{datname}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Redis ops/s + memory",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 12, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "rate(redis_commands_processed_total{job=\"onemcp_redis\"}[5m])", "legendFormat": "ops/s", "refId": "A"},
+        {"expr": "redis_memory_used_bytes{job=\"onemcp_redis\"} / 1024 / 1024", "legendFormat": "mem MiB", "refId": "B"}
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Host CPU %",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 20, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "avg by (mode) (rate(node_cpu_seconds_total{job=\"onemcp_node\"}[1m])) * 100", "legendFormat": "{{mode}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "max": 100, "custom": {"stacking": {"mode": "normal"}}}}
+    },
+    {
+      "id": 31,
+      "title": "Memory used %",
+      "type": "gauge",
+      "gridPos": {"x": 8, "y": 20, "w": 4, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "(1 - (node_memory_MemAvailable_bytes{job=\"onemcp_node\"} / node_memory_MemTotal_bytes{job=\"onemcp_node\"})) * 100", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 75}, {"color": "red", "value": 90}]}
+        }
+      }
+    },
+    {
+      "id": 32,
+      "title": "Disk usage /",
+      "type": "gauge",
+      "gridPos": {"x": 12, "y": 20, "w": 4, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "(1 - (node_filesystem_avail_bytes{job=\"onemcp_node\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"onemcp_node\",mountpoint=\"/\"})) * 100", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 80}, {"color": "red", "value": 90}]}
+        }
+      }
+    },
+    {
+      "id": 33,
+      "title": "Container CPU % (top 5)",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 20, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "victoriametrics"},
+      "targets": [
+        {"expr": "topk(5, sum by (name) (rate(container_cpu_usage_seconds_total{job=\"onemcp_cadvisor\",name!=\"\"}[1m])) * 100)", "legendFormat": "{{name}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent"}}
+    }
+  ]
+}

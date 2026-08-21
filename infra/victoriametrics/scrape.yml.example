@@ -189,3 +189,69 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # ─── OneMCP-vps cross-VPS scrape (plan 260821-1346) ────────────────────────
+  # Targets on private network 10.200.0.44. See onemcp/docker-compose.yml
+  # observability sidecars block for exporter binding config.
+
+  - job_name: onemcp_node
+    static_configs:
+      - targets: ["10.200.0.44:9100"]
+        labels:
+          host: onemcp-vps
+          cluster: onemcp
+          component: host
+
+  - job_name: onemcp_cadvisor
+    static_configs:
+      - targets: ["10.200.0.44:8081"]
+        labels:
+          host: onemcp-vps
+          cluster: onemcp
+          component: cadvisor
+
+  - job_name: onemcp_backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["10.200.0.44:3000"]
+        labels:
+          host: onemcp-vps
+          cluster: onemcp
+          service: backend
+
+  - job_name: onemcp_postgres
+    static_configs:
+      - targets: ["10.200.0.44:9187"]
+        labels:
+          host: onemcp-vps
+          cluster: onemcp
+          service: postgres
+
+  - job_name: onemcp_redis
+    static_configs:
+      - targets: ["10.200.0.44:9121"]
+        labels:
+          host: onemcp-vps
+          cluster: onemcp
+          service: redis
+
+  # Synthetic HTTP probe — backend + portal health via private IP.
+  # Public URL oneconnector.000nethost.com not reachable from onelog-vps DC
+  # (firewall + external IP not routed). Use private-net endpoints instead.
+  - job_name: onemcp_blackbox_http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://10.200.0.44:3000/health
+          - http://10.200.0.44:3000/ready
+        labels:
+          cluster: onemcp
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

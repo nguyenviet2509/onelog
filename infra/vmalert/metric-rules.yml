@@ -527,3 +527,124 @@ groups:
         annotations:
           summary: "authway-vps memory > 90% for 5m"
           description: "Check Postgres shared_buffers / Zitadel heap. OOM risk imminent."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ONEMCP-VPS — MCP connector hub monitoring (plan 260821-1346).
+  # All rules carry `cluster: onemcp` → routed to Log-Server topic (880).
+  # Runbook: docs/onemcp-runbook.md.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: onemcp-critical
+    interval: 30s
+    rules:
+      - alert: OnemcpBackendDown
+        expr: |
+          up{job="onemcp_backend"} == 0 or absent(up{job="onemcp_backend"})
+        for: 1m
+        labels:
+          severity: critical
+          cluster: onemcp
+          service: backend
+        annotations:
+          summary: "OneMCP backend down > 1m — API + portal broken"
+          description: "backend {{ $labels.instance }} unscrapeable. Check container `onemcp-backend-1` on onemcp-vps."
+          runbook: "docs/onemcp-runbook.md#backend-down"
+
+      - alert: OnemcpPostgresDown
+        expr: |
+          up{job="onemcp_postgres"} == 0 or absent(up{job="onemcp_postgres"})
+        for: 1m
+        labels:
+          severity: critical
+          cluster: onemcp
+          service: postgres
+        annotations:
+          summary: "OneMCP Postgres exporter down — DB dead or exporter crashed"
+          description: "pgvector DB is source of truth for skills/artifacts. Every backend query fails."
+          runbook: "docs/onemcp-runbook.md#postgres-down"
+
+      - alert: OnemcpNodeDown
+        expr: |
+          up{job="onemcp_node"} == 0 or absent(up{job="onemcp_node"})
+        for: 2m
+        labels:
+          severity: critical
+          cluster: onemcp
+        annotations:
+          summary: "onemcp-vps host unreachable (node_exporter down > 2m)"
+          description: "VPS may be down or network partitioned."
+          runbook: "docs/onemcp-runbook.md#host-down"
+
+      - alert: OnemcpHttpsProbeFail
+        expr: probe_success{job="onemcp_blackbox_http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          cluster: onemcp
+        annotations:
+          summary: "OneMCP endpoint {{ $labels.instance }} probe fail > 2m"
+          description: "Synthetic HTTP probe fails — backend not serving even loopback."
+          runbook: "docs/onemcp-runbook.md#probe-fail"
+
+  - name: onemcp-warning
+    interval: 60s
+    rules:
+      - alert: OnemcpRedisDown
+        expr: |
+          up{job="onemcp_redis"} == 0 or absent(up{job="onemcp_redis"})
+        for: 2m
+        labels:
+          severity: warning
+          cluster: onemcp
+          service: redis
+        annotations:
+          summary: "OneMCP Redis exporter down — cache misses to Postgres"
+          description: "Not critical (cache regenerable), but backend latency will rise."
+
+      - alert: OnemcpHostCpuHigh
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{job="onemcp_node", mode="idle"}[2m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          cluster: onemcp
+        annotations:
+          summary: "onemcp-vps CPU > 85% for 5m"
+          description: "Check backend or TEI embedding load. `docker stats --no-stream`."
+
+      - alert: OnemcpHostMemoryHigh
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes{job="onemcp_node"} / node_memory_MemTotal_bytes{job="onemcp_node"})) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          cluster: onemcp
+        annotations:
+          summary: "onemcp-vps memory > 90% for 5m"
+          description: "Postgres shared_buffers or backend heap. OOM imminent."
+
+      - alert: OnemcpDiskLow
+        expr: |
+          (node_filesystem_avail_bytes{job="onemcp_node",fstype!~"tmpfs|overlay|squashfs"}
+           /
+           node_filesystem_size_bytes{job="onemcp_node",fstype!~"tmpfs|overlay|squashfs"}) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+          cluster: onemcp
+        annotations:
+          summary: "onemcp-vps disk < 15% free on {{ $labels.mountpoint }}"
+          description: "MinIO artifacts + pg-data grow. Check backup dir + old container images."
+
+      - alert: OnemcpBackend5xxSpike
+        expr: |
+          sum(rate(onemcp_http_requests_total{job="onemcp_backend",status_code=~"5.."}[5m]))
+          /
+          sum(rate(onemcp_http_requests_total{job="onemcp_backend"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          cluster: onemcp
+          service: backend
+        annotations:
+          summary: "Backend 5xx rate > 5% for 5m"
+          description: "Check `docker logs onemcp-backend-1 --tail=100` for exception traces."

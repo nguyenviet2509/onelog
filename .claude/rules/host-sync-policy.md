@@ -7,7 +7,7 @@ Quy tắc đồng bộ giữa source code local và các host của phòng KT (O
 | Host | Repo canonical | Vai trò | Sync |
 |---|---|---|---|
 | **onelog-vps** | onelog | **Production** OneLog (edge, Caddy, TLS) | ↔ 2 chiều local↔VPS |
-| **onemcp-vps** | onemcp | **Production** OneMCP (portal, MCP servers) | ↔ 2 chiều local↔VPS |
+| **onemcp-vps** | onemcp | **Production** OneMCP (portal, MCP servers, backend, MinIO, pgvector) | ↔ 2 chiều local↔VPS (git-tracked, observability wired 2026-08-21) |
 | **authway-vps** | authway | **Production** Authway (Zitadel v4 IdP) | ↔ 2 chiều local↔VPS (git init 2026-08-21) |
 | **onedocs-vps** *(TBD)* | onedocs | **Production** OneDocs (docs portal) | ↔ 2 chiều local↔VPS |
 | **onelog-source** *(192.168.122.53)* | onelog / cross-project | **Lab / test** OneLog (throw-away) | ↓ 1 chiều local→source |

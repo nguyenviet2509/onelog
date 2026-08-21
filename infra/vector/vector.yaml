@@ -86,6 +86,21 @@ sources:
     type: docker_logs
     include_containers: [ragstack-litellm]
 
+  # General container stdout — forward TẤT CẢ onelog container logs về VL
+  # (host=logserver) để observability chung. Exclude vector chính nó (tránh
+  # recursive log loop) + các exporter metric-only (không log meaningful):
+  #   - node-exporter, cadvisor, blackbox, nats-exporter: bridge Prometheus,
+  #     rất ít stdout ngoài startup banner.
+  #   - litellm: đã có docker_litellm source riêng cho cost stream (dedup).
+  docker_all:
+    type: docker_logs
+    exclude_containers:
+      - ragstack-vector
+      - ragstack-litellm
+      - ragstack-node-exporter
+      - ragstack-nats-exporter
+      - ragstack-blackbox-exporter
+
 transforms:
   enrich:
     type: remap
@@ -304,6 +319,42 @@ transforms:
       # Force source_stream — không cho phép event upstream forge field này.
       .source_stream = "vector-exec-probe"
 
+  # Docker container logs → normalize to OneLog schema (host=logserver + service).
+  # Docker_logs source enrich .host = container short-ID (rotates per restart,
+  # pollutes VL stream cardinality). Override to fixed `logserver` identity so
+  # container logs join the same stream group as exec probes + litellm cost.
+  docker_all_enrich:
+    type: remap
+    inputs: [docker_all]
+    source: |
+      raw_msg = string(.message) ?? ""
+
+      # Attempt JSON parse (Grafana + some services emit structured JSON).
+      parsed, err = parse_json(raw_msg)
+      if err == null && is_object(parsed) {
+        . = merge(., object!(parsed))
+      }
+
+      # VL requires _msg — set from raw message body.
+      ._msg = raw_msg
+
+      # Fixed host identity for all onelog-vps native services (matches
+      # docs/observability-log-forwarding-convention.md convention).
+      .host = "logserver"
+
+      # Service label = container name without ragstack- prefix.
+      cname = string!(.container_name)
+      cname = replace(cname, "ragstack-", "")
+      .service = cname
+
+      # Drop noisy docker metadata to keep VL index lean.
+      del(.container_id)
+      del(.container_created_at)
+      del(.image)
+      del(.label)
+      del(.stream)
+      del(.message)
+
   redact:
     # PII/secret redaction BEFORE log lands in VictoriaLogs.
     # Anything downstream (MCP tools, indexer, agent, VMUI) reads safe data.
@@ -316,7 +367,7 @@ transforms:
     # (probes, cost events) go through here as defense-in-depth against future
     # schema drift (e.g. LiteLLM adds a new field, DeepSeek API error dumps key).
     type: remap
-    inputs: [enrich, rsyslog_json_normalize, tag_litellm_cost, tag_provider_cost, openwebui_db_parse, logserver_disk_parse]
+    inputs: [enrich, rsyslog_json_normalize, tag_litellm_cost, tag_provider_cost, openwebui_db_parse, logserver_disk_parse, docker_all_enrich]
     source: |
       # Structured field denylist — top-level keys matching secret-shaped names.
       # Complements `_msg` regex scrub below (which only sees text body).

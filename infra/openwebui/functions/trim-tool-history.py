@@ -182,11 +182,18 @@ class Filter:
                 )
 
         if self.valves.DEBUG or (before_chars - after_chars) > 50_000:
+            # flush=True vì uvicorn buffer stdout, print thường không hiện trong
+            # docker logs cho tới khi container flush. file=sys.stderr càng chắc
+            # (stderr unbuffered by default in Python).
+            import sys
+
             print(
                 f"[trim-tool-history] turns={total_user_turns} "
                 f"before={before_chars:,}ch after={after_chars:,}ch "
                 f"tokens_est={after_tokens:,} "
-                f"truncated={truncated_count} dropped={dropped_count}"
+                f"truncated={truncated_count} dropped={dropped_count}",
+                file=sys.stderr,
+                flush=True,
             )
 
         return body

@@ -14,7 +14,26 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+      # 1M input context (cùng cấp DeepSeek).
+      max_input_tokens: 1048576
 
+  # gemini-pro — 2M input context. Chỉ dùng làm context_window_fallback cho
+  # trường hợp chat lớn (accumulated tool outputs vượt 1M của deepseek/flash).
+  # Cùng GEMINI_API_KEY nên không cần cấp key riêng. KHÔNG expose ra client
+  # (không nằm trong DEFAULT_MODELS) — chỉ route nội bộ khi context exceed.
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+      max_input_tokens: 2097152
+
+  # gpt-4-mini + claude-sonnet: entries GIỮ để chạy provider adhoc via LiteLLM,
+  # nhưng LOẠI khỏi fallback chain vì OPENAI_API_KEY + ANTHROPIC_API_KEY hiện
+  # rỗng (chưa cấp) → mọi fallback qua đây sẽ trả 401 và giả tạo cảm giác
+  # "fallback hoạt động" trong lúc thực tế chain đã đứt.
+  # Sự cố 2026-08-22 09:30: user chat 2M tokens → deepseek 400 context exceed
+  # → fallback gpt-4-mini → 401 (key empty) → cooldown 30s → user thấy error.
+  # Muốn kích hoạt lại: điền key thật vào .env.llm, thêm alias vào fallbacks.
   - model_name: gpt-4-mini
     litellm_params:
       model: openai/gpt-4.1-mini
@@ -29,14 +48,26 @@ model_list:
     litellm_params:
       model: deepseek/deepseek-chat
       api_key: os.environ/DEEPSEEK_API_KEY
+      # DeepSeek Chat V3.1 = 128k standard, nhưng account tier hiện tại của iNET
+      # thấy được 1M. Set để routing quyết định context_window_fallback đúng.
+      max_input_tokens: 1048576
 
 router_settings:
-  # Fallback chains. Cheapest primaries → richer fallbacks so we don't silently
-  # burn premium cost unless the cheap path is broken.
+  # Regular fallbacks — trigger khi provider trả 5xx / timeout / rate-limit.
+  # KHÔNG chain vào gpt-4-mini/claude-sonnet vì keys rỗng (verified 2026-08-22).
+  # gemini-flash ↔ deepseek đủ redundancy: cả 2 đều 1M context, khác provider.
   fallbacks:
-    - gemini-flash: ["gpt-4-mini", "claude-sonnet"]
-    - deepseek: ["gpt-4-mini"]
-    - gpt-4-mini: ["claude-sonnet"]
+    - gemini-flash: ["deepseek"]
+    - deepseek: ["gemini-flash"]
+
+  # Context-window fallbacks — chỉ trigger khi provider trả 400 "context length
+  # exceeded". Route sang model có context lớn hơn. gemini-pro = 2M context.
+  # Nếu cả gemini-pro cũng exceed (chat >2M tokens): fail cứng, user PHẢI start
+  # new chat. Không có model nào >2M ở tier consumer.
+  context_window_fallbacks:
+    - deepseek: ["gemini-pro"]
+    - gemini-flash: ["gemini-pro"]
+
   num_retries: 2
   # [RT-F12] Client-side agent timeout is 30s → keep proxy < that so agent
   # timeout doesn't orphan an in-flight upstream request (double-charge).

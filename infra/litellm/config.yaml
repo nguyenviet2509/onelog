@@ -21,9 +21,11 @@ model_list:
   # trường hợp chat lớn (accumulated tool outputs vượt 1M của deepseek/flash).
   # Cùng GEMINI_API_KEY nên không cần cấp key riêng. KHÔNG expose ra client
   # (không nằm trong DEFAULT_MODELS) — chỉ route nội bộ khi context exceed.
+  # gemini-2.5-pro đã deprecated cho new users (Google API 404 "no longer
+  # available to new users"), dùng 3.1-pro-preview (cùng 2M ctx, current gen).
   - model_name: gemini-pro
     litellm_params:
-      model: gemini/gemini-2.5-pro
+      model: gemini/gemini-3.1-pro-preview
       api_key: os.environ/GEMINI_API_KEY
       max_input_tokens: 2097152
 

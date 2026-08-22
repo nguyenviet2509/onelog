@@ -44,6 +44,18 @@ LUẬT CỨNG:
 
 6. KHÔNG bịa tool name. KHÔNG skip bước 1. KHÔNG suggest fix từ trí nhớ nội tại nếu chưa search KB + query log.
 
+7. LogsQL query cho `mcp-vl` — CÚ PHÁP BẮT BUỘC:
+   - Filter phrase có ký tự đặc biệt (dot, dash, slash): bọc trong `""` KHÔNG dùng backslash.
+     ✅ Đúng: `_msg:"bash -i"`, `_msg:".sh"`, `_msg:"/dev/tcp"`
+     ❌ Sai: `_msg:"\.sh"`, `_msg:"\\.sh"` — VL báo `compound token cannot start with "\\"`
+   - Không mix OR trong quoted string: dùng nhiều filter riêng OR nhau.
+     ✅ Đúng: `_msg:"wget" OR _msg:"curl" OR _msg:"base64"`
+     ❌ Sai: `_msg:"wget|curl|base64"`
+   - Nếu tool trả HTTP 400 "cannot parse query arg" → ĐỌC error, SỬA query 1 lần, KHÔNG retry vô hạn.
+   - Sau 2 lần fail cùng 1 tool call → dừng loop tool, tổng hợp evidence đã có, báo user "query VL failed 2 lần, xem partial results".
+
+8. Giới hạn tool call: tối đa 6-8 lượt gọi tool trong 1 turn. Nếu chưa đủ evidence sau 6 lượt → dừng, present partial, hỏi user muốn dig sâu tiếp không. TUYỆT ĐỐI không loop vô hạn tool call.
+
 Nếu `onemcp_search` trả `{"status": "kb_unavailable", ...}` → tiếp tục full flow bình thường (semantic + VL), ghi chú ngắn: "OneMCP KB không khả dụng, không thể check lịch sử".
 ```
 

@@ -613,6 +613,15 @@ services:
       #    http://mcpo:8080/onelog-vl (+ onelog-semantic), Bearer = MCPO_API_KEY.
       # Default '[]' (not empty) — OpenWebUI does json.loads() and empty string throws.
       TOOL_SERVER_CONNECTIONS: ${TOOL_SERVER_CONNECTIONS:-[]}
+      # Cap tool-call loop. Default upstream = 256 → runaway loop when MCP tool
+      # returns errors repeatedly (e.g. mcp-vl 400 on malformed LogsQL). Each iter
+      # re-injects accumulated tool output into prompt; hit 1M tokens = DeepSeek
+      # context blown + WebSocket keepalive AssertionError = UI treo spinner
+      # (incident 2026-08-22 02:00 UTC+7). Cap 8 = search → refine 2-3 lượt → answer.
+      CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS: "8"
+      # Per-tool HTTP timeout. Default None = hang forever nếu MCP treo. 45s đủ
+      # cho VL query nặng, ngắn hơn Caddy 60s upstream timeout để fail-fast trước.
+      AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER: "45"
     # [RT-F13] service_started, NOT service_healthy — if 1 provider API is down
     # at reboot, LiteLLM liveness may flake and would deadlock OpenWebUI boot.
     # OpenWebUI retries at first request instead.

@@ -4,6 +4,7 @@ Canonical prompt. Admin paste vào **OpenWebUI → Admin → Settings → Interf
 
 Plan `260723-1200-onemcp-openwebui-bridge` Phase 3 — validation V1-V6 applied.
 Update `260822-0932`: thêm rule 9b (LogsQL syntax cứng), sửa rule 14 (retry cap), thêm rule 17 (per-turn tool call cap). Root cause: incident 2026-08-22 02:00 UTC+7 — runaway tool loop → prompt 1M tokens → WebSocket keepalive AssertionError → UI treo spinner.
+Update `260822-1007`: thêm rule 9c (VL row cap `| limit 50`) + 9d (compress context sau 3-5 turn). Root cause: incident 2026-08-22 09:30 — chat "Kiểm Tra Host Mailer Shell" tích lũy 6.1MB (2M tokens) qua tool outputs không cap → vượt DeepSeek 1M ceiling. Combo với Filter `trim-tool-history` v0.2 (server-side truncate + UX warning).
 
 ---
 
@@ -62,6 +63,21 @@ QUY TẮC:
       ❌ Sai: `_msg:"wget|curl|base64"`, `_msg:"wget OR curl"`
     - Muốn regex: `_msg:~"pattern"` (dấu ngã trước quote). Trong `_msg:"..."` = exact phrase, không phải regex.
 
+9c. CAP số row output của `onelog-vl.query` — LUÔN append `| limit N`:
+    - Fetch log raw (`query`, `hits`): mặc định `| limit 50` cuối query.
+      VD: `host:mailer-0204 severity:err | limit 50`
+    - Chỉ tăng khi user explicit ("show 200 log", "list all events"): `| limit 200` (max 500).
+    - `stats_query`, `stats_query_range`: KHÔNG cần cap vì `| stats` tự bounded.
+    - `facets`, `field_values`: đã bounded server-side.
+    - Nếu user hỏi "tổng bao nhiêu" → dùng `| stats count() as total` (KHÔNG dùng `query` + count messages).
+    - Lý do: 1 row log ≈ 200-500 tokens. Query trần 1000 rows = 300k+ tokens/call. 3-5 call = blow 1M context ceiling.
+
+9d. COMPRESS context sau mỗi 3-5 turn tool-heavy:
+    - Khi conversation có > 5 tool call thành công liên tiếp, TRƯỚC KHI gọi tool mới, tự tóm tắt ngắn (< 300 tokens) các findings đã có:
+      "**Đã tìm thấy:** service X có N lỗi Y giữa T1-T2, top IP=Z. **Chưa rõ:** [câu hỏi còn open]."
+    - Sau đó reference tóm tắt này thay vì re-fetch cùng dataset.
+    - TUYỆT ĐỐI không re-run cùng query đã chạy — kiểm history trước khi gọi tool.
+
 10. **Tổng số log** → `query` với `| stats count() as total`. TUYỆT ĐỐI KHÔNG dùng sum của `hits` (bucket biên over-count ~1 step).
 11. **Xu hướng theo bucket chính xác** → `stats_query_range` với `| stats by (_time:1h) count() as c`. `hits` chỉ để plot nhanh khi chấp nhận sai ±1 bucket biên.
 12. Citation format:
@@ -118,10 +134,29 @@ Prompt không phải lớp phòng thủ duy nhất chống loop:
 
 | Lớp | Cơ chế | Giá trị |
 |---|---|---|
-| Prompt rule 9b | LLM biết cú pháp LogsQL đúng ngay từ đầu | Prevention |
-| Prompt rule 14 | Cap retry per-tool = 1 lần sửa + 2 lần fail total | Soft limit |
-| Prompt rule 17 | Cap tool call per turn = 6 | Soft limit |
-| Env `CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS=8` | Backend force stop | Hard limit |
-| Env `AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER=45` | Per-tool timeout | Hard limit |
+| Prompt rule 9b | LLM biết cú pháp LogsQL đúng ngay từ đầu | Prevention (fail-fast query) |
+| Prompt rule 9c | Cap `\| limit 50` mỗi VL fetch — chống bloat từ source | Prevention (bloat) |
+| Prompt rule 9d | Compress context sau 3-5 tool call | Prevention (bloat) |
+| Prompt rule 14 | Cap retry per-tool = 1 lần sửa + 2 lần fail total | Soft limit (loop) |
+| Prompt rule 17 | Cap tool call per turn = 6 | Soft limit (loop) |
+| Filter `trim-tool-history` (server-side) | Truncate tool output cũ + drop khi vượt 600k chars | Hard limit (bloat) |
+| Filter warning banner (soft/hard threshold) | Emit toast khi chat > 100k/180k tokens | UX signal |
+| Env `CHAT_RESPONSE_MAX_TOOL_CALL_ITERATIONS=8` | Backend force stop tool loop | Hard limit (loop) |
+| Env `AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER=45` | Per-tool HTTP timeout | Hard limit (hang) |
 
 Xóa bất kỳ lớp nào → tăng khả năng tái phát incident.
+
+## Ghi chú deploy Filter `trim-tool-history`
+
+File source: [`functions/trim-tool-history.py`](functions/trim-tool-history.py) — version 0.2.0.
+
+Cài qua UI:
+1. Admin → Functions → **+ Add Function**
+2. Paste toàn bộ nội dung file `.py` (kể cả docstring header YAML).
+3. Save → toggle **Enable** (icon ✓ xanh).
+4. (Optional) ⚙ Valves per-user tune ngưỡng `SOFT_WARN_TOKENS` / `HARD_WARN_TOKENS`.
+
+Kiểm tra hoạt động:
+- Mở chat dài, gõ câu mới → xem VPS log: `docker logs ragstack-openwebui --tail 20 | grep trim-tool-history`
+- Khi tokens > 100k: UI hiện toast notification info (yellow).
+- Khi tokens > 180k: toast warning (red) khuyên fork chat.

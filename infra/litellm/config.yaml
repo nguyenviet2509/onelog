@@ -17,17 +17,15 @@ model_list:
       # 1M input context (cùng cấp DeepSeek).
       max_input_tokens: 1048576
 
-  # gemini-pro — 2M input context. Chỉ dùng làm context_window_fallback cho
-  # trường hợp chat lớn (accumulated tool outputs vượt 1M của deepseek/flash).
-  # Cùng GEMINI_API_KEY nên không cần cấp key riêng. KHÔNG expose ra client
-  # (không nằm trong DEFAULT_MODELS) — chỉ route nội bộ khi context exceed.
-  # gemini-2.5-pro đã deprecated cho new users (Google API 404 "no longer
-  # available to new users"), dùng 3.1-pro-preview (cùng 2M ctx, current gen).
-  - model_name: gemini-pro
-    litellm_params:
-      model: gemini/gemini-3.1-pro-preview
-      api_key: os.environ/GEMINI_API_KEY
-      max_input_tokens: 2097152
+  # KHÔNG có model 2M+ context nào khả dụng trên tier hiện tại:
+  # - gemini-2.5-pro: deprecated cho new users (404)
+  # - gemini-3.1-pro-preview: free tier quota = 0 (429 RESOURCE_EXHAUSTED)
+  # - claude-opus-4-x: cần ANTHROPIC key (chưa cấp)
+  # - openai gpt-4.1 (1M ctx via long-context tier): cần OPENAI key (chưa cấp)
+  # → Không có context_window_fallback tier trên 1M.
+  # → Root fix duy nhất: PREVENT context bloat (OpenWebUI Filter Function
+  #    truncate old messages / tool outputs, hoặc user start new chat).
+  # Verified 2026-08-22 09:40 via `curl gemini-pro` từ litellm container.
 
   # gpt-4-mini + claude-sonnet: entries GIỮ để chạy provider adhoc via LiteLLM,
   # nhưng LOẠI khỏi fallback chain vì OPENAI_API_KEY + ANTHROPIC_API_KEY hiện
@@ -62,13 +60,16 @@ router_settings:
     - gemini-flash: ["deepseek"]
     - deepseek: ["gemini-flash"]
 
-  # Context-window fallbacks — chỉ trigger khi provider trả 400 "context length
-  # exceeded". Route sang model có context lớn hơn. gemini-pro = 2M context.
-  # Nếu cả gemini-pro cũng exceed (chat >2M tokens): fail cứng, user PHẢI start
-  # new chat. Không có model nào >2M ở tier consumer.
-  context_window_fallbacks:
-    - deepseek: ["gemini-pro"]
-    - gemini-flash: ["gemini-pro"]
+  # Context-window fallbacks: KHÔNG cấu hình vì không có model 2M+ khả dụng
+  # (xem comment ở model_list). Khi context exceed 1M:
+  # - LiteLLM trả 400 ContextWindowExceededError về OpenWebUI
+  # - OpenWebUI hiện chat error trong bubble
+  # - User PHẢI start new chat hoặc dùng Filter Function truncate history
+  # KHÔNG chain vào gemini-flash làm context_window_fallback vì flash cũng
+  # 1M context — chỉ đổi 1 lỗi 400 sang lỗi 400 khác, gây confuse.
+  #
+  # context_window_fallbacks:
+  #   - deepseek: ["<some-2M-model>"]
 
   num_retries: 2
   # [RT-F12] Client-side agent timeout is 30s → keep proxy < that so agent

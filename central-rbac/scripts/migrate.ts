@@ -14,11 +14,12 @@ import pg from 'pg';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Migrations to run (001 is external)
+// Migrations to run (001 is external superuser bootstrap)
 const MIGRATIONS = [
   { version: 2, file: '002_rbac_tables.sql' },
   { version: 3, file: '003_audit_hash_chain.sql' },
   { version: 4, file: '004_audit_immutable_trigger.sql' },
+  { version: 5, file: '005_metadata_table.sql' }, // Phase 2: epoch counter for cache invalidation
 ];
 
 async function migrate() {

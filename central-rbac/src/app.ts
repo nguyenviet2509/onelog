@@ -15,8 +15,10 @@ import { roleRoutes } from './routes/roles.js';
 import { resolveRoutes } from './routes/resolve.js';
 import { auditRoutes } from './routes/audit.js';
 import { webhookEchoRoutes } from './routes/webhook-echo.js';
+import { webhookPreTokenRoutes } from './routes/webhook-pre-token.js';
 import { auditorPool } from './db/auditor-pool.js';
 import { verifyAuditChainIntegrity } from './db/queries/audit.js';
+import { validateBreakGlassConfig } from './lib/break-glass.js';
 
 // Extend FastifyRequest with rawBody for HMAC verification (C2 fix).
 // rawBody is the exact bytes Zitadel signed — must verify BEFORE JSON.parse.
@@ -83,11 +85,15 @@ export async function buildApp() {
   await app.register(resolveRoutes);
   await app.register(auditRoutes);
   await app.register(webhookEchoRoutes);
+  await app.register(webhookPreTokenRoutes);
 
   return app;
 }
 
 async function main() {
+  // Validate break-glass config before binding port — fail fast on bad config
+  validateBreakGlassConfig();
+
   const app = await buildApp();
 
   // Startup: verify audit chain integrity (alert if broken, don't block)

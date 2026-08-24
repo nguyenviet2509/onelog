@@ -1,5 +1,6 @@
-# docker-compose.dev.yml — Local development Postgres for central-rbac
-# Port 5433 (avoids conflict with any host Postgres on 5432)
+# docker-compose.dev.yml — Local development Postgres + Redis for central-rbac
+# Postgres port 5433 (avoids conflict with any host Postgres on 5432)
+# Redis port 6380 (avoids conflict with any host Redis on 6379)
 # Run: docker compose -f docker-compose.dev.yml up -d
 
 services:
@@ -22,8 +23,30 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: central-rbac-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lfu
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - central_rbac_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   central_rbac_pgdata:
+    driver: local
+  central_rbac_redis_data:
     driver: local
 
 # JWKS testing note:

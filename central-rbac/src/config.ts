@@ -23,13 +23,34 @@ const envSchema = z.object({
   CENTRAL_RBAC_RESOLVE_TOKEN: z.string().min(16, 'CENTRAL_RBAC_RESOLVE_TOKEN must be ≥16 chars'),
   ZITADEL_ACTION_SIGNING_KEY: z.string().min(16, 'ZITADEL_ACTION_SIGNING_KEY must be ≥16 chars'),
 
-  // VictoriaLogs dual-write
-  VL_INGEST_URL: z.string().url('VL_INGEST_URL must be a valid URL').optional(),
+  // VictoriaLogs dual-write — empty string treated as unset (not validated as URL)
+  VL_INGEST_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() !== '' ? v : undefined))
+    .pipe(z.string().url('VL_INGEST_URL must be a valid URL').optional()),
 
   // CORS — comma-separated allow-list for Phase 5 UI subdomain (H2 fix).
   // Empty string = no CORS in prod (safe default). Dev falls back to allow-all.
   // Example: CENTRAL_RBAC_CORS_ORIGIN=https://rbac.inet.vn,https://admin.inet.vn
   CENTRAL_RBAC_CORS_ORIGIN: z.string().default(''),
+
+  // Redis
+  REDIS_HOST: z.string().default('127.0.0.1'),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6380),
+  REDIS_PASSWORD: z.string().default(''),
+
+  // Zitadel Management API
+  ZITADEL_MGMT_URL: z.string().url('ZITADEL_MGMT_URL must be a valid URL').default('http://authway-vps.local:8080'),
+  ZITADEL_SA_PAT: z.string().default(''),   // optional in dev; required if Mgmt API calls needed
+  ZITADEL_ORG_ID: z.string().default(''),   // default org context for ListUserGrants
+
+  // Break-glass
+  BREAK_GLASS_USER_ID: z.string().default(''),
+  BREAK_GLASS_PERMS: z.string().default(''),
+
+  // Admin fail-close role pattern (regex) — roles matching this trigger fail-close path
+  FAIL_CLOSE_ROLE_PATTERN: z.string().default('^(rbac\\..*|.*\\.admin)$'),
 
   // Feature flags
   WEBHOOK_ECHO_ENABLED: z

@@ -18,6 +18,7 @@ import {
   createRoleSchema, updateRoleSchema,
   rolePermissionBodySchema, roleKeyParamSchema,
 } from '../schemas/role-schemas.js';
+import { bumpResolveEpoch } from '../db/queries/resolve-epoch.js';
 
 export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
@@ -131,6 +132,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     if (!perm) return reply.status(422).send({ error: 'permission_key does not exist' });
 
     await addRolePermission(writerPool, p.data.key, parsed.data.permission_key);
+    await bumpResolveEpoch(writerPool); // invalidate resolve cache
     await writeAuditLog(request, {
       action: 'role_permission.add', target_type: 'role_permission',
       target_id: `${p.data.key}:${parsed.data.permission_key}`,
@@ -148,6 +150,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     const removed = await removeRolePermission(writerPool, params.key, params.permKey);
     if (!removed) return reply.status(404).send({ error: 'Role-permission assignment not found' });
 
+    await bumpResolveEpoch(writerPool); // invalidate resolve cache
     await writeAuditLog(request, {
       action: 'role_permission.remove', target_type: 'role_permission',
       target_id: `${params.key}:${params.permKey}`,

@@ -15,9 +15,12 @@ export default defineConfig({
         'src/middleware/auth-jwt.ts',
         'src/middleware/auth-resolve.ts',
         'src/middleware/error-handler.ts',
+        'src/middleware/zitadel-action-hmac.ts',
       ],
-      // logger.ts is a pino singleton — no testable logic, excluded from thresholds
-      exclude: ['src/lib/logger.ts'],
+      // Excluded from coverage thresholds:
+      // - logger.ts: pino singleton, no testable logic
+      // - redis-client.ts: ioredis network singleton, requires live Redis for meaningful coverage
+      exclude: ['src/lib/logger.ts', 'src/lib/redis-client.ts'],
       thresholds: {
         lines: 80,
         functions: 80,

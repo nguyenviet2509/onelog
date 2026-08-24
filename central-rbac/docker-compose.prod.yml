@@ -1,0 +1,128 @@
+# docker-compose.prod.yml — Production deployment on authway-vps.
+# Joins authway-prod_internal network alongside Zitadel.
+# Zitadel Target URL: http://central-rbac:8083/v1/webhooks/pre-token
+#
+# Deploy:
+#   cd /opt/central-rbac
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Update Zitadel Target to point to: http://central-rbac:8083/v1/webhooks/pre-token
+
+name: central-rbac
+
+networks:
+  authway-prod_internal:
+    external: true
+
+volumes:
+  central_rbac_pgdata_prod:
+    driver: local
+  central_rbac_redis_data_prod:
+    driver: local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: central-rbac-postgres
+    restart: unless-stopped
+    networks:
+      - authway-prod_internal
+    environment:
+      POSTGRES_USER: postgres_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - central_rbac_pgdata_prod:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_admin -d central_rbac"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: central-rbac-redis
+    restart: unless-stopped
+    networks:
+      - authway-prod_internal
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lfu
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - central_rbac_redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  central-rbac:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: central-rbac
+    restart: unless-stopped
+    networks:
+      - authway-prod_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "8083"
+      LOG_LEVEL: info
+
+      # DB — uses sidecar postgres
+      WRITER_DATABASE_URL: postgres://rbac_writer:${RBAC_WRITER_PASSWORD}@central-rbac-postgres:5432/central_rbac
+      AUDITOR_DATABASE_URL: postgres://rbac_auditor:${RBAC_AUDITOR_PASSWORD}@central-rbac-postgres:5432/central_rbac
+
+      # Redis
+      REDIS_HOST: central-rbac-redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+      # Zitadel JWT verification
+      ZITADEL_ISSUER: http://10.200.0.125
+      ZITADEL_JWKS_URL: http://authway-prod-zitadel-1:8080/oauth/v2/keys
+      ZITADEL_AUD_CLIENT_ID: ${ZITADEL_AUD_CLIENT_ID}
+      ZITADEL_AZP_ADMIN_CLIENT_ID: ${ZITADEL_AZP_ADMIN_CLIENT_ID}
+
+      # Webhook auth
+      CENTRAL_RBAC_RESOLVE_TOKEN: ${CENTRAL_RBAC_RESOLVE_TOKEN}
+      ZITADEL_ACTION_SIGNING_KEY: ${ZITADEL_ACTION_SIGNING_KEY}
+
+      # Zitadel Mgmt API
+      ZITADEL_MGMT_URL: http://authway-prod-zitadel-1:8080
+      ZITADEL_SA_PAT: ${ZITADEL_SA_PAT}
+      ZITADEL_ORG_ID: ${ZITADEL_ORG_ID}
+
+      # Break-glass
+      BREAK_GLASS_USER_ID: ${BREAK_GLASS_USER_ID}
+      BREAK_GLASS_PERMS: ${BREAK_GLASS_PERMS}
+
+      # Fail-close pattern for admin roles
+      FAIL_CLOSE_ROLE_PATTERN: "^(rbac\\..*|.*\\.admin)$"
+
+      # VictoriaLogs alert sink
+      VL_INGEST_URL: ${VL_INGEST_URL:-}
+
+    # Internal only — no host port published
+    # Zitadel container reaches us via container name: http://central-rbac:8083
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

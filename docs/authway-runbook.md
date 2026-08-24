@@ -126,5 +126,6 @@ ssh authway-vps 'bash /opt/authway/infra/authway-vps/scripts/snapshot-daily.sh'
 
 - `authway-architecture-endstate-guide.html` — kiến trúc 2-VPS
 - `authway-rbac-guide.html` — RBAC + config
+- Plan central-rbac: `plans/260821-1644-central-rbac-single-pane/plan.md` (Phase 1 complete, Phase 5 deploy target)
 - Plan monitor: `plans/260821-1013-authway-vps-monitor-integration/`
 - Sync policy: `.claude/rules/host-sync-policy.md`

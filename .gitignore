@@ -13,6 +13,7 @@ infra/caddy/data/
 # .md reports/audits stay tracked as design records. If a .sh proves
 # reusable, promote it to infra/scripts/ instead of keeping here.
 plans/*
+!plans/reports/
 plans/reports/*.sh
 
 # Backups & dumps — chứa data user / hashed passwords / secrets snapshot.
@@ -66,3 +67,6 @@ infra/ansible/inventory.ini
 
 # Authway junction (mirror to D:\Vietnt\Project\authway — Zitadel selfhost project for IdP)
 /authway
+
+# BookStack MCP config — chứa TOKEN_ID + TOKEN_SECRET plaintext, không commit
+mcp-bookstack/

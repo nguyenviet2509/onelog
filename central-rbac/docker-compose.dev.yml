@@ -1,0 +1,34 @@
+# docker-compose.dev.yml — Local development Postgres for central-rbac
+# Port 5433 (avoids conflict with any host Postgres on 5432)
+# Run: docker compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: central-rbac-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres_admin
+      POSTGRES_PASSWORD: postgres_admin_dev
+      POSTGRES_DB: postgres
+    volumes:
+      - central_rbac_pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_admin -d central_rbac"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  central_rbac_pgdata:
+    driver: local
+
+# JWKS testing note:
+# For integration tests against live Zitadel JWKS, open SSH tunnel first:
+#   ssh -L 8080:10.200.0.125:8080 onelog-vps
+# Then set in .env:
+#   ZITADEL_JWKS_URL=http://localhost:8080/oauth/v2/keys
+# For unit tests, static JWKS file at tests/fixtures/jwks.json is used instead.

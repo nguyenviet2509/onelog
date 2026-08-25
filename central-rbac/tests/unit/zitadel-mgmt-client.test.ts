@@ -105,15 +105,15 @@ describe('listUserGrants', () => {
     expect(headers['x-zitadel-orgid']).toBe(ORG_ID);
   });
 
-  it('URL encodes userId with special chars', async () => {
+  it('sends userId in body queries filter (not URL path)', async () => {
     const mockFetch = vi.fn().mockResolvedValue(makeOkResponse({ result: [] }));
     vi.stubGlobal('fetch', mockFetch);
 
     await listUserGrants('user/with/slashes', ORG_ID);
 
     const callArgs = mockFetch.mock.calls[0] as [string, RequestInit];
-    const url = callArgs[0] as string;
-    expect(url).toContain('user%2Fwith%2Fslashes');
+    const body = JSON.parse(callArgs[1].body as string);
+    expect(body.queries).toEqual([{ userIdQuery: { userId: 'user/with/slashes' } }]);
   });
 
   it('handles grants with empty roleKeys gracefully', async () => {

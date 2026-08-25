@@ -116,16 +116,22 @@ receivers:
         message_thread_id: __TELEGRAM_THREAD_ID__
         parse_mode: HTML
         send_resolved: true
+        # Telegram cap = 4096 chars. sample_msg = raw syslog line (unbounded — kernel
+         # panic dumps, MySQL error stacks, litespeed 500 dumps đều có thể >1KB).
+         # Guards: (1) compact threshold >5 (thay vì >10) để burst nhiều host không
+         # blow up detail path, (2) truncate sample_msg 250B + summary 200B via
+         # printf "%.Ns". Worst-case detail: 5 × ~550B = ~2.7KB < 4096. Worst-case
+         # compact: 10 hosts × 60B + 250B sample + 200B summary = ~1KB.
         message: &telegram_message_template |
           {{ if eq .Status "firing" }}🔥 <b>FIRING</b>{{ else }}✅ <b>RESOLVED</b>{{ end }} — <b>{{ .CommonLabels.alertname }}</b>{{ if gt (len .Alerts) 1 }} (×{{ len .Alerts }}){{ end }}
           {{ with .CommonLabels.severity }}<b>severity:</b> <code>{{ . }}</code>  {{ end }}{{ with .CommonLabels.category }}<b>category:</b> <code>{{ . }}</code>{{ end }}
-          {{ if gt (len .Alerts) 10 }}
+          {{ if gt (len .Alerts) 5 }}
           ━━━━━━━━━━━━━━━━━━━━
           <b>{{ len .Alerts }} hosts affected</b> (compact view, first 10):
           {{ range $i, $a := .Alerts }}{{ if lt $i 10 }}• <code>{{ $a.Labels.host }}</code>{{ with $a.Labels.host_ip }} (<code>{{ . }}</code>){{ end }}{{ if not $a.StartsAt.IsZero }} — {{ $a.StartsAt.Local.Format "15:04:05" }}{{ end }}
           {{ end }}{{ end }}{{ if gt (len .Alerts) 10 }}… và các host còn lại (xem VMUI để đầy đủ)
-          {{ end }}{{ with (index .Alerts 0).Labels.sample_msg }}<b>sample_msg:</b> <code>{{ . }}</code>
-          {{ end }}{{ with (index .Alerts 0).Annotations.summary }}<b>summary:</b> {{ . }}
+          {{ end }}{{ with (index .Alerts 0).Labels.sample_msg }}<b>sample_msg:</b> <code>{{ printf "%.250s" . }}{{ if gt (len .) 250 }}…{{ end }}</code>
+          {{ end }}{{ with (index .Alerts 0).Annotations.summary }}<b>summary:</b> {{ printf "%.200s" . }}{{ if gt (len .) 200 }}…{{ end }}
           {{ end }}{{ else }}{{ range .Alerts }}
           ━━━━━━━━━━━━━━━━━━━━
           {{ with .Labels.host }}<b>host:</b>        <code>{{ . }}</code>
@@ -133,8 +139,8 @@ receivers:
           {{ end }}{{ with .Labels.attacker_ip }}<b>attacker_ip:</b> <code>{{ . }}</code>
           {{ end }}{{ if not .StartsAt.IsZero }}<b>started:</b>     <code>{{ .StartsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
           {{ end }}{{ if and (eq $.Status "resolved") (not .EndsAt.IsZero) }}<b>ended:</b>       <code>{{ .EndsAt.Local.Format "02/01/2006 15:04:05 -07:00" }}</code>
-          {{ end }}{{ with .Labels.sample_msg }}<b>msg:</b>         <code>{{ . }}</code>
-          {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ . }}
+          {{ end }}{{ with .Labels.sample_msg }}<b>msg:</b>         <code>{{ printf "%.250s" . }}{{ if gt (len .) 250 }}…{{ end }}</code>
+          {{ end }}{{ with .Annotations.summary }}<b>summary:</b>     {{ printf "%.200s" . }}{{ if gt (len .) 200 }}…{{ end }}
           {{ end }}{{ end }}{{ end }}
 
   # Event-style rules đều fire trên fleet syslog (OOM, ENOSPC, user/sudoer thay

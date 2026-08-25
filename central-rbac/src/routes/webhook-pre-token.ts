@@ -229,10 +229,7 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
       }
 
       // ── Normal path ───────────────────────────────────────────────────────
-      const failClosePattern = config.FAIL_CLOSE_ROLE_PATTERN
-        ? new RegExp(config.FAIL_CLOSE_ROLE_PATTERN)
-        : null;
-
+      // Note: config.FAIL_CLOSE_ROLE_PATTERN wired for Phase 3 admin fail-close.
       try {
         // Step 1: get current epoch (in-process cache avoids DB on warm path)
         const epoch = await getResolveEpoch(writerPool);
@@ -272,33 +269,8 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
           { err: errMsg, userId, orgId, correlationId },
           'webhook-pre-token: resolve failed — returning degraded',
         );
-
-        // Admin fail-close: if user has an admin-matching role, return 500
-        // (requires Zitadel Target interruptOnError:true — deferred to Phase 3)
-        // For Phase 2: always return degraded; apps enforce rbac_degraded rejection.
-        if (failClosePattern) {
-          try {
-            // Best-effort: try to get roles from a stale/partial cache
-            const epoch = await getResolveEpoch(writerPool).catch(() => 0);
-            const cacheKey = `user-grants:v${epoch}:${userId}`;
-            const cachedRoles = await redis.get(cacheKey).catch(() => null);
-            if (cachedRoles) {
-              const roles = JSON.parse(cachedRoles) as string[];
-              const isAdmin = roles.some((r) => failClosePattern.test(r));
-              if (isAdmin) {
-                logger.warn(
-                  { userId, correlationId },
-                  'webhook-pre-token: admin role + resolve failure — degraded (Phase 3: fail-close)',
-                );
-                // Phase 3: return reply.status(500).send({ error: 'rbac-degraded-admin-fail-close' })
-                // with interruptOnError:true Target. For now, degrade cleanly.
-              }
-            }
-          } catch {
-            // Ignore errors in fail-close detection — always degrade
-          }
-        }
-
+        // Admin fail-close (F8) deferred to Phase 3: needs 2 Zitadel Targets +
+        // per-role Execution condition with interruptOnError:true.
         return reply.send(degradedResponse());
       }
     },

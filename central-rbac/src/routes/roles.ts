@@ -83,6 +83,11 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     const updated = await updateRole(writerPool, p.data.key, parsed.data);
     if (!updated) return reply.status(404).send({ error: 'Role not found' });
 
+    // Bump epoch if hierarchy changed (parent_key affects resolve output)
+    if (parsed.data.parent_key !== undefined && parsed.data.parent_key !== before.parent_key) {
+      await bumpResolveEpoch(writerPool);
+    }
+
     await writeAuditLog(request, {
       action: 'role.update', target_type: 'role', target_id: p.data.key,
       before_state: before, after_state: updated,
@@ -99,6 +104,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     if (!before) return reply.status(404).send({ error: 'Role not found' });
 
     await deleteRole(writerPool, p.data.key);
+    await bumpResolveEpoch(writerPool); // invalidate resolve cache — role gone, children inherit change
     await writeAuditLog(request, {
       action: 'role.delete', target_type: 'role', target_id: p.data.key, before_state: before,
     });

@@ -70,3 +70,6 @@ infra/ansible/inventory.ini
 
 # BookStack MCP config — chứa TOKEN_ID + TOKEN_SECRET plaintext, không commit
 mcp-bookstack/
+
+# Spike webhook — throw-away gate code, delete after Phase 2 gate closes
+central-rbac/spike/

@@ -44,6 +44,9 @@ const envSchema = z.object({
   ZITADEL_MGMT_URL: z.string().url('ZITADEL_MGMT_URL must be a valid URL').default('http://authway-vps.local:8080'),
   ZITADEL_SA_PAT: z.string().default(''),   // optional in dev; required if Mgmt API calls needed
   ZITADEL_ORG_ID: z.string().default(''),   // default org context for ListUserGrants
+  // Zitadel resolves instance from Host header; required when calling via internal Docker alias.
+  // Set to the ExternalDomain configured in Zitadel (e.g., 10.200.0.125 or rbac.example.com).
+  ZITADEL_EXTERNAL_HOST: z.string().default(''),
 
   // Break-glass
   BREAK_GLASS_USER_ID: z.string().default(''),

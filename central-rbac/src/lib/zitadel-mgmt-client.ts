@@ -57,6 +57,9 @@ async function mgmtPost(path: string, orgId: string, body: unknown): Promise<Res
         'Content-Type': 'application/json',
         Authorization: authHeader,
         'x-zitadel-orgid': orgId,
+        // Zitadel resolves instance from Host header — must match ExternalDomain
+        // when calling via internal Docker alias (e.g., authway-vps.local:8080)
+        ...(config.ZITADEL_EXTERNAL_HOST ? { Host: config.ZITADEL_EXTERNAL_HOST } : {}),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -77,15 +80,16 @@ async function mgmtPost(path: string, orgId: string, body: unknown): Promise<Res
  * Fetch all grants for a user in a given org.
  * Returns role keys grouped by project.
  *
- * Maps to: POST /management/v1/users/{userId}/grants/_search
+ * Maps to: POST /management/v1/users/grants/_search (global search with userId filter)
  */
 export async function listUserGrants(userId: string, orgId: string): Promise<UserGrant[]> {
-  const path = `/management/v1/users/${encodeURIComponent(userId)}/grants/_search`;
+  const path = `/management/v1/users/grants/_search`;
 
   let res: Response;
   try {
     res = await mgmtPost(path, orgId, {
       query: { offset: '0', limit: 100 },
+      queries: [{ userIdQuery: { userId } }],
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

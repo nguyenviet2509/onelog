@@ -10,6 +10,7 @@
     "start": "node dist/app.js",
     "migrate": "tsx scripts/migrate.ts",
     "bootstrap-dev": "tsx scripts/bootstrap-dev.ts",
+    "bootstrap": "tsx scripts/bootstrap.ts",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run tests/integration --coverage"

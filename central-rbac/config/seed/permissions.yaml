@@ -1,0 +1,93 @@
+# permissions.yaml — MVP seed: ~30 permissions for review environment.
+# Format: key, description, (optional) alias_of
+# Rules: keys are dot-separated lowercase, immutable after creation.
+# Only system.root role may hold rbac.* permissions (enforced in bootstrap.ts).
+
+permissions:
+  # RBAC admin — only system.root and rbac.admin roles
+  - key: rbac.admin.read
+    description: Read RBAC configuration (roles, permissions, assignments)
+  - key: rbac.admin.write
+    description: Mutate RBAC configuration (create/update roles and permissions)
+
+  # Zitadel IAM — break-glass only (system.root)
+  - key: zitadel.iam.read
+    description: Read Zitadel IAM configuration (orgs, users, projects)
+  - key: zitadel.iam.write
+    description: Write Zitadel IAM configuration — BREAK-GLASS ONLY
+
+  # Cloud access
+  - key: cloud.viewer
+    description: Read-only access to cloud resources
+  - key: cloud.editor
+    description: Read + write access to cloud resources
+  - key: cloud.admin
+    description: Full administrative access to cloud resources including destructive ops
+
+  # Monitoring
+  - key: monitoring.viewer
+    description: View monitoring dashboards and alerts
+  - key: monitoring.editor
+    description: Edit monitoring rules, silence alerts, manage dashboards
+
+  # Storage
+  - key: storage.viewer
+    description: Read objects from storage (MinIO / S3 buckets)
+  - key: storage.editor
+    description: Read + write objects to storage buckets
+
+  # OneMCP KB
+  - key: onemcp.kb.read
+    description: Read knowledge base entries in OneMCP
+  - key: onemcp.kb.write
+    description: Write knowledge base entries in OneMCP
+  - key: onemcp.kb.delete
+    description: Delete knowledge base entries in OneMCP
+
+  # OneMCP admin
+  - key: onemcp.admin.manage
+    description: Manage OneMCP admin settings and connectors
+
+  # OneLog
+  - key: onelog.logs.read
+    description: Read system logs via OneLog
+  - key: onelog.logs.export
+    description: Export log data from OneLog
+
+  # Audit
+  - key: audit.read
+    description: Read audit log entries
+  - key: audit.export
+    description: Export audit log data
+
+  # Outbox / async operations
+  - key: outbox.read
+    description: Read outbox event queue status
+  - key: outbox.admin
+    description: Retry or dead-letter outbox events
+
+  # Drift detection
+  - key: drift.check
+    description: Trigger on-demand drift check between Central RBAC and Zitadel
+
+  # Assignments
+  - key: assignments.read
+    description: View user role assignments
+  - key: assignments.write
+    description: Assign or revoke user roles
+
+  # Users proxy (Phase 5 UI)
+  - key: users.read
+    description: Search and view user profiles via RBAC admin panel
+
+  # Roles management
+  - key: roles.read
+    description: Read role definitions and permission mappings
+  - key: roles.write
+    description: Create and update role definitions
+
+  # Permissions management
+  - key: permissions.read
+    description: Read permission definitions
+  - key: permissions.write
+    description: Create and update permission definitions

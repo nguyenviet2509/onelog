@@ -20,6 +20,8 @@ import { assignmentRoutes } from './routes/assignments.js';
 import { driftRoutes } from './routes/drift.js';
 import { permissionsLookupRoutes } from './routes/permissions-lookup.js';
 import { outboxAdminRoutes } from './routes/outbox-admin.js';
+import { userRoutes } from './routes/users.js';
+import { projectRoutes } from './routes/projects.js';
 import { auditorPool } from './db/auditor-pool.js';
 import { writerPool } from './db/writer-pool.js';
 import { verifyAuditChainIntegrity } from './db/queries/audit.js';
@@ -99,6 +101,10 @@ export async function buildApp() {
   await app.register(driftRoutes);
   await app.register(permissionsLookupRoutes);
   await app.register(outboxAdminRoutes);
+
+  // Phase 5 routes — UI proxy endpoints
+  await app.register(userRoutes);
+  await app.register(projectRoutes);
 
   return app;
 }

@@ -1,0 +1,102 @@
+# roles.yaml — MVP seed: 6 roles for review environment.
+# Format: key, description, parent_key (optional), permissions (list of keys)
+# Rules:
+#   - Only system.root may hold rbac.* permissions (enforced in bootstrap.ts)
+#   - parent_key creates single-parent inheritance hierarchy (no runtime permission merging
+#     in this seed — bootstrap inserts explicit permission rows only for listed permissions)
+#   - role keys: dot-separated lowercase
+
+roles:
+  # system.root — God role. Holds all permissions including break-glass IAM.
+  # Never assigned to regular users; used only via break-glass flow.
+  - key: system.root
+    description: Unrestricted system root — all permissions including break-glass IAM access
+    parent_key: null
+    permissions:
+      - rbac.admin.read
+      - rbac.admin.write
+      - zitadel.iam.read
+      - zitadel.iam.write
+      - cloud.viewer
+      - cloud.editor
+      - cloud.admin
+      - monitoring.viewer
+      - monitoring.editor
+      - storage.viewer
+      - storage.editor
+      - onemcp.kb.read
+      - onemcp.kb.write
+      - onemcp.kb.delete
+      - onemcp.admin.manage
+      - onelog.logs.read
+      - onelog.logs.export
+      - audit.read
+      - audit.export
+      - outbox.read
+      - outbox.admin
+      - drift.check
+      - assignments.read
+      - assignments.write
+      - users.read
+      - roles.read
+      - roles.write
+      - permissions.read
+      - permissions.write
+
+  # rbac.admin — manages RBAC config only; no IAM, no cloud, no break-glass.
+  # NOTE: rbac.admin.* permissions are NOT granted here per plan rule:
+  #   only system.root may hold rbac.* permission grants.
+  #   The rbac.admin role grants admin UI access via Zitadel role claim (role_key check),
+  #   not through individual rbac.* permission resolution.
+  - key: rbac.admin
+    description: RBAC administrator — manage roles, permissions, and assignments
+    parent_key: null
+    permissions:
+      - assignments.read
+      - assignments.write
+      - users.read
+      - roles.read
+      - roles.write
+      - permissions.read
+      - permissions.write
+      - audit.read
+      - drift.check
+      - outbox.read
+
+  # cloud.admin — full cloud access, no RBAC admin
+  - key: cloud.admin
+    description: Cloud administrator — full cloud resource access
+    parent_key: cloud.viewer
+    permissions:
+      - cloud.viewer
+      - cloud.editor
+      - cloud.admin
+      - storage.viewer
+      - storage.editor
+
+  # cloud.viewer — read-only cloud access
+  - key: cloud.viewer
+    description: Cloud viewer — read-only access to cloud resources and storage
+    parent_key: null
+    permissions:
+      - cloud.viewer
+      - storage.viewer
+
+  # monitoring.admin — full monitoring access
+  - key: monitoring.admin
+    description: Monitoring administrator — dashboards, alerts, and rules
+    parent_key: monitoring.viewer
+    permissions:
+      - monitoring.viewer
+      - monitoring.editor
+      - onelog.logs.read
+      - onelog.logs.export
+      - audit.read
+
+  # monitoring.viewer — read-only monitoring access
+  - key: monitoring.viewer
+    description: Monitoring viewer — dashboards and alerts read-only
+    parent_key: null
+    permissions:
+      - monitoring.viewer
+      - onelog.logs.read

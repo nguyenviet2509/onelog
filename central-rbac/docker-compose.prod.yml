@@ -99,9 +99,14 @@ services:
       ZITADEL_ACTION_SIGNING_KEY: ${ZITADEL_ACTION_SIGNING_KEY}
 
       # Zitadel Mgmt API
-      ZITADEL_MGMT_URL: http://authway-prod-zitadel-1:8080
+      ZITADEL_MGMT_URL: http://10.200.0.125
       ZITADEL_SA_PAT: ${ZITADEL_SA_PAT}
       ZITADEL_ORG_ID: ${ZITADEL_ORG_ID}
+      ZITADEL_EXTERNAL_HOST: ${ZITADEL_EXTERNAL_HOST}
+
+      # Phase 3: outbox worker + project sync
+      ZITADEL_PROJECT_ID: ${ZITADEL_PROJECT_ID}
+      OUTBOX_WORKER_ENABLED: "true"
 
       # Break-glass
       BREAK_GLASS_USER_ID: ${BREAK_GLASS_USER_ID}

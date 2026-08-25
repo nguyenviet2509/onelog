@@ -21,9 +21,11 @@ import { driftRoutes } from './routes/drift.js';
 import { permissionsLookupRoutes } from './routes/permissions-lookup.js';
 import { outboxAdminRoutes } from './routes/outbox-admin.js';
 import { auditorPool } from './db/auditor-pool.js';
+import { writerPool } from './db/writer-pool.js';
 import { verifyAuditChainIntegrity } from './db/queries/audit.js';
 import { validateBreakGlassConfig } from './lib/break-glass.js';
-import { startOutboxWorker } from './services/outbox-worker.js';
+import { startOutboxWorker, stopOutboxWorker } from './services/outbox-worker.js';
+import { redis } from './lib/redis-client.js';
 
 // Extend FastifyRequest with rawBody for HMAC verification (C2 fix).
 // rawBody is the exact bytes Zitadel signed — must verify BEFORE JSON.parse.
@@ -133,6 +135,28 @@ async function main() {
 
   // Start outbox worker after server is bound (OUTBOX_WORKER_ENABLED=true by default)
   startOutboxWorker();
+
+  // H3 fix: graceful shutdown on SIGTERM (docker stop) and SIGINT (ctrl-c / compose down).
+  // Drains the outbox worker, closes DB pools and Redis before exiting.
+  // Any events still 'processing' at timeout are recovered by H2 stalled-row reaper on next boot.
+  const gracefulShutdown = async (signal: string): Promise<void> => {
+    logger.info({ signal }, 'shutdown: signal received, draining worker');
+    try {
+      await stopOutboxWorker(15_000); // grace 15s to finish current batch
+      await app.close();
+      await redis.quit().catch(() => {});
+      await writerPool.end().catch(() => {});
+      await auditorPool.end().catch(() => {});
+      logger.info({ signal }, 'shutdown: complete');
+    } catch (err) {
+      logger.error({ err, signal }, 'shutdown: error during drain');
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
+  process.on('SIGINT', () => { void gracefulShutdown('SIGINT'); });
 }
 
 // Only run main() when this file is executed directly (not imported in tests)

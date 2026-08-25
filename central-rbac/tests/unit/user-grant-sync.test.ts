@@ -1,6 +1,11 @@
 /**
  * user-grant-sync.test.ts — Unit tests for user grant assignment/revocation service.
- * Verifies: add vs update path selection, partial revoke, idempotency key uniqueness.
+ *
+ * H1+H4 fix (2026-08-25): assignRoleToUser no longer calls Zitadel — it always
+ * enqueues 'add_or_update_user_grant'. Tests verify:
+ *   - No listUserGrants call in assign hot path (H4)
+ *   - Concurrent assigns for different roles both enqueue (H1 race prevention)
+ *   - removeRoleFromUser still enqueues correct operations
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -30,68 +35,84 @@ import { assignRoleToUser, removeRoleFromUser } from '../../src/services/user-gr
 describe('assignRoleToUser', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('enqueues add_user_grant when user has no existing grant', async () => {
-    mockListUserGrants.mockResolvedValue([]); // no grants
-
+  it('always enqueues add_or_update_user_grant (enqueue-first — no Zitadel call)', async () => {
+    // H4: listUserGrants must NOT be called — Zitadel read belongs in the worker
     const result = await assignRoleToUser('user-1', 'new.role', 'corr-1');
 
-    expect(result.operation).toBe('add_user_grant');
+    expect(result.operation).toBe('add_or_update_user_grant');
+    expect(mockListUserGrants).not.toHaveBeenCalled();
     expect(mockEnqueueOutbox).toHaveBeenCalledOnce();
+  });
+
+  it('enqueues correct args: userId, orgId, projectId, roleKey', async () => {
+    await assignRoleToUser('user-1', 'new.role', 'corr-1');
+
     const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
-    expect(operation).toBe('add_user_grant');
+    expect(operation).toBe('add_or_update_user_grant');
     expect(args['userId']).toBe('user-1');
-    expect(args['roleKeys']).toEqual(['new.role']);
+    expect(args['roleKey']).toBe('new.role');
     expect(args['projectId']).toBe('proj-abc');
+    expect(args['orgId']).toBe('org-abc');
   });
 
-  it('enqueues update_user_grant when user already has a grant for this project', async () => {
-    mockListUserGrants.mockResolvedValue([
-      { grantId: 'grant-99', projectId: 'proj-abc', orgId: 'org-abc', roleKeys: ['existing.role'] },
+  it('produces different idempotency keys for different roleKeys (H1 concurrent safety)', async () => {
+    // Concurrent assign for same user+project but different roles must produce
+    // different idempotency keys so both events are stored (not collapsed by ON CONFLICT).
+    await assignRoleToUser('user-1', 'role.y', 'corr-y');
+    await assignRoleToUser('user-1', 'role.z', 'corr-z');
+
+    expect(mockEnqueueOutbox).toHaveBeenCalledTimes(2);
+    const key1 = mockEnqueueOutbox.mock.calls[0]![3] as string;
+    const key2 = mockEnqueueOutbox.mock.calls[1]![3] as string;
+    expect(key1).not.toBe(key2);
+  });
+
+  it('produces the same idempotency key for duplicate (userId, projectId, roleKey) — idempotent', async () => {
+    // Same args twice → same key → ON CONFLICT DO NOTHING in DB (idempotency)
+    await assignRoleToUser('user-1', 'role.a');
+    await assignRoleToUser('user-1', 'role.a');
+
+    const key1 = mockEnqueueOutbox.mock.calls[0]![3] as string;
+    const key2 = mockEnqueueOutbox.mock.calls[1]![3] as string;
+    expect(key1).toBe(key2);
+  });
+
+  it('concurrent assigns (Promise.all 5) all enqueue without Zitadel calls (H1 + H4)', async () => {
+    // Simulates 5 concurrent admin requests assigning different roles to the same user.
+    // All should enqueue without any listUserGrants call — advisory lock in worker prevents race.
+    mockEnqueueOutbox
+      .mockResolvedValueOnce({ id: '1', idempotency_key: 'k1', inserted: true })
+      .mockResolvedValueOnce({ id: '2', idempotency_key: 'k2', inserted: true })
+      .mockResolvedValueOnce({ id: '3', idempotency_key: 'k3', inserted: true })
+      .mockResolvedValueOnce({ id: '4', idempotency_key: 'k4', inserted: true })
+      .mockResolvedValueOnce({ id: '5', idempotency_key: 'k5', inserted: true });
+
+    const results = await Promise.all([
+      assignRoleToUser('user-1', 'role.a'),
+      assignRoleToUser('user-1', 'role.b'),
+      assignRoleToUser('user-1', 'role.c'),
+      assignRoleToUser('user-1', 'role.d'),
+      assignRoleToUser('user-1', 'role.e'),
     ]);
 
-    const result = await assignRoleToUser('user-1', 'new.role');
-
-    expect(result.operation).toBe('update_user_grant');
-    const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
-    expect(operation).toBe('update_user_grant');
-    expect(args['grantId']).toBe('grant-99');
-    // merged role set: existing + new
-    expect(args['roleKeys']).toContain('existing.role');
-    expect(args['roleKeys']).toContain('new.role');
+    // All 5 must have enqueued successfully
+    expect(mockEnqueueOutbox).toHaveBeenCalledTimes(5);
+    expect(mockListUserGrants).not.toHaveBeenCalled();
+    // Each result carries the operation field
+    for (const r of results) {
+      expect(r.operation).toBe('add_or_update_user_grant');
+    }
+    // All idempotency keys must be distinct
+    const keys = mockEnqueueOutbox.mock.calls.map((c) => c[3] as string);
+    expect(new Set(keys).size).toBe(5);
   });
 
-  it('does not duplicate role keys in merged set', async () => {
-    mockListUserGrants.mockResolvedValue([
-      { grantId: 'grant-99', projectId: 'proj-abc', orgId: 'org-abc', roleKeys: ['role.a', 'role.b'] },
-    ]);
+  it('returns outbox result from enqueueOutbox', async () => {
+    mockEnqueueOutbox.mockResolvedValueOnce({ id: 'outbox-42', idempotency_key: 'k', inserted: false });
 
-    await assignRoleToUser('user-1', 'role.a'); // role.a already in grant
-
-    const [, , args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
-    const roleKeys = args['roleKeys'] as string[];
-    // Should not duplicate role.a
-    expect(roleKeys.filter((r) => r === 'role.a')).toHaveLength(1);
-  });
-
-  it('falls back to add_user_grant if listUserGrants throws', async () => {
-    mockListUserGrants.mockRejectedValue(new Error('Zitadel unreachable'));
-
-    const result = await assignRoleToUser('user-1', 'new.role');
-
-    // Fallback: treat as no existing grant → add
-    expect(result.operation).toBe('add_user_grant');
-  });
-
-  it('only considers grants for the configured project', async () => {
-    // Grant exists but for a DIFFERENT project
-    mockListUserGrants.mockResolvedValue([
-      { grantId: 'grant-other', projectId: 'proj-other', orgId: 'org-abc', roleKeys: ['role.x'] },
-    ]);
-
-    const result = await assignRoleToUser('user-1', 'new.role');
-
-    // Should enqueue add (not update) since no grant for proj-abc
-    expect(result.operation).toBe('add_user_grant');
+    const result = await assignRoleToUser('user-1', 'role.a');
+    expect(result.outbox.id).toBe('outbox-42');
+    expect(result.outbox.inserted).toBe(false);
   });
 });
 
@@ -131,6 +152,18 @@ describe('removeRoleFromUser', () => {
     await removeRoleFromUser('user-1', 'grant-99', 'role.only');
 
     const [, , args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
+    expect(args['roleKeys']).toEqual([]);
+  });
+
+  it('still enqueues update_user_grant for partial revoke even if listUserGrants throws', async () => {
+    // Falls back to empty role set when Zitadel unreachable — still enqueues
+    mockListUserGrants.mockRejectedValue(new Error('Zitadel unreachable'));
+
+    await removeRoleFromUser('user-1', 'grant-99', 'role.a');
+
+    const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
+    expect(operation).toBe('update_user_grant');
+    // roleKeys falls back to empty array (currentRoles = [])
     expect(args['roleKeys']).toEqual([]);
   });
 });

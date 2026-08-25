@@ -1,8 +1,12 @@
 /**
- * outbox-worker.test.ts — Unit tests for outbox worker loop + processor dispatch.
- * Mocks: DB queries, outbox-processor functions.
+ * outbox-worker.test.ts — Unit tests for outbox worker loop + dispatcher.
+ * Covers: dispatch routing, retry/dead-letter logic, H2 stalled-row recovery logging.
+ *
+ * Mocks: DB queries (outbox.ts), outbox-processor functions (via outbox-event-dispatcher).
+ * Note: outbox-worker imports processEvent from outbox-event-dispatcher, which imports
+ * from outbox-processor — so mocking outbox-processor is the correct intercept point.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -34,13 +38,14 @@ vi.mock('../../src/db/queries/outbox.js', () => ({
 
 vi.mock('../../src/db/writer-pool.js', () => ({ writerPool: {} }));
 
-const { mockAddProjectRole, mockRemoveProjectRole, mockAddUserGrant, mockUpdateUserGrant, mockRemoveUserGrant } =
+const { mockAddProjectRole, mockRemoveProjectRole, mockAddUserGrant, mockUpdateUserGrant, mockRemoveUserGrant, mockAddOrUpdateUserGrant } =
   vi.hoisted(() => ({
     mockAddProjectRole: vi.fn().mockResolvedValue(undefined),
     mockRemoveProjectRole: vi.fn().mockResolvedValue(undefined),
     mockAddUserGrant: vi.fn().mockResolvedValue(undefined),
     mockUpdateUserGrant: vi.fn().mockResolvedValue(undefined),
     mockRemoveUserGrant: vi.fn().mockResolvedValue(undefined),
+    mockAddOrUpdateUserGrant: vi.fn().mockResolvedValue(undefined),
   }));
 
 vi.mock('../../src/services/outbox-processor.js', () => ({
@@ -49,6 +54,7 @@ vi.mock('../../src/services/outbox-processor.js', () => ({
   addUserGrant: mockAddUserGrant,
   updateUserGrant: mockUpdateUserGrant,
   removeUserGrant: mockRemoveUserGrant,
+  addOrUpdateUserGrant: mockAddOrUpdateUserGrant,
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
@@ -67,6 +73,7 @@ function makeEvent(overrides: Partial<OutboxEvent> = {}): OutboxEvent {
     created_at: new Date().toISOString(),
     processed_at: null,
     last_error: null,
+    processing_started_at: null,
     ...overrides,
   };
 }
@@ -74,12 +81,8 @@ function makeEvent(overrides: Partial<OutboxEvent> = {}): OutboxEvent {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('outbox-worker token bucket', () => {
-  // Test TokenBucket logic in isolation via import
-  it('drains at configured rate', async () => {
-    // The TokenBucket is internal — we test it indirectly via rate not exceeding
-    // 30 ops/s. This is a behavioral assertion, not a unit test of the class.
-    // Full rate-limit verification would require time mocking.
-    expect(true).toBe(true); // placeholder: rate-limit covered in integration
+  it('drains at configured rate (behavioral placeholder — rate covered in integration)', () => {
+    expect(true).toBe(true);
   });
 });
 
@@ -94,12 +97,12 @@ describe('outbox-worker processEvent dispatch', () => {
 
     const { startOutboxWorker, stopOutboxWorker } = await import('../../src/services/outbox-worker.js');
     startOutboxWorker();
-    // Give loop one tick + poll interval
     await new Promise((r) => setTimeout(r, 1200));
     await stopOutboxWorker();
 
     expect(mockAddProjectRole).toHaveBeenCalledOnce();
-    expect(mockMarkDone).toHaveBeenCalledWith({}, '1');
+    // L4 fix: use expect.anything() instead of {} to avoid signature-drift blind spot
+    expect(mockMarkDone).toHaveBeenCalledWith(expect.anything(), '1');
   });
 
   it('dispatches remove_user_grant on correct operation', async () => {
@@ -116,7 +119,24 @@ describe('outbox-worker processEvent dispatch', () => {
     await stopOutboxWorker();
 
     expect(mockRemoveUserGrant).toHaveBeenCalledWith(event.args);
-    expect(mockMarkDone).toHaveBeenCalledWith({}, '2');
+    expect(mockMarkDone).toHaveBeenCalledWith(expect.anything(), '2');
+  });
+
+  it('dispatches add_or_update_user_grant (H1+H4 enqueue-first path)', async () => {
+    const event = makeEvent({
+      id: '7',
+      operation: 'add_or_update_user_grant',
+      args: { userId: 'u1', orgId: 'org-test', projectId: 'proj-test', roleKey: 'role.x' },
+    });
+    mockClaimNextBatch.mockResolvedValueOnce([event]).mockResolvedValue([]);
+
+    const { startOutboxWorker, stopOutboxWorker } = await import('../../src/services/outbox-worker.js');
+    startOutboxWorker();
+    await new Promise((r) => setTimeout(r, 1200));
+    await stopOutboxWorker();
+
+    expect(mockAddOrUpdateUserGrant).toHaveBeenCalledWith(event.args);
+    expect(mockMarkDone).toHaveBeenCalledWith(expect.anything(), '7');
   });
 
   it('marks failed on 5xx-style error (retryable), not dead if attempts < 5', async () => {
@@ -131,7 +151,7 @@ describe('outbox-worker processEvent dispatch', () => {
     await new Promise((r) => setTimeout(r, 1200));
     await stopOutboxWorker();
 
-    expect(mockMarkFailed).toHaveBeenCalledWith({}, '3', 'transient error');
+    expect(mockMarkFailed).toHaveBeenCalledWith(expect.anything(), '3', 'transient error');
     expect(mockMarkDead).not.toHaveBeenCalled();
   });
 
@@ -146,13 +166,11 @@ describe('outbox-worker processEvent dispatch', () => {
     await new Promise((r) => setTimeout(r, 1200));
     await stopOutboxWorker();
 
-    expect(mockMarkDead).toHaveBeenCalledWith({}, '4', 'permanent failure');
+    expect(mockMarkDead).toHaveBeenCalledWith(expect.anything(), '4', 'permanent failure');
     expect(mockMarkFailed).not.toHaveBeenCalled();
   });
 
   it('marks dead directly when attempts already at threshold (no markFailed call)', async () => {
-    // Worker checks (attempts + 1 >= MAX_ATTEMPTS) inside processEvent.
-    // With attempts=4, newAttempts=5 >= 5 → returns 'dead' without calling markFailed.
     mockAddProjectRole.mockRejectedValueOnce(new Error('Zitadel Mgmt API unreachable: timeout'));
 
     const event = makeEvent({ id: '5', attempts: 4 }); // one more failure = dead
@@ -163,8 +181,7 @@ describe('outbox-worker processEvent dispatch', () => {
     await new Promise((r) => setTimeout(r, 1200));
     await stopOutboxWorker();
 
-    // processEvent returns 'dead' directly — worker calls markDead, not markFailed
-    expect(mockMarkDead).toHaveBeenCalledWith({}, '5', 'permanent failure');
+    expect(mockMarkDead).toHaveBeenCalledWith(expect.anything(), '5', 'permanent failure');
     expect(mockMarkFailed).not.toHaveBeenCalled();
   });
 
@@ -180,7 +197,7 @@ describe('outbox-worker processEvent dispatch', () => {
     await new Promise((r) => setTimeout(r, 1200));
     await stopOutboxWorker();
 
-    expect(mockMarkDead).toHaveBeenCalledWith({}, '6', 'permanent failure');
+    expect(mockMarkDead).toHaveBeenCalledWith(expect.anything(), '6', 'permanent failure');
     expect(mockAddProjectRole).not.toHaveBeenCalled();
   });
 
@@ -193,5 +210,33 @@ describe('outbox-worker processEvent dispatch', () => {
     expect(isWorkerRunning()).toBe(true);
     await stopOutboxWorker();
     expect(isWorkerRunning()).toBe(false);
+  });
+
+  it('H2: logs [OUTBOX-RECOVERED] when claimed batch contains stalled processing rows', async () => {
+    // Simulate a row that was stuck in 'processing' (processing_started_at set, not null)
+    // — this is what claimNextBatch returns when it reclaims a stalled row
+    const stalledEvent = makeEvent({
+      id: '8',
+      operation: 'add_project_role',
+      status: 'processing' as const,
+      processing_started_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 min ago
+    });
+    mockClaimNextBatch.mockResolvedValueOnce([stalledEvent]).mockResolvedValue([]);
+
+    const { logger } = await import('../../src/lib/logger.js');
+    const { startOutboxWorker, stopOutboxWorker } = await import('../../src/services/outbox-worker.js');
+    startOutboxWorker();
+    await new Promise((r) => setTimeout(r, 1200));
+    await stopOutboxWorker();
+
+    // The worker must log [OUTBOX-RECOVERED] for the stalled row
+    const infoMock = vi.mocked(logger.info);
+    const recoveredCall = infoMock.mock.calls.find(
+      (args) => typeof args[1] === 'string' && args[1].includes('[OUTBOX-RECOVERED]'),
+    );
+    expect(recoveredCall).toBeDefined();
+    // Event should still be processed normally
+    expect(mockAddProjectRole).toHaveBeenCalledOnce();
+    expect(mockMarkDone).toHaveBeenCalledWith(expect.anything(), '8');
   });
 });

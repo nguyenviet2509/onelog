@@ -16,7 +16,8 @@ export type OutboxOperation =
   | 'remove_project_role'
   | 'add_user_grant'
   | 'update_user_grant'
-  | 'remove_user_grant';
+  | 'remove_user_grant'
+  | 'add_or_update_user_grant';
 
 export type OutboxStatus = 'pending' | 'processing' | 'done' | 'failed' | 'dead';
 
@@ -31,6 +32,7 @@ export interface OutboxEvent {
   created_at: string;
   processed_at: string | null;
   last_error: string | null;
+  processing_started_at: string | null; // set when worker claims row; enables stalled-row recovery (H2)
 }
 
 export interface EnqueueResult {
@@ -73,27 +75,33 @@ export async function enqueueOutbox(
 }
 
 /**
- * Claim up to N pending/failed events for processing.
+ * Claim up to N pending/failed events (or stalled processing events) for processing.
  * Uses SELECT ... FOR UPDATE SKIP LOCKED — safe for concurrent workers.
- * Marks claimed rows as 'processing' atomically.
+ * Marks claimed rows as 'processing' and sets processing_started_at = NOW() atomically.
  *
- * failed rows with attempts < MAX_ATTEMPTS are re-eligible.
+ * H2 fix: rows where status='processing' AND processing_started_at < NOW()-5min
+ * (worker crashed mid-batch) are treated as re-eligible — visibility timeout pattern.
+ * Stalled rows recovered here are logged by the caller as [OUTBOX-RECOVERED].
  */
 export async function claimNextBatch(pool: Pool, batchSize: number): Promise<OutboxEvent[]> {
   const MAX_ATTEMPTS = 5;
+  const STALL_TIMEOUT_INTERVAL = '5 minutes';
   const res = await pool.query<OutboxEvent>(
     `UPDATE rbac.outbox_events
-     SET status = 'processing'
+     SET status = 'processing', processing_started_at = NOW()
      WHERE id IN (
        SELECT id FROM rbac.outbox_events
-       WHERE status IN ('pending', 'failed')
-         AND attempts < $2
+       WHERE (
+         (status IN ('pending', 'failed') AND attempts < $2)
+         OR
+         (status = 'processing' AND processing_started_at < NOW() - INTERVAL '${STALL_TIMEOUT_INTERVAL}')
+       )
        ORDER BY created_at ASC
        LIMIT $1
        FOR UPDATE SKIP LOCKED
      )
      RETURNING id, idempotency_key, operation, args, status, attempts,
-               correlation_id, created_at, processed_at, last_error`,
+               correlation_id, created_at, processed_at, last_error, processing_started_at`,
     [batchSize, MAX_ATTEMPTS],
   );
   return res.rows;
@@ -143,7 +151,7 @@ export async function markDead(pool: Pool, id: string, errorMsg: string): Promis
 export async function getOutboxById(pool: Pool, id: string): Promise<OutboxEvent | null> {
   const res = await pool.query<OutboxEvent>(
     `SELECT id, idempotency_key, operation, args, status, attempts,
-            correlation_id, created_at, processed_at, last_error
+            correlation_id, created_at, processed_at, last_error, processing_started_at
      FROM rbac.outbox_events WHERE id = $1`,
     [id],
   );
@@ -167,7 +175,7 @@ export async function listOutboxEvents(
   if (filter.status) {
     const res = await pool.query<OutboxEvent>(
       `SELECT id, idempotency_key, operation, args, status, attempts,
-              correlation_id, created_at, processed_at, last_error
+              correlation_id, created_at, processed_at, last_error, processing_started_at
        FROM rbac.outbox_events
        WHERE status = $1
        ORDER BY created_at DESC
@@ -179,7 +187,7 @@ export async function listOutboxEvents(
 
   const res = await pool.query<OutboxEvent>(
     `SELECT id, idempotency_key, operation, args, status, attempts,
-            correlation_id, created_at, processed_at, last_error
+            correlation_id, created_at, processed_at, last_error, processing_started_at
      FROM rbac.outbox_events
      ORDER BY created_at DESC
      LIMIT $1 OFFSET $2`,

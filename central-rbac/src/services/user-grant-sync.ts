@@ -7,12 +7,16 @@
  *   - If no grant yet → add_user_grant (POST).
  *   - To remove: remove_user_grant (DELETE) — 404 treated as success.
  *
- * Central DB does NOT store grantId (Zitadel-internal). The outbox args carry
- * grantId when known (update/remove); for initial add, grantId comes from
- * Zitadel response stored back by the worker (out of scope for Phase 3 —
- * worker logs grantId, admin can retrieve via GET /v1/assignments).
+ * H1+H4 fix (2026-08-25): enqueue-first pattern — no Zitadel call in hot path.
+ *   - assignRoleToUser enqueues 'add_or_update_user_grant' with {userId, projectId, roleKey}.
+ *   - The outbox worker (outbox-processor.ts) handles listUserGrants + decide + PUT/POST
+ *     under a PostgreSQL advisory lock per (userId, projectId) to prevent lost-update race.
+ *   - Returns {outbox_id, status:'pending'} immediately — no blocking Zitadel call.
  *
- * All mutations are enqueued to outbox (non-blocking); Zitadel sync is async.
+ * For removeRoleFromUser (partial revoke), Zitadel is still called in the hot path
+ * because we need current role set to compute the diff. This is acceptable: DELETE
+ * is rare (admin action), not concurrent with itself in practice, and the advisory
+ * lock in the worker serializes any concurrent remove events for the same (user, project).
  */
 import { createHash } from 'node:crypto';
 import { writerPool } from '../db/writer-pool.js';
@@ -42,19 +46,19 @@ function getOrgId(): string {
 
 export interface AssignRoleResult {
   outbox: EnqueueResult;
-  /** 'add' = new grant enqueued; 'update' = existing grant update enqueued */
-  operation: 'add_user_grant' | 'update_user_grant';
+  /** Always 'add_or_update_user_grant' — worker decides add vs update at dispatch time */
+  operation: 'add_or_update_user_grant';
 }
 
 /**
  * Assign a role to a user by enqueuing an outbox event.
  *
- * Checks Zitadel for an existing grant on this (user, project):
- *   - If found → enqueue update_user_grant with merged role set
- *   - If not found → enqueue add_user_grant
+ * H4 fix: no Zitadel call in hot path — enqueues immediately and returns.
+ * H1 fix: the worker serializes processing per (userId, projectId) via advisory lock,
+ *         preventing the lost-update race where concurrent enqueues both read stale
+ *         grant state and overwrite each other.
  *
- * The live Zitadel check adds ~1 API call but prevents orphaned grants.
- * On Zitadel unreachable: falls back to add_user_grant (409 handled by worker).
+ * Returns {status:'pending', outbox_id} — Zitadel sync happens asynchronously.
  */
 export async function assignRoleToUser(
   userId: string,
@@ -64,61 +68,24 @@ export async function assignRoleToUser(
   const projectId = getProjectId();
   const orgId = getOrgId();
 
-  // Check for existing grant to determine add vs update
-  let existingGrant: { grantId: string; roleKeys: string[] } | null = null;
-  try {
-    const grants = await listUserGrants(userId, orgId);
-    const found = grants.find((g) => g.projectId === projectId);
-    if (found) {
-      existingGrant = { grantId: found.grantId, roleKeys: found.roleKeys };
-    }
-  } catch (err) {
-    logger.warn({ err, userId }, 'user-grant-sync: listUserGrants failed — falling back to add');
-  }
+  // Idempotency key: same (userId, projectId, roleKey) → same enqueue row.
+  // Concurrent callers with different roleKeys get different keys → both enqueue,
+  // worker processes serially under advisory lock and merges correctly.
+  const idemKey = makeIdempotencyKey('add_or_update_user_grant', userId, projectId, roleKey);
 
-  if (existingGrant) {
-    // Merge: add roleKey if not already present
-    const mergedRoles = Array.from(new Set([...existingGrant.roleKeys, roleKey]));
-    const idemKey = makeIdempotencyKey(
-      'update_user_grant',
-      userId,
-      projectId,
-      existingGrant.grantId,
-      mergedRoles.sort().join(','),
-    );
-
-    const outbox = await enqueueOutbox(
-      writerPool,
-      'update_user_grant',
-      {
-        userId,
-        orgId,
-        grantId: existingGrant.grantId,
-        roleKeys: mergedRoles,
-      },
-      idemKey,
-      correlationId,
-    );
-
-    logger.info(
-      { userId, roleKey, grantId: existingGrant.grantId, outboxId: outbox.id },
-      'user-grant-sync: enqueued update_user_grant',
-    );
-    return { outbox, operation: 'update_user_grant' };
-  }
-
-  // No existing grant — enqueue add
-  const idemKey = makeIdempotencyKey('add_user_grant', userId, projectId, roleKey);
   const outbox = await enqueueOutbox(
     writerPool,
-    'add_user_grant',
-    { userId, orgId, projectId, roleKeys: [roleKey] },
+    'add_or_update_user_grant',
+    { userId, orgId, projectId, roleKey },
     idemKey,
     correlationId,
   );
 
-  logger.info({ userId, roleKey, outboxId: outbox.id }, 'user-grant-sync: enqueued add_user_grant');
-  return { outbox, operation: 'add_user_grant' };
+  logger.info(
+    { userId, roleKey, projectId, outboxId: outbox.id, inserted: outbox.inserted },
+    'user-grant-sync: enqueued add_or_update_user_grant',
+  );
+  return { outbox, operation: 'add_or_update_user_grant' };
 }
 
 export interface RevokeRoleResult {
@@ -129,12 +96,13 @@ export interface RevokeRoleResult {
  * Revoke a specific role from a user's grant by enqueuing an outbox event.
  *
  * Two modes:
- *   1. If grantId provided + targetRoleKey provided: remove only that role
- *      (enqueue update_user_grant with role removed from set).
- *   2. If grantId provided + no targetRoleKey: remove entire grant
- *      (enqueue remove_user_grant).
+ *   1. If targetRoleKey provided: partial revoke — fetches current roles from Zitadel,
+ *      removes targetRoleKey, enqueues update_user_grant with remaining roles.
+ *   2. If no targetRoleKey: full grant removal — enqueues remove_user_grant.
  *
- * 404 on remove_user_grant → worker treats as success.
+ * Note: partial revoke still calls Zitadel synchronously (unavoidable — we need current
+ * role set to compute diff). DELETE operations are rare admin actions; the advisory lock
+ * in the worker serializes concurrent remove events per (userId, projectId).
  */
 export async function removeRoleFromUser(
   userId: string,

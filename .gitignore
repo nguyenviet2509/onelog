@@ -23,6 +23,7 @@ plans/reports/*.sh
 /backup/
 /backups/
 *.sql
+!central-rbac/src/db/migrations/*.sql
 *.dump
 
 # Env backup files — luôn coi là chứa secrets. Ops backup .env trước rollout

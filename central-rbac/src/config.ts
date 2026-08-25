@@ -55,6 +55,15 @@ const envSchema = z.object({
   // Admin fail-close role pattern (regex) — roles matching this trigger fail-close path
   FAIL_CLOSE_ROLE_PATTERN: z.string().default('^(rbac\\..*|.*\\.admin)$'),
 
+  // Phase 3: Zitadel project ID for outbox role sync
+  ZITADEL_PROJECT_ID: z.string().default(''),
+
+  // Phase 3: Outbox worker — set to 'false' to disable background loop (e.g., in tests)
+  OUTBOX_WORKER_ENABLED: z
+    .string()
+    .transform((v) => v.toLowerCase() !== 'false')
+    .default('true'),
+
   // Feature flags
   WEBHOOK_ECHO_ENABLED: z
     .string()

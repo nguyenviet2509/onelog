@@ -1,5 +1,6 @@
 /**
  * routes/roles.ts — CRUD for /v1/roles + role_permissions + hierarchy.
+ * Phase 3: POST/DELETE /v1/roles use role-sync service (outbox pattern).
  * Enforces single-parent + cycle check before DB write.
  * All mutations write audit log.
  */
@@ -8,10 +9,11 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
-  listRoles, getRoleByKey, createRole, updateRole, deleteRole,
+  listRoles, getRoleByKey, updateRole,
   getRolePermissions, addRolePermission, removeRolePermission,
   getAllRolesFlat, getRoleStats,
 } from '../db/queries/roles.js';
+// Note: createRole and deleteRole are now called via role-sync service (outbox pattern)
 import { getPermissionByKey } from '../db/queries/permissions.js';
 import { wouldCreateCycle } from '../lib/cycle-check.js';
 import {
@@ -19,6 +21,7 @@ import {
   rolePermissionBodySchema, roleKeyParamSchema,
 } from '../schemas/role-schemas.js';
 import { bumpResolveEpoch } from '../db/queries/resolve-epoch.js';
+import { createRoleWithSync, deleteRoleWithSync } from '../services/role-sync.js';
 
 export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
@@ -50,11 +53,24 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
       if (!parent) return reply.status(422).send({ error: 'parent_key does not exist' });
     }
 
-    const role = await createRole(writerPool, parsed.data);
+    // Phase 3: use role-sync (DB + outbox atomic). Falls back gracefully if
+    // ZITADEL_PROJECT_ID is unset (outbox enqueue fails non-fatally).
+    let role;
+    let outboxId: string | undefined;
+    try {
+      const result = await createRoleWithSync(parsed.data, request.id);
+      role = result.role;
+      outboxId = result.outbox.id;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({ error: 'Failed to create role', detail: msg });
+    }
+
     await writeAuditLog(request, {
-      action: 'role.create', target_type: 'role', target_id: role.key, after_state: role,
+      action: 'role.create', target_type: 'role', target_id: role.key,
+      after_state: { ...role, outbox_id: outboxId },
     });
-    return reply.status(201).send(role);
+    return reply.status(201).send({ ...role, outbox_id: outboxId });
   });
 
   // PATCH /v1/roles/:key
@@ -103,10 +119,21 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     const before = await getRoleByKey(writerPool, p.data.key);
     if (!before) return reply.status(404).send({ error: 'Role not found' });
 
-    await deleteRole(writerPool, p.data.key);
-    await bumpResolveEpoch(writerPool); // invalidate resolve cache — role gone, children inherit change
+    // Phase 3: role-sync handles DB delete + outbox enqueue (remove_project_role) atomically.
+    // bumpResolveEpoch is called inside deleteRoleWithSync.
+    let outboxId: string | undefined;
+    try {
+      const result = await deleteRoleWithSync(p.data.key, request.id);
+      if (!result.deleted) return reply.status(404).send({ error: 'Role not found' });
+      outboxId = result.outbox.id;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({ error: 'Failed to delete role', detail: msg });
+    }
+
     await writeAuditLog(request, {
-      action: 'role.delete', target_type: 'role', target_id: p.data.key, before_state: before,
+      action: 'role.delete', target_type: 'role', target_id: p.data.key,
+      before_state: before, after_state: { outbox_id: outboxId },
     });
     return reply.status(204).send();
   });

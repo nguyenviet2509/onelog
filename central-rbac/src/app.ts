@@ -16,9 +16,14 @@ import { resolveRoutes } from './routes/resolve.js';
 import { auditRoutes } from './routes/audit.js';
 import { webhookEchoRoutes } from './routes/webhook-echo.js';
 import { webhookPreTokenRoutes } from './routes/webhook-pre-token.js';
+import { assignmentRoutes } from './routes/assignments.js';
+import { driftRoutes } from './routes/drift.js';
+import { permissionsLookupRoutes } from './routes/permissions-lookup.js';
+import { outboxAdminRoutes } from './routes/outbox-admin.js';
 import { auditorPool } from './db/auditor-pool.js';
 import { verifyAuditChainIntegrity } from './db/queries/audit.js';
 import { validateBreakGlassConfig } from './lib/break-glass.js';
+import { startOutboxWorker } from './services/outbox-worker.js';
 
 // Extend FastifyRequest with rawBody for HMAC verification (C2 fix).
 // rawBody is the exact bytes Zitadel signed — must verify BEFORE JSON.parse.
@@ -87,6 +92,12 @@ export async function buildApp() {
   await app.register(webhookEchoRoutes);
   await app.register(webhookPreTokenRoutes);
 
+  // Phase 3 routes
+  await app.register(assignmentRoutes);
+  await app.register(driftRoutes);
+  await app.register(permissionsLookupRoutes);
+  await app.register(outboxAdminRoutes);
+
   return app;
 }
 
@@ -119,6 +130,9 @@ async function main() {
     logger.fatal({ err }, 'failed to start server');
     process.exit(1);
   }
+
+  // Start outbox worker after server is bound (OUTBOX_WORKER_ENABLED=true by default)
+  startOutboxWorker();
 }
 
 // Only run main() when this file is executed directly (not imported in tests)

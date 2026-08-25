@@ -10,7 +10,14 @@ import { UserManager, WebStorageStateStore } from 'oidc-client-ts';
 
 const authority = import.meta.env.VITE_ZITADEL_ISSUER as string;
 const client_id = import.meta.env.VITE_ZITADEL_CLIENT_ID as string;
-const redirect_uri = import.meta.env.VITE_ZITADEL_REDIRECT_URI as string;
+// Redirect URI: use runtime window origin so the SPA works under any host —
+// 10.200.0.125:8082 via LAN or localhost:8082 via SSH tunnel. Both must be
+// registered as allowed redirect URIs in the Zitadel client. Web Crypto (PKCE)
+// requires a secure context: HTTP+private-IP fails, but HTTP+localhost is treated
+// as secure by browsers — so SSH tunnel is the safe review-mode path.
+// Env VITE_ZITADEL_REDIRECT_URI kept as opt-in override for tests / non-browser use.
+const redirect_uri = (import.meta.env.VITE_ZITADEL_REDIRECT_URI as string | undefined)
+  || (typeof window !== 'undefined' ? `${window.location.origin}/callback` : '');
 
 if (!authority || !client_id || !redirect_uri) {
   // Warn at module load — app will fail at login time with clear message.

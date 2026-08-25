@@ -93,9 +93,24 @@ export async function verifyJwt(
     }
   }
 
-  // Verify azp matches expected admin client (F3 fix)
-  if (payload.azp !== config.ZITADEL_AZP_ADMIN_CLIENT_ID) {
-    logger.warn({ azp: payload.azp }, 'auth-jwt: azp mismatch');
+  // Verify authorized-party matches expected admin client (F3 fix).
+  // Per OIDC Core §2, `azp` is only emitted when the ID Token has multiple audiences
+  // OR when azp differs from aud[0]. Zitadel omits `azp` for single-audience-matches-client
+  // tokens. Fallback: derive effective azp from aud[0] (first audience = authorized party).
+  const audArray = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
+  const effectiveAzp = payload.azp ?? audArray[0];
+  if (effectiveAzp !== config.ZITADEL_AZP_ADMIN_CLIENT_ID) {
+    logger.warn(
+      {
+        actual_azp: payload.azp,
+        effective_azp: effectiveAzp,
+        expected_azp: config.ZITADEL_AZP_ADMIN_CLIENT_ID,
+        aud: payload.aud,
+        iss: payload.iss,
+        sub: payload.sub,
+      },
+      'auth-jwt: azp mismatch',
+    );
     return reply.status(401).send({ error: 'Token azp not authorized' });
   }
 

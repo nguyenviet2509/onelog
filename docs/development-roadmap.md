@@ -142,6 +142,34 @@ OpenWebUI-driven KB entry creation: mark chat → draft → review → commit �
 
 ---
 
+## Central RBAC
+
+**Status:** ✅ MVP Complete (2026-08-25, Phase 4-5 IP-first review mode)
+
+Single-pane admin portal + backend for centralized role + permission management. Integrated with Zitadel v4 on authway-vps. MVP scope: Users + Assignments pages only (CRUD). Live at `http://10.200.0.125:8082/` (private IP review).
+
+**Phases:**
+- Phase 1 (2026-08-24) ✅ — Backend + DB + hardening
+- Phase 2 (2026-08-25) ✅ — Zitadel Action webhook + Redis + break-glass
+- Phase 3 (2026-08-25) ✅ — Zitadel Mgmt API + outbox pattern
+- Phase 4 (2026-08-25) ✅ — React admin UI (Users + Assignments)
+- Phase 5 (2026-08-25) ✅ — Seed + deploy (review-mode subset)
+- **Post-review pause** — Awaiting domain + TLS cert for production swap (Step 17.5)
+
+**Design highlights:**
+- Webhook model for JWT `permissions[]` claim delivery via Zitadel Action
+- Redis LFU cache + epoch versioning
+- Outbox pattern for cross-service consistency
+- Fail-open with degraded claim on resolve timeout
+- Break-glass HUMAN user with MFA + IP allowlist
+- Split DB roles (write-only audit with tamper protection)
+
+**Deferred to v2:** Roles/Permissions CRUD UI, Audit UI, Approval workflow
+
+See plan: [260821-1644-central-rbac-single-pane](../plans/260821-1644-central-rbac-single-pane)
+
+---
+
 ## Other modules (non-KB)
 
 ### Log Server (core stack)

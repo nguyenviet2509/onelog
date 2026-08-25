@@ -1,6 +1,6 @@
 # System Architecture
 
-> Cross-cutting design notes. Core stack topology lives in [README.md](../README.md) (services table + ASCII diagram). Ingest pipeline details in [codebase-summary.md](codebase-summary.md).
+> Cross-cutting design notes. Core stack topology lives in [README.md](../README.md) (services table + ASCII diagram). Central RBAC portal + management backend documented in [central-rbac plan](../plans/260821-1644-central-rbac-single-pane).
 
 ## Knowledge Base (OpenWebUI native, 2026-07-17)
 

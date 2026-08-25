@@ -1,5 +1,40 @@
 # Project Changelog
 
+## 2026-08-25
+
+### feat(central-rbac): Phase 4-5 complete — Admin UI + deploy (IP-first review mode)
+
+**Status:** ✅ Complete (MVP scope)
+
+Central RBAC portal + backend MVP deployed on authway-vps. Phase 4 delivered Vite + React admin UI (Users + Assignments pages); Phase 5 completed seed data + hardened docker-compose deploy. Live at `http://10.200.0.125:8082/` private IP for anh's review before domain + TLS swap.
+
+**Phase 4 (UI — Users + Assignments):**
+- Vite + React + TypeScript + shadcn/ui
+- User search + filter (Zitadel API)
+- Bulk grant/revoke assignments
+- Protected routes + OIDC auth context
+- Error boundary + data table component reuse
+
+**Phase 5 (Seed + Deploy):**
+- YAML seed for roles + permissions (bootstrap.ts)
+- Traefik entrypoint `rbac-review:8082` + authway-prod compose
+- Docker build (nginx multi-stage, ~50MB prod image)
+- Hardened env vars + secret rotation procedure
+- OneMCP wire + Zitadel claim contract v1 (`permissions_hash` + optional inline `permissions[]`)
+
+**Post-review scope (Step 17.5):** Domain + Sectigo TLS cert swap (zero code change — env-based config)
+
+**Files added:**
+- `central-rbac-ui/` — Full React admin SPA
+- `central-rbac/infra/` — docker-compose, nginx, seed YAML
+
+**Related:**
+- Phase 1-3: Commit 612dda9 (Zitadel Action) → a415f2e (Mgmt API)
+- Brainstorm: [260825-0957-central-rbac-ip-first-review-mode.md](../plans/reports/brainstorm-260825-0957-central-rbac-ip-first-review-mode.md)
+- Plan: [260821-1644-central-rbac-single-pane](../plans/260821-1644-central-rbac-single-pane) phases 4-5
+
+---
+
 ## 2026-07-30
 
 ### feat(openwebui): session wrap-up hook — auto-classify KB/Report/Research + gatekeeper + template validation

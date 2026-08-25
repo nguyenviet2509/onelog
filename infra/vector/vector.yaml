@@ -526,12 +526,39 @@ transforms:
       if msg != original { .redacted = true }
       ._msg = msg
 
+  # Re-classify severity based on internal log level marker in message body.
+  # Client rsyslog forwards LiteSpeed/MySQL logs với syslog priority=warning
+  # bất kể actual log level. Parse [NOTICE]/[INFO]/[Warning]/[error]/[crit]
+  # từ ._msg để override .severity. Fallback = trust syslog priority nếu no
+  # marker match (giữ real errors như WordPress DB, kernel oops vào NATS).
+  # Rationale: plans/reports/brainstorm-260825-1412-nats-disk-root-cause-severity-misclassification.md
+  reclassify_severity:
+    type: remap
+    inputs: [redact]
+    source: |
+      msg = to_string(._msg) ?? ""
+      # Default null severity to "info" so warn_filter's string!(.severity)
+      # never panics. Events without severity signal (e.g. some docker_logs)
+      # are dropped from NATS but VL still gets them via redact sink direct.
+      if is_null(.severity) { .severity = "info" }
+      if match(msg, r'\[crit\]|\[Critical\]|\[FATAL\]') {
+        .severity = "crit"
+      } else if match(msg, r'\[Error\]|\[error\]|\[ERR\]') {
+        .severity = "err"
+      } else if match(msg, r'\[Warning\]|\[WARN\]|\[warning\]') {
+        .severity = "warning"
+      } else if match(msg, r'\[NOTICE\]|\[Notice\]') {
+        .severity = "notice"
+      } else if match(msg, r'\[INFO\]|\[Info\]|\[DEBUG\]|\[Debug\]') {
+        .severity = "info"
+      }
+
   # Tap: only WARN+ events feed the indexer worker via NATS.
   # Severity field is normalized in `enrich` from syslog priority — values like
   # "warning"/"err"/"crit"/"alert"/"emerg".
   warn_filter:
     type: filter
-    inputs: [redact]
+    inputs: [reclassify_severity]
     condition: 'includes(["warning", "warn", "err", "error", "crit", "alert", "emerg"], string!(.severity))'
 
 sinks:

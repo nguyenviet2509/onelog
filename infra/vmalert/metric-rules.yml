@@ -648,3 +648,54 @@ groups:
         annotations:
           summary: "Backend 5xx rate > 5% for 5m"
           description: "Check `docker logs onemcp-backend-1 --tail=100` for exception traces."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # NATS CAPACITY — Prevent recurrence of 2026-08-26 disk crisis (NATS 46GB
+  # unbounded growth → 81% disk). max_bytes=25GB hard cap installed as
+  # last-line defense; these alerts fire BEFORE cap hit + BEFORE Vector
+  # reclassify regression flood NATS.
+  #
+  # Metrics from prometheus-nats-exporter (job=onelog-nats). Per-stream:
+  # - jetstream_stream_total_bytes{stream_name="LOGS"} = actual bytes
+  # - jetstream_stream_last_seq{stream_name="LOGS"}    = cumulative seq (rate)
+  #
+  # Baseline math (post-Vector-reclassify permanent):
+  # - 45 host  → ~330 msg/s → ~8 GB steady state
+  # - 75 host  → ~550 msg/s → ~14 GB steady state
+  # - 130 host → ~970 msg/s → hits 25 GB cap
+  #
+  # Refs: plans/reports/brainstorm-260826-0807-nats-disk-crisis-emergency-purge.md
+  # Refs: plans/reports/brainstorm-260826-0834-nats-25gb-cap-impact-scale-analysis.md
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: nats-capacity
+    interval: 30s
+    rules:
+      # Stream size approaching hard cap. 20 GB = 80% of 25 GB max_bytes.
+      # Early warn ~2-3 days before cap hit at steady growth ~500-800 MB/hour.
+      # Actions: (a) purge to ack_floor, (b) raise cap, (c) reduce max_age.
+      - alert: NATSStreamSizeHighWarn
+        expr: |
+          jetstream_stream_total_bytes{stream_name="LOGS"} / (1024*1024*1024) > 20
+        for: 15m
+        labels:
+          severity: warning
+          category: capacity
+          component: nats
+        annotations:
+          summary: "NATS LOGS stream {{ $value | printf \"%.1f\" }} GB > 20 GB — approaching 25 GB cap"
+          description: "Storage tăng đến 80% max_bytes. Actions: (a) purge to ack_floor via nats-box `stream purge LOGS --seq={ack_floor}`, (b) raise cap `stream edit LOGS --max-bytes=40GB`, (c) reduce max_age 72h→48h. Runbook: brainstorm-260826-0807."
+
+      # Ingest rate spike = Vector reclassify_severity fail/reverted OR
+      # client-side flood. Baseline post-fix: 45 host ~330 msg/s, 75 host ~550 msg/s.
+      # 1500 msg/s = ~3-5x expected — clear anomaly worth investigating.
+      - alert: NATSIngestSpike
+        expr: |
+          rate(jetstream_stream_last_seq{stream_name="LOGS"}[5m]) > 1500
+        for: 10m
+        labels:
+          severity: warning
+          category: capacity
+          component: nats
+        annotations:
+          summary: "NATS ingest rate {{ $value | printf \"%.0f\" }} msg/s — 3-5x expected baseline"
+          description: "Ingest bùng bất thường. Kiểm tra: (a) Vector reclassify_severity transform còn active không (`docker exec ragstack-vector cat /etc/vector/vector.yaml | grep reclassify`), (b) client host flood via VL query `_time:5m | stats by (host) count() | sort by (count(*)) desc | limit 5`."

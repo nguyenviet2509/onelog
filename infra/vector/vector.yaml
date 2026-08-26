@@ -536,7 +536,7 @@ transforms:
   #
   # PERMANENT solution (promoted 2026-08-25). Originally a "workaround" pending
   # client-side rsyslog fix (plan 260825-1438), but that plan cancelled after
-  # discovering rsyslog rejects `set $syslogseverity`. Vector = correct place
+  # discovering rsyslog rejects `set $$syslogseverity`. Vector = correct place
   # for content-based severity re-classification anyway (VL/NATS split happens
   # here). See plan 260825-1412 promoted_to_permanent_reason.
   #

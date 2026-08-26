@@ -49,3 +49,39 @@ def test_service_isolation(tmp_path: Path) -> None:
     pool.snapshot_all()
     assert (tmp_path / "nginx.bin").exists()
     assert (tmp_path / "mysql.bin").exists()
+
+
+def test_weighted_count_accumulates(tmp_path: Path) -> None:
+    """Vector reduce upstream emits count=N; drain3 cluster.size must sum."""
+    pool = DrainPool(state_dir=str(tmp_path))
+    r1 = pool.add("test_svc", "connection refused from <IP>", count=5)
+    assert r1.cluster_size == 5
+
+    r2 = pool.add("test_svc", "connection refused from <IP>", count=3)
+    assert r2.cluster_size == 8
+    assert r1.template_id == r2.template_id
+
+    r3 = pool.add("test_svc", "connection refused from <IP>")
+    assert r3.cluster_size == 9  # default count=1
+
+
+def test_weighted_count_capped_at_iter_limit(tmp_path: Path) -> None:
+    """Cap prevents Lock stall on huge count; drain3 undercounts at tail (accepted)."""
+    from indexer.drain_cluster import DRAIN_ITER_CAP
+    pool = DrainPool(state_dir=str(tmp_path))
+    r = pool.add("test_svc", "storm error <ID>", count=10000)
+    # Cap at DRAIN_ITER_CAP → cluster.size ceiling
+    assert r.cluster_size == DRAIN_ITER_CAP
+
+
+def test_weighted_count_survives_snapshot_reload(tmp_path: Path) -> None:
+    """Weighted state persists across pickle round-trip (Red Team #9 coverage)."""
+    pool = DrainPool(state_dir=str(tmp_path))
+    r1 = pool.add("test_svc", "test message", count=10)
+    tid = r1.template_id
+    pool.snapshot_all()
+
+    pool2 = DrainPool(state_dir=str(tmp_path))
+    r2 = pool2.add("test_svc", "test message", count=5)
+    assert r2.template_id == tid
+    assert r2.cluster_size == 15  # 10 (persisted) + 5 (new)

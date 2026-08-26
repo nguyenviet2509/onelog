@@ -40,6 +40,21 @@ def _extract_msg(event: dict[str, Any]) -> str:
     return str(event.get("_msg") or event.get("message") or "").strip()
 
 
+# DoS cap on untrusted upstream dedup_count. Prevents pathological iteration
+# cost + integer overflow if a compromised Vector or crafted event emits huge
+# values (Red Team Finding #7). Malformed values fallback to 1.
+MAX_DEDUP_COUNT = 10000
+
+
+def _safe_weight(raw: Any) -> int:
+    """Coerce untrusted .dedup_count to safe bounded int. Returns >=1."""
+    try:
+        w = int(raw) if raw is not None else 1
+    except (TypeError, ValueError):
+        w = 1
+    return max(1, min(w, MAX_DEDUP_COUNT))
+
+
 def _event_ts(event: dict[str, Any]) -> float:
     """Parse `_time` (RFC3339 from Vector). Fall back to now if missing/bad."""
     t = event.get("_time")
@@ -67,6 +82,7 @@ async def _process_batch(
     # trong payload để agent còn filter được theo host.
     aggregated: dict[tuple[str, int], dict[str, Any]] = {}
     unmatched = 0
+    total_weight = 0
 
     for ev in events:
         service = str(ev.get("service") or "unknown")
@@ -77,7 +93,12 @@ async def _process_batch(
             metrics.events_dropped.labels(reason="empty_msg").inc()
             continue
 
-        cluster = drain.add(service, msg)
+        # Vector reduce transform emits `.dedup_count` for aggregated events;
+        # fallback 1 for legacy / non-reduced events (backwards compat).
+        weight = _safe_weight(ev.get("dedup_count"))
+        total_weight += weight
+
+        cluster = drain.add(service, msg, count=weight)
         if cluster.change_type == "cluster_created":
             unmatched += 1
 
@@ -94,11 +115,11 @@ async def _process_batch(
                 "severity": severity,
                 "ts_min": ts,
                 "ts_max": ts,
-                "count": 1,
+                "count": weight,
                 "sample": redacted.text,
             }
         else:
-            slot["count"] += 1
+            slot["count"] += weight
             slot["hosts"].add(host)
             slot["ts_min"] = min(slot["ts_min"], ts)
             slot["ts_max"] = max(slot["ts_max"], ts)
@@ -108,7 +129,9 @@ async def _process_batch(
     if not aggregated:
         return
 
-    metrics.drain_unmatched_ratio.set(unmatched / max(1, len(events)))
+    # Denominator = weighted event count (raw), not dedup'd batch length —
+    # otherwise ratio inflates ~N-x under Vector dedup, triggering false alerts.
+    metrics.drain_unmatched_ratio.set(unmatched / max(1, total_weight))
 
     # Embed unique templates (one vector per cluster in the batch).
     templates = [slot["template"] for slot in aggregated.values()]

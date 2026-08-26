@@ -7,6 +7,13 @@ gives stable IDs for trending / dedup.
 
 State persisted to {DRAIN_STATE_DIR}/{service}.bin via drain3 FilePersistence
 (pickle format). TemplateMiner auto-loads on init.
+
+Weighted add supports Vector-side reduce transform: upstream Vector emits
+`.dedup_count=N` for aggregated events; DrainPool.add(msg, count=N) iterates
+add_log_message so drain3 cluster.size accumulates correctly. Cap at
+DRAIN_ITER_CAP prevents Lock stall under log storm (tail cases N>50 accept
+minor undercount in drain3 aggregate — Qdrant point.count remains accurate
+because it's weighted at slot-aggregation level, not from drain3).
 """
 from __future__ import annotations
 
@@ -29,6 +36,13 @@ class ClusterResult:
     template: str
     cluster_size: int
     change_type: str  # "cluster_created" | "cluster_template_changed" | "none"
+
+
+# Iteration cap for weighted add. Tail cases N>DRAIN_ITER_CAP accept minor
+# undercount in drain3.cluster.size (aggregate metric only); Qdrant point.count
+# stays accurate because it's summed at slot-aggregation in _process_batch.
+# Prevents Lock stall under log storm — see Red Team Finding #10.
+DRAIN_ITER_CAP = 50
 
 
 class DrainPool:
@@ -63,17 +77,28 @@ class DrainPool:
         safe = service.replace("/", "_").replace("..", "_") or "unknown"
         return self._dir / f"{safe}.bin"
 
-    def add(self, service: str, message: str) -> ClusterResult:
+    def add(self, service: str, message: str, count: int = 1) -> ClusterResult:
+        """Add a message (or N-weighted event from Vector reduce) to drain3.
+
+        count > 1: iterate add_log_message capped at DRAIN_ITER_CAP. Above cap,
+        cluster.size undercounts (accepted trade-off). Caller uses the returned
+        cluster_size for observability only; Qdrant point.count aggregates
+        the raw `count` value upstream at _process_batch.
+        """
+        # Bound to avoid Lock stall on huge forged/misconfigured count values.
+        iters = max(0, min(count, DRAIN_ITER_CAP) - 1)
         with self._lock:
             miner = self._miners.get(service)
             if miner is None:
                 miner = self._make_miner(service)
                 self._miners[service] = miner
             res = miner.add_log_message(message)
+            for _ in range(iters):
+                miner.add_log_message(message)
         return ClusterResult(
             template_id=res["cluster_id"],
             template=res["template_mined"],
-            cluster_size=res["cluster_size"],
+            cluster_size=res["cluster_size"] + iters,
             change_type=res["change_type"],
         )
 

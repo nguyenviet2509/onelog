@@ -29,8 +29,19 @@ route:
   group_by: ["alertname", "severity", "category"]
   group_wait: 30s                   # 30s window để gom burst cross-host
   group_interval: 5m
-  repeat_interval: 4h               # warning cadence — đã bỏ RESOLVED via notify_style=event, 4h repeat đủ nhắc
+  # Bump 4h → 12h (plan 260826-1044 Phase 01). Baseline objective ~302 telegram
+  # notif/24h → target ≤120/24h (~60% reduction). First fire immediate, chỉ delay
+  # RE-notify của chronic groups. Security/audit override giữ 2h dưới đây.
+  repeat_interval: 12h
   routes:
+    # Security/audit override — critical signals need faster re-notify than
+    # 12h default. Placed BEFORE severity=critical route to win matcher order
+    # (Red Team #15). category=security|audit fires với 2h cadence bất kể severity.
+    - matchers:
+        - category=~"security|audit"
+      receiver: telegram-client-server
+      repeat_interval: 2h
+
     # LLM cost rules (team=llm-cost): cost/balance alerts, cooldown 30m to
     # avoid billing-spike spam. Routes to LLM-Cost topic (thread từ
     # TELEGRAM_ALERT_THREAD_ID_LLM_COST) so ops sees when balance recovers.
@@ -86,12 +97,13 @@ route:
         - notify_style="event"
       receiver: telegram-event
 
-    # ── Fleet critical severity: rút repeat 2h → 30m để ops phản ứng nhanh.
-    # Vẫn về Client-Server topic (default).
+    # ── Fleet critical severity: repeat 2h (bumped 30m → 2h per plan
+    # 260826-1044). Critical stays faster than warning default 12h nhưng đủ
+    # rộng để chronic OOM cluster không spam.
     - matchers:
         - severity="critical"
       receiver: telegram-client-server
-      repeat_interval: 30m
+      repeat_interval: 2h
 
     # ── OneMCP webhook parallel — plan 260723-1200 Phase 4.
     # Mọi alert (severity=critical|warning) fanout thêm sang OneMCP để lookup
@@ -207,4 +219,42 @@ receivers:
         send_resolved: false   # OneMCP chỉ cần biết fire event để suggest runbook
         max_alerts: 0          # không giới hạn
 
-inhibit_rules: []
+inhibit_rules:
+  # ─────────────────────────────────────────────────────────────────────
+  # Memory pressure cascade — OOM-kill triggers systemd/service crash.
+  # SECURITY GUARD: exclude security-service crashes (Red Team #7 —
+  # attacker could deliberately OOM to kill auditd/rsyslog/fail2ban).
+  # LABEL GUARD: host!="" prevents mass over-inhibition when label missing
+  # (Red Team #5 — empty=empty matches everywhere).
+  # Plan: 260826-1044-alert-triage-noise-reduction phase-01
+  # ─────────────────────────────────────────────────────────────────────
+  - source_matchers:
+      - alertname="OomKillEvent"
+      - host!=""
+    target_matchers:
+      - alertname="SystemdServiceFailed"
+      - host!=""
+      # Security services excluded — match on sample_msg (alerts do not carry
+      # a `service` label; sample_msg = raw syslog line from row_any()).
+      - sample_msg!~"(?i).*(auditd|rsyslog|fail2ban|wazuh|falco|journald).*"
+    equal: [host]
+
+  - source_matchers:
+      - alertname="OomKillEvent"
+      - host!=""
+    target_matchers:
+      - alertname="SystemdSessionLimitReached"
+      - host!=""
+    equal: [host]
+
+  # Disk full inhibits downstream WARNINGS but NEVER security/audit categories
+  # (Red Team #3 — attacker fills disk then attacks under alert silence).
+  # Allowlist specific alertnames instead of blanket severity=warning.
+  - source_matchers:
+      - alertname="DiskFullErrors"
+      - host!=""
+    target_matchers:
+      - alertname=~"MysqlErrorBurst|WebServerErrorBurst|SystemdServiceFailed"
+      - host!=""
+      - category!~"security|audit"
+    equal: [host]

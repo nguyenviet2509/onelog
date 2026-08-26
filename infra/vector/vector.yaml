@@ -545,6 +545,12 @@ transforms:
     type: remap
     inputs: [redact]
     source: |
+      # Init dedup_count + timestamps BEFORE any conditional/abort path so
+      # reduce_dupes downstream `sum`/`min`/`max` never sees null (Red Team #1).
+      .dedup_count = 1
+      .first_ts = ._time
+      .last_ts = ._time
+
       msg = to_string(._msg) ?? ""
       # Default null severity to "info" so warn_filter's string!(.severity)
       # never panics. Events without severity signal (e.g. some docker_logs)
@@ -564,11 +570,36 @@ transforms:
 
   # Tap: only WARN+ events feed the indexer worker via NATS.
   # Severity field is normalized in `enrich` from syslog priority — values like
-  # "warning"/"err"/"crit"/"alert"/"emerg".
+  # "warning"/"err"/"crit"/"alert"/"emerg". Filter runs BEFORE reduce so info/
+  # debug flood never enters reduce buffer (Red Team #2 — memory efficiency).
   warn_filter:
     type: filter
     inputs: [reclassify_severity]
     condition: 'includes(["warning", "warn", "err", "error", "crit", "alert", "emerg"], string!(.severity))'
+
+  # Dedup NATS branch upstream to reduce Indexer input at 70-100 host scale.
+  # Empirical dedup ratio: 2.10x at 45-host baseline, 30s window, [host,_msg]
+  # group_by (Phase 00 measurement 2026-08-26). Group_by uses raw `_msg` post-
+  # redact — most events unique per window due to embedded volatile tokens
+  # (timestamps, PIDs). Real reduction ~50%, not brainstorm's 80%. Still worth
+  # deploying as it buys ~200 host runway before NATS 25GB cap.
+  # Field name `.dedup_count` avoids LogsQL `count()` builtin collision.
+  # first_ts/last_ts preserve window boundaries for downstream trending.
+  # max_events cap prevents unbounded accumulator per Vector red-team review.
+  # VL branch (redact → VL sink) UNAFFECTED — reduce only sits on NATS path.
+  # Refs: plans/260826-0932-vector-reduce-dedup-indexer-counter/
+  reduce_dupes:
+    type: reduce
+    inputs: [warn_filter]
+    group_by:
+      - .host
+      - ._msg
+    expire_after_ms: 30000
+    max_events: 10000
+    merge_strategies:
+      dedup_count: sum
+      first_ts: min
+      last_ts: max
 
 sinks:
   victorialogs:
@@ -590,11 +621,12 @@ sinks:
       _time_field: _time
       _stream_fields: "service,host"
 
-  # Stream WARN+ to NATS JetStream so indexer can pull-consume in batches.
-  # JSON encoding preserves _msg + service/host/severity for downstream Drain3.
+  # Stream WARN+ (deduped) to NATS JetStream so indexer can pull-consume in batches.
+  # JSON encoding preserves _msg + service/host/severity + dedup_count for
+  # downstream Drain3 weighted aggregation.
   nats_warn:
     type: nats
-    inputs: [warn_filter]
+    inputs: [reduce_dupes]
     url: nats://nats:4222
     subject: logs.warn
     encoding:

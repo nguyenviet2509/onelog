@@ -66,6 +66,14 @@ services:
     image: timberio/vector:${VECTOR_IMAGE_TAG:-0.40.0-alpine}
     container_name: ragstack-vector
     restart: unless-stopped
+    # Grace period ≥ reduce expire_after_ms (30s) so reduce_dupes flushes
+    # in-memory buffer on SIGTERM (Red Team #4). Without this, restart drops
+    # up to 30s of aggregated events on the NATS branch.
+    stop_grace_period: 40s
+    # Hard cap on reduce_dupes buffer + normal pipeline memory. 512m allows
+    # 10k accumulator entries × per-event overhead + reasonable headroom.
+    mem_limit: 512m
+    mem_reservation: 256m
     ports:
       - "514:514/udp"           # syslog UDP (RFC3164) from servers
       - "6514:6514/tcp"         # syslog TCP (RFC5424) optional

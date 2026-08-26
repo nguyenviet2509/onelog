@@ -49,6 +49,29 @@ transforms.enrich:
 - Combined: `host:"authway" service:"zitadel" _msg:*error*`
 - Đếm service phân biệt: `host:"<label>" | stats by (service) count()`
 
+## Deduplication field — `.dedup_count` (plan 260826-0932)
+
+NATS branch events carry a `.dedup_count` field (only when sourced from Vector `reduce_dupes` transform):
+
+- **Field:** `.dedup_count: <int>` (1–10,000)
+- **Meaning:** Count of deduplicated raw events aggregated into this event over the 30s dedup window
+- **Indexer behavior:** Drain3 `.add(message, count=dedup_count)` iterates cluster matching × `dedup_count` times (capped at 10k to prevent DoS)
+- **Legacy compatibility:** Events without `.dedup_count` default to weight=1 (non-reduced syslog or pre-dedup Vector config)
+
+**Example NATS event:**
+```json
+{
+  "host": "srv-01",
+  "_msg": "Authentication failed",
+  "severity": "warn",
+  "service": "sshd",
+  "dedup_count": 47,  // 47 identical messages aggregated in the window
+  "_time": "2026-08-26T10:30:15Z"
+}
+```
+
+Consumers of NATS stream can filter by presence/absence of `.dedup_count` or use it for telemetry (e.g., "47 SSH auth failures seen as 1 cluster in Drain3").
+
 ## Convention drift guard
 
 Nếu ai đó sửa Vector config đổi `.host = "logserver"` → cái khác (VD `onelog-vps`) sẽ break:

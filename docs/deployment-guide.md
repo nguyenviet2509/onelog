@@ -288,6 +288,25 @@ done
 Nếu container chưa có config (chạy trước khi apply daemon.json), recreate:
 `docker compose up -d --force-recreate <service>`
 
+### Vector resource limits (post plan 260826-0932 dedup phase)
+
+Vector hosts the `reduce_dupes` transform (in-memory deduplication buffer for NATS branch). To prevent buffer overflow at scale:
+
+- **Memory limit:** `mem_limit: 512m` + `mem_reservation: 256m` on Vector service (docker-compose.yml)
+  - Dedup accumulator holds up to 10,000 events per `[host, _msg]` group
+  - 512m cap provides safe headroom for normal pipeline + reduce buffer + overhead
+  
+- **Graceful shutdown:** `stop_grace_period: 40s` (≥ reduce `expire_after_ms: 30000`)
+  - On SIGTERM, reduce flushes in-flight 30s window to NATS before process exits
+  - Without this, restart drops up to 30s of aggregated events on NATS branch
+
+Verify:
+```bash
+docker compose ps vector  # check mem usage (MEMORY column)
+docker inspect ragstack-vector | jq '.HostConfig.Memory, .HostConfig.MemoryReservation'
+# Expect: 536870912 (512m), 268435456 (256m)
+```
+
 ### Verify disk alerts (post plan 260710-1432 phase 02)
 
 ```bash

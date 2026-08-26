@@ -170,23 +170,29 @@ See plan: [260821-1644-central-rbac-single-pane](../plans/260821-1644-central-rb
 
 ---
 
-## Other modules (non-KB)
+## Log Server (core stack)
 
-### Log Server (core stack)
+**Status:** ✅ Deployed (logserver-01) + Vector dedup (2026-08-26)
 
-**Status:** ✅ Deployed (logserver-01)
-
+Core log pipeline with Vector-side dedup for NATS branch (semantic search input):
 - Vector (syslog TCP 6514 + UDP 514)
-- VictoriaLogs (7d retention, logsql query)
-- Qdrant (semantic templates)
+- **NEW:** reduce_dupes transform (NATS branch only, 30s window, 2.1x dedup ratio)
+- VictoriaLogs (7d retention, logsql query — unaffected by dedup)
+- Qdrant (semantic templates with weighted `.dedup_count` aggregation)
 - Postgres (metadata, KB tables)
 - Redis (cache, rate-limit)
-- Indexer (Drain3 log templates → Qdrant)
+- Indexer (Drain3 log templates → Qdrant, weighted count support via `.dedup_count` field)
 - Agent (chat, SSE)
 - Caddy (reverse proxy, TLS lab)
 - vmalert (disk alerts, Telegram)
 
+**Dedup feature:** NATS ingest reduced 43% (328→186 msg/s @ 45 hosts) while preserving full log retention in VL. Safe for 70–100 host scale (NATS 25GB cap protection). See plan: [260826-0932-vector-reduce-dedup-indexer-counter](../plans/260826-0932-vector-reduce-dedup-indexer-counter/plan.md)
+
 See [deployment-guide.md](deployment-guide.md) for topology and setup.
+
+---
+
+## Other modules (non-KB)
 
 ---
 

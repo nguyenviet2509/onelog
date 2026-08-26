@@ -1,5 +1,61 @@
 # Project Changelog
 
+## 2026-08-26
+
+### feat(vector, indexer): NATS dedup via Vector reduce_dupes + Indexer weighted aggregation
+
+**Status:** ✅ Complete (Phases 00–03 deployed; Phase 04 monitoring 7 days)
+
+Vector-side `reduce_dupes` transform on NATS branch + Indexer weighted count aggregation. Cuts NATS ingest rate 43% (328→186 msg/s @ 45 hosts) while preserving full log fidelity in VictoriaLogs for audit. Safe for 70–100 host scale; protects NATS 25GB cap.
+
+**Architecture:**
+- **Vector pipeline:** `redact → reclassify_severity → warn_filter → reduce_dupes (NEW) → NATS`
+- **VictoriaLogs path:** `redact → warn_filter → VL sink` (untouched, full events)
+- **Transform:** group by `[.host, ._msg]`, 30s window, `.dedup_count` merge (sum), max 10k events cap
+- **Output:** `.dedup_count: <int>` in NATS payload (visible via `nats sub logs.warn`)
+- **Fallback:** Legacy events without `.dedup_count` treated as count=1 (backwards compat)
+
+**Indexer support (weighted aggregation):**
+- Drain3 `add(service, message, count=N)` — Approach B (iterate up to 50x cap per Red Team #10)
+- `_safe_weight()` validates `.dedup_count` field: range [1, 10000], type coercion, default 1
+- Qdrant `point.count` = weighted sum across batch (reflects true event volume pre-dedup)
+- Drain3 `cluster.size` weights correctly up to cap 50; tail undercounting acceptable (aggregate metric only)
+
+**Empirical results (2026-08-26):**
+- Dedup ratio: **2.10x** (30s window, `[host, _msg]` key) — below 3x gate but accepted via user override
+- NATS msg/s: **328 → 186** (43% reduction @ 45-host baseline)
+- Group stats: 7.5% have count>1; 1 group exceeded 50 (tail dedup acceptable)
+- Vector RSS: 143 MiB (within 512 MiB limit, no leak)
+- Indexer batch.flushed: <200ms (unchanged)
+- VictoriaLogs: canary query matches baseline (no regression)
+
+**Red Team resolutions:**
+- #1: Raw `_msg` dedup validated empirically (not assumed)
+- #2: Filter order `warn_filter → reduce` prevents info/debug flood in buffer
+- #3: Deploy order reversed (Phase 03 first, Phase 02 second) — avoids drain3 pickle corruption
+- #4: `stop_grace_period: 40s` added for graceful buffer flush on SIGTERM
+- #7: DoS cap via `_safe_weight(MAX=10000)`
+- #8: Field `.dedup_count` (not `.count`) avoids LogsQL builtin collision
+- #9: Approach C forbidden; Approach B with cap 50 implemented
+- #10: Iteration cap 50 prevents Lock stall under log storm
+- #14: `unmatched_ratio` denominator corrected to `total_weight` (raw event count, not batch size)
+
+**Commits:**
+- **a7beeb3** feat(indexer): support Vector-dedup .dedup_count field
+- **bb5d6ae** feat(vector): reduce_dupes transform for NATS branch dedup
+- **6cf5a77** fix(vector): escape $ in syslogseverity comment
+- **4b9d179** fix(vector): remove $ char from comment
+- **51aa895** fix(vector): remove first_ts/last_ts merge
+
+**Phase 04 (monitoring):** Started 2026-08-26 10:30 UTC+7. Day 1 checkpoint: NATS storage 580MB (flat), all metrics nominal. Scheduled through 2026-09-02 (7-day gate before 60+ host scale).
+
+**Related:**
+- Plan: [260826-0932-vector-reduce-dedup-indexer-counter](../plans/260826-0932-vector-reduce-dedup-indexer-counter/)
+- Brainstorm: [260826-0926-vector-dedup-scale-100-host](../plans/reports/brainstorm-260826-0926-vector-dedup-scale-100-host.md)
+- Cross-project: Extends plan [260826-0834-nats-monitoring-alerts](../plans/260826-0834-nats-monitoring-alerts/) (NATS cap protection)
+
+---
+
 ## 2026-08-25
 
 ### feat(central-rbac): Phase 4-5 complete — Admin UI + deploy (IP-first review mode)

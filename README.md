@@ -7,16 +7,16 @@ RAG-powered log server + LLM chat stack. Centralizes syslog/rsyslog JSON logs fr
 ```
    servers  ──rsyslog──▶  Vector  ──▶  VictoriaLogs   (raw + indexed logs)
                             │
-                            └──WARN+──▶  NATS  ──▶  Indexer  ──embed──▶  Qdrant
-                                                       │                    │
-                                                       ▼                    │
-                                                    vmalert                 │
-                                                       │                    ▼
-                                                       ▼             mcp-semantic
-                                                 Alertmanager              │
-                                                       │           mcp-vl  │
-                                                       ▼                   │
-                                                    Telegram   ◀── OpenWebUI ──▶ LiteLLM (4 providers)
+                            └──WARN+──▶ reduce_dupes ──▶  NATS  ──▶  Indexer  ──embed──▶  Qdrant
+                                        (dedup 2.1x)          │                    │
+                                                              ▼                    │
+                                                           vmalert                 │
+                                                              │                    ▼
+                                                              ▼             mcp-semantic
+                                                        Alertmanager              │
+                                                              │           mcp-vl  │
+                                                              ▼                   │
+                                                           Telegram   ◀── OpenWebUI ──▶ LiteLLM (4 providers)
 ```
 
 ## Services

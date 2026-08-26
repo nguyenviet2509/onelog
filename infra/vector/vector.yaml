@@ -545,11 +545,12 @@ transforms:
     type: remap
     inputs: [redact]
     source: |
-      # Init dedup_count + timestamps BEFORE any conditional/abort path so
-      # reduce_dupes downstream `sum`/`min`/`max` never sees null (Red Team #1).
+      # Init dedup_count BEFORE any conditional/abort path so reduce_dupes
+      # downstream `sum` never sees null (Red Team #1).
+      # first_ts/last_ts deferred — Vector 0.40 min/max merge strategy rejects
+      # timestamp types (must be numeric). Indexer uses ts_min/ts_max from
+      # per-event _time anyway (post-reduce _time = first-event timestamp).
       .dedup_count = 1
-      .first_ts = ._time
-      .last_ts = ._time
 
       msg = to_string(._msg) ?? ""
       # Default null severity to "info" so warn_filter's string!(.severity)
@@ -598,8 +599,6 @@ transforms:
     max_events: 10000
     merge_strategies:
       dedup_count: sum
-      first_ts: min
-      last_ts: max
 
 sinks:
   victorialogs:

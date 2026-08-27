@@ -37,9 +37,13 @@ export async function getOrgById(orgId: string): Promise<OrgSummary | null> {
     // Redis unavailable → fall through to live fetch
   }
 
+  // Zitadel Management API only exposes `/management/v1/orgs/me` (scoped by
+  // x-zitadel-orgid header). Path-param org fetch does not exist in v4 — the
+  // header identifies which org's context the request runs in, and /me returns
+  // that org's detail. Pattern works cross-org because SA PAT has IAM read scope.
   let res: Response;
   try {
-    res = await mgmtGet(`/management/v1/orgs/${orgId}`, orgId);
+    res = await mgmtGet(`/management/v1/orgs/me`, orgId);
   } catch (err) {
     logger.warn({ orgId, err }, 'zitadel-org: fetch failed');
     return null;

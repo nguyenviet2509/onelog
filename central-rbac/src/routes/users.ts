@@ -54,18 +54,30 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(502).send({ error: 'Failed to search users' });
     }
 
-    // Enrich each user with their home organization (Zitadel resourceOwner).
-    // Batch-fetches distinct org ids from Redis cache → ~1 Zitadel round-trip per
-    // unique org on cache miss, zero on hit.
+    // Enrich each user with home org + grant count.
+    // - Orgs: batch-fetched from Redis cache → 1 round-trip per unique org on miss.
+    // - Grant counts: N users × listUserGrantsAllOrgs. Acceptable at page sizes
+    //   ≤50 (default limit); if we ever page past that, revisit with a Zitadel
+    //   batch endpoint or DB-side count.
     const orgs = await getOrgsBatch(users.map((u) => u.home_org_id));
+    // Count = total role assignments across all grants (sum of role_keys), so
+    // Spike Tester with grants [rbac.admin] + [onemcp.viewer, onemcp.admin] = 3.
+    // Matches how "Số quyền" is interpreted by admins: total assigned permissions.
+    const grantCounts = await Promise.all(
+      users.map((u) =>
+        listUserGrantsAllOrgs(u.id)
+          .then((gs) => gs.reduce((sum, g) => sum + g.roleKeys.length, 0))
+          .catch(() => null),
+      ),
+    );
 
-    const data = users.map((u) => ({
+    const data = users.map((u, i) => ({
       id: u.id,
       email: u.email,
       display_name: u.display_name,
       username: u.username,
       organization: (u.home_org_id && orgs.get(u.home_org_id)) || null,
-      grant_count: null, // H4: lazy-loaded on drawer open
+      grant_count: grantCounts[i],
     }));
 
     return reply.send({ data, total });

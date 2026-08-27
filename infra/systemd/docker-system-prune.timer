@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly prune of Docker unused images + build cache
+Requires=docker-system-prune.service
+
+[Timer]
+# Chạy Sunday 03:00 UTC (10:00 ICT) — off-hours, sau qdrant prune (03:30) UTC
+# vẫn còn buffer 30 phút (weekly vs daily nên không đụng cùng lúc).
+OnCalendar=Sun *-*-* 03:00:00
+Persistent=true
+AccuracySec=1min
+Unit=docker-system-prune.service
+
+[Install]
+WantedBy=timers.target

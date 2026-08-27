@@ -1,0 +1,16 @@
+[Unit]
+Description=Prune Docker unused images + build cache older than 30 days
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# `-a` = xóa cả tagged image nếu không container nào đang dùng.
+# `--filter until=720h` = chỉ xóa image/cache > 30 ngày (safe buffer cho rollback).
+# KHÔNG dùng --volumes (risk xóa nhầm named volume nếu có).
+ExecStart=/usr/bin/docker system prune -af --filter until=720h
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

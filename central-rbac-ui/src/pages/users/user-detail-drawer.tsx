@@ -54,8 +54,11 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                 <div>
                   <p className="font-medium text-gray-900">{user.display_name}</p>
                   <p className="text-sm text-gray-500">{user.email}</p>
-                  {user.organization && (
-                    <p className="text-xs text-gray-400 mt-0.5">{user.organization}</p>
+                  {user.organization?.name && (
+                    <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                      Tổ chức: <span className="font-medium">{user.organization.name}</span>
+                    </p>
                   )}
                 </div>
               </div>

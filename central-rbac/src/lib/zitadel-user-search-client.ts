@@ -26,6 +26,8 @@ export interface ZitadelUserRaw {
   preferredLoginName?: string;
   loginNames?: string[];
   state?: string;
+  /** Zitadel v2 returns details.resourceOwner = user's home org id */
+  details?: { resourceOwner?: string };
 }
 
 export interface UserSummary {
@@ -33,6 +35,8 @@ export interface UserSummary {
   email: string;
   display_name: string;
   username?: string;
+  /** Home organization id from Zitadel details.resourceOwner (used for enrichment) */
+  home_org_id?: string;
   /** Enriched from Central DB or Zitadel grants — 0 if unavailable */
   grant_count: number;
 }
@@ -74,6 +78,7 @@ function normalizeUser(raw: ZitadelUserRaw): Omit<UserSummary, 'grant_count'> {
     email,
     display_name: displayName,
     username: raw.username,
+    home_org_id: raw.details?.resourceOwner,
   };
 }
 

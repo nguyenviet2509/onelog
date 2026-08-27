@@ -76,6 +76,25 @@ export async function mgmtDelete(path: string, orgId: string): Promise<Response>
   return res;
 }
 
+/** GET to Zitadel Mgmt API — retry once on 5xx after 500ms. */
+export async function mgmtGet(path: string, orgId: string): Promise<Response> {
+  const url = `${config.ZITADEL_MGMT_URL}${path}`;
+  const doRequest = () =>
+    fetch(url, {
+      method: 'GET',
+      headers: buildHeaders(orgId),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+  const res = await doRequest();
+  if (res.status >= 500) {
+    logger.warn({ status: res.status, path }, 'zitadel-http: 5xx GET, retrying once');
+    await sleep(RETRY_DELAY_MS);
+    return doRequest();
+  }
+  return res;
+}
+
 /** PUT to Zitadel Mgmt API — retry once on 5xx after 500ms. */
 export async function mgmtPut(path: string, orgId: string, body: unknown): Promise<Response> {
   const url = `${config.ZITADEL_MGMT_URL}${path}`;

@@ -8,13 +8,15 @@ export interface Role {
   key: string;
   description: string;
   parent_key: string | null;
+  /** Migration 011: link back to rbac.apps for grant dialog project→role filter. */
+  app_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export async function listRoles(pool: Pool): Promise<Role[]> {
   const res = await pool.query<Role>(
-    `SELECT id, key, description, parent_key, created_at, updated_at
+    `SELECT id, key, description, parent_key, app_id, created_at, updated_at
      FROM rbac.roles ORDER BY key ASC`,
   );
   return res.rows;

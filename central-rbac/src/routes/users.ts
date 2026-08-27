@@ -13,7 +13,8 @@ import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { listUsersQuerySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { searchUsers, getUserById } from '../lib/zitadel-user-search-client.js';
-import { listUserGrants } from '../lib/zitadel-mgmt-client.js';
+import { listUserGrantsAllOrgs } from '../services/user-grant-sync.js';
+import { getOrgById, getOrgsBatch } from '../lib/zitadel-org-client.js';
 import { redis } from '../lib/redis-client.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
@@ -41,7 +42,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     const { q, limit, offset } = parsed.data;
     const orgId = config.ZITADEL_ORG_ID || '';
 
-    let users: Array<{ id: string; email: string; display_name: string; username?: string }>;
+    let users: Array<{ id: string; email: string; display_name: string; username?: string; home_org_id?: string }>;
     let total: number;
 
     try {
@@ -53,11 +54,17 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(502).send({ error: 'Failed to search users' });
     }
 
+    // Enrich each user with their home organization (Zitadel resourceOwner).
+    // Batch-fetches distinct org ids from Redis cache → ~1 Zitadel round-trip per
+    // unique org on cache miss, zero on hit.
+    const orgs = await getOrgsBatch(users.map((u) => u.home_org_id));
+
     const data = users.map((u) => ({
       id: u.id,
       email: u.email,
       display_name: u.display_name,
       username: u.username,
+      organization: (u.home_org_id && orgs.get(u.home_org_id)) || null,
       grant_count: null, // H4: lazy-loaded on drawer open
     }));
 
@@ -97,13 +104,13 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Fetch user + grants in parallel
-    let user: { id: string; email: string; display_name: string; username?: string } | null;
+    let user: { id: string; email: string; display_name: string; username?: string; home_org_id?: string } | null;
     let rawGrants: Array<{ grantId: string; projectId: string; roleKeys: string[] }>;
 
     try {
       [user, rawGrants] = await Promise.all([
         getUserById(id, orgId),
-        listUserGrants(id, orgId),
+        listUserGrantsAllOrgs(id),
       ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -115,6 +122,9 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     if (!user) {
       return reply.status(404).send({ error: 'User not found' });
     }
+
+    // Enrich user's home org (Zitadel resourceOwner) — cache-hot after list call.
+    const organization = user.home_org_id ? await getOrgById(user.home_org_id) : null;
 
     // Field `id` matches UI Grant type — drawer uses grant.id for revoke DELETE URL.
     // Keep `grant_id` alias for any legacy callers (harmless).
@@ -134,6 +144,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       email: user.email,
       display_name: user.display_name,
       username: user.username,
+      organization,
       grant_count: grants.length,
       grants,
     };

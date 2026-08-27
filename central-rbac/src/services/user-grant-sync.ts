@@ -43,19 +43,31 @@ function getOrgId(): string {
 }
 
 /**
- * Migration 011: resolve Zitadel projectId from role.app_id → apps.zitadel_project_id.
- * Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID.
+ * Migration 011 + 012: resolve Zitadel {projectId, orgId} from role.app_id → apps row.
+ * Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID + ZITADEL_ORG_ID.
+ *
+ * orgId is the PROJECT OWNER org (not user's org). Cross-org projects (e.g., portal
+ * owned by "Authway Internal", user in "spike-test") need x-zitadel-orgid = project
+ * owner org on Zitadel Management API calls or the request 4xx dies.
  * Inline here (not imported from role-sync) to avoid potential circular dep.
  */
-async function resolveProjectIdForRole(roleKey: string): Promise<string> {
-  const { rows } = await writerPool.query<{ zitadel_project_id: string | null }>(
-    `SELECT a.zitadel_project_id
+async function resolveProjectContextForRole(
+  roleKey: string,
+): Promise<{ projectId: string; orgId: string }> {
+  const { rows } = await writerPool.query<{
+    zitadel_project_id: string | null;
+    zitadel_org_id: string | null;
+  }>(
+    `SELECT a.zitadel_project_id, a.zitadel_org_id
        FROM rbac.roles r
        LEFT JOIN rbac.apps a ON a.id = r.app_id
       WHERE r.key = $1`,
     [roleKey],
   );
-  return rows[0]?.zitadel_project_id ?? getFallbackProjectId();
+  return {
+    projectId: rows[0]?.zitadel_project_id ?? getFallbackProjectId(),
+    orgId: rows[0]?.zitadel_org_id ?? getOrgId(),
+  };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -81,11 +93,10 @@ export async function assignRoleToUser(
   roleKey: string,
   correlationId?: string,
 ): Promise<AssignRoleResult> {
-  // Migration 011 — resolve target Zitadel projectId from role.app_id link.
-  // Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID.
-  // Wizard-created roles get routed to their app's own Zitadel project.
-  const projectId = await resolveProjectIdForRole(roleKey);
-  const orgId = getOrgId();
+  // Migration 011+012 — resolve target Zitadel {projectId, orgId} from role.app_id.
+  // Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID + ZITADEL_ORG_ID.
+  // orgId here is PROJECT OWNER org, needed for cross-org grants.
+  const { projectId, orgId } = await resolveProjectContextForRole(roleKey);
 
   // Idempotency key: bucketed by 10-second window so genuine network retries within
   // a click dedupe, but grant → revoke → grant across seconds each produces a fresh
@@ -138,20 +149,29 @@ export async function removeRoleFromUser(
   targetRoleKey?: string,
   correlationId?: string,
 ): Promise<RevokeRoleResult> {
-  const orgId = getOrgId();
+  // Cross-org lookup: find the grant across all known project-owner orgs so the
+  // subsequent enqueue uses the correct orgId. Env fallback still applies if the
+  // grant projectId has no apps row (legacy).
+  const allGrants = await listUserGrantsAllOrgs(userId);
+  const found = allGrants.find((g) => g.grantId === grantId);
+  const grantProjectId = found?.projectId;
+
+  // Resolve the org that OWNS the project this grant belongs to (Zitadel needs
+  // x-zitadel-orgid = project owner org, not user's org).
+  let orgId = getOrgId();
+  if (grantProjectId) {
+    const { rows } = await writerPool.query<{ zitadel_org_id: string | null }>(
+      `SELECT zitadel_org_id FROM rbac.apps WHERE zitadel_project_id = $1 LIMIT 1`,
+      [grantProjectId],
+    );
+    if (rows[0]?.zitadel_org_id) orgId = rows[0].zitadel_org_id;
+  }
 
   if (targetRoleKey) {
     // Partial revoke: fetch current roles, remove targetRoleKey.
     // If the result is empty, do a full grant DELETE — Zitadel doesn't allow empty
     // grants and leaving one behind clutters the drawer with a zero-role row.
-    let currentRoles: string[] = [];
-    try {
-      const grants = await listUserGrants(userId, orgId);
-      const found = grants.find((g) => g.grantId === grantId);
-      currentRoles = found?.roleKeys ?? [];
-    } catch (err) {
-      logger.warn({ err, userId, grantId }, 'user-grant-sync: listUserGrants failed for partial revoke');
-    }
+    const currentRoles = found?.roleKeys ?? [];
 
     const updatedRoles = currentRoles.filter((r) => r !== targetRoleKey);
 
@@ -209,17 +229,51 @@ export async function removeRoleFromUser(
 }
 
 /**
+ * Return the distinct set of Zitadel orgs where user grants may live: every
+ * DISTINCT apps.zitadel_org_id + env fallback (spike-test in dev).
+ * Used by cross-org listUserGrants + revoke-org resolution.
+ */
+async function getKnownGrantOwnerOrgs(): Promise<string[]> {
+  const { rows } = await writerPool.query<{ zitadel_org_id: string }>(
+    `SELECT DISTINCT zitadel_org_id FROM rbac.apps WHERE zitadel_org_id IS NOT NULL AND zitadel_org_id <> ''`,
+  );
+  const orgs = new Set(rows.map((r) => r.zitadel_org_id));
+  const envOrg = getOrgId();
+  if (envOrg) orgs.add(envOrg);
+  return Array.from(orgs);
+}
+
+/**
+ * Cross-org listUserGrants: query each known project-owner org and dedupe by grantId.
+ * Zitadel Management API's x-zitadel-orgid header scopes results to that org's
+ * owned resources; a user with grants in multiple orgs needs one call per org.
+ */
+export async function listUserGrantsAllOrgs(
+  userId: string,
+): Promise<Array<{ grantId: string; projectId: string; roleKeys: string[] }>> {
+  const orgs = await getKnownGrantOwnerOrgs();
+  const seen = new Map<string, { grantId: string; projectId: string; roleKeys: string[] }>();
+  for (const org of orgs) {
+    try {
+      const grants = await listUserGrants(userId, org);
+      for (const g of grants) {
+        if (!seen.has(g.grantId)) {
+          seen.set(g.grantId, { grantId: g.grantId, projectId: g.projectId, roleKeys: g.roleKeys });
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId, org }, 'user-grant-sync: listUserGrants failed for org — skipping');
+    }
+  }
+  return Array.from(seen.values());
+}
+
+/**
  * List current user grants from Zitadel (live, cached by caller if needed).
  * Re-exports for use in route handlers.
  */
 export async function getUserGrants(
   userId: string,
 ): Promise<Array<{ grantId: string; projectId: string; roleKeys: string[] }>> {
-  const orgId = getOrgId();
-  const grants = await listUserGrants(userId, orgId);
-  return grants.map((g) => ({
-    grantId: g.grantId,
-    projectId: g.projectId,
-    roleKeys: g.roleKeys,
-  }));
+  return listUserGrantsAllOrgs(userId);
 }

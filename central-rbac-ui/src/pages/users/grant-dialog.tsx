@@ -1,8 +1,12 @@
 /**
  * pages/users/grant-dialog.tsx — Dialog to assign a role to a user.
- * Project select + role select → POST /v1/assignments
+ *
+ * Post-Migration 012 rewrite: Project select drives Role list (filter by app_id).
+ * Options show "ProjectName · OrgName" so admin sees cross-org context.
+ * Submit disabled until both fields chosen. Role picks include legacy roles
+ * (app_id NULL) when no project selected — surfaced as "Legacy / global".
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -36,6 +40,26 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
 
   const grant = useGrantMutation(userId, userEmail);
 
+  const selectedProjectApp = useMemo(
+    () => projects.find((p) => p.id === selectedProject)?.app_id ?? '',
+    [projects, selectedProject],
+  );
+
+  // Filter roles by selected project's app_id. Roles without app_id (legacy)
+  // stay visible only when the "Legacy / global" project option is selected.
+  const filteredRoles = useMemo(() => {
+    if (!selectedProject) return [];
+    if (selectedProject === 'legacy') return roles.filter((r) => !r.app_id);
+    return roles.filter((r) => r.app_id === selectedProjectApp);
+  }, [roles, selectedProject, selectedProjectApp]);
+
+  // Reset role when project changes to avoid stale mismatched role.
+  useEffect(() => {
+    setSelectedRole('');
+  }, [selectedProject]);
+
+  const legacyRolesCount = roles.filter((r) => !r.app_id).length;
+
   function handleSubmit() {
     if (!selectedRole) return;
     grant.mutate(
@@ -61,8 +85,13 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
             >
               <option value="">-- Chọn dự án --</option>
               {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.org?.name ? ` · ${p.org.name}` : ''}
+                </option>
               ))}
+              {legacyRolesCount > 0 && (
+                <option value="legacy">Legacy / global ({legacyRolesCount} vai trò)</option>
+              )}
             </Select>
           </div>
 
@@ -71,10 +100,16 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
             <Select
               value={selectedRole}
               onChange={(e) => setSelectedRole(e.target.value)}
-              disabled={roles.length === 0}
+              disabled={!selectedProject || filteredRoles.length === 0}
             >
-              <option value="">-- Chọn vai trò --</option>
-              {roles.map((r) => (
+              <option value="">
+                {selectedProject
+                  ? filteredRoles.length === 0
+                    ? '-- Không có vai trò cho dự án này --'
+                    : '-- Chọn vai trò --'
+                  : '-- Chọn dự án trước --'}
+              </option>
+              {filteredRoles.map((r) => (
                 <option key={r.key} value={r.key}>
                   {r.display_name} ({r.key})
                 </option>
@@ -89,7 +124,7 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
           </DialogClose>
           <Button
             onClick={handleSubmit}
-            disabled={!selectedRole || grant.isPending}
+            disabled={!selectedProject || !selectedRole || grant.isPending}
           >
             {grant.isPending ? 'Đang cấp...' : 'Cấp quyền'}
           </Button>

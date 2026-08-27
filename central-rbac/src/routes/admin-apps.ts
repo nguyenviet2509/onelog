@@ -29,6 +29,7 @@ import { addProject, findProjectByName, removeProject } from '../lib/zitadel-pro
 import { addOidcApp } from '../lib/zitadel-oidc-app-client.js';
 import { createRoleWithSync } from '../services/role-sync.js';
 import { logger } from '../lib/logger.js';
+import { config } from '../config.js';
 
 // Slug: kebab-case, 3-32 chars, must start with letter (Fix #13)
 const SLUG_REGEX = /^[a-z][a-z0-9-]{2,31}$/;
@@ -113,13 +114,14 @@ async function insertApp(
   clientId: string,
   manifestUrl: string | null,
   adminSub: string,
+  zitadelOrgId: string,
 ): Promise<DbApp> {
   const { rows } = await writerPool.query<DbApp>(
     `INSERT INTO rbac.apps
-       (slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
+       (slug, name, zitadel_project_id, zitadel_org_id, zitadel_client_id, manifest_url, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id, slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_at, created_by`,
-    [slug, name, projectId, clientId, manifestUrl, adminSub],
+    [slug, name, projectId, zitadelOrgId, clientId, manifestUrl, adminSub],
   );
   if (!rows[0]) throw new Error('INSERT rbac.apps returned no rows');
   return rows[0];
@@ -254,7 +256,10 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // (7) INSERT rbac.apps + default roles + audit
-      const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub);
+      // Wizard always creates project under SA's default org (env ZITADEL_ORG_ID).
+      // If future multi-org needed, extract from addProject response details.resourceOwner.
+      const projectOrgId = config.ZITADEL_ORG_ID ?? '';
+      const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub, projectOrgId);
       await createDefaultRoles(slug, newApp.id, projectId, adminSub);
       await writeAuditLog(request, {
         action: 'app.create',

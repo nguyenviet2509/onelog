@@ -92,7 +92,14 @@ export function UsersListPage() {
     }),
     col.accessor('organization', {
       header: 'Tổ chức',
-      cell: (info) => info.getValue() ?? <span className="text-gray-400">—</span>,
+      cell: (info) => {
+        const org = info.getValue();
+        return org?.name ? (
+          <span className="text-sm text-gray-700">{org.name}</span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        );
+      },
     }),
     col.accessor('grant_count', {
       header: 'Số quyền',

@@ -15,7 +15,7 @@ Deploy `onelog-source` VPS. Verify 3 deliverables:
 
 ```bash
 # 1. Pull pinned digest (record actual digest)
-docker pull smallstep/step-ca@sha256:<PLACEHOLDER-PIN-AFTER-FIRST-PULL>
+docker pull smallstep/step-ca@sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270
 docker inspect --format='{{.RepoDigests}}' smallstep/step-ca:latest
 
 # 2. Non-interactive init (should print "step-ca initialized" without TTY prompts)
@@ -43,7 +43,7 @@ Add to `authway/infra/authway-vps/docker-compose.yml`:
 ```yaml
 services:
   step-ca:
-    image: smallstep/step-ca@sha256:<PIN-FROM-STEP-0>
+    image: smallstep/step-ca@sha256:a2b17872915c193259b75a5474c398326f41bd199f0842093e52cf4182bc8270
     restart: unless-stopped
     volumes:
       - step-ca-data:/home/step

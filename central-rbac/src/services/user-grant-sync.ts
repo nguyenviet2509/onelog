@@ -87,10 +87,19 @@ export async function assignRoleToUser(
   const projectId = await resolveProjectIdForRole(roleKey);
   const orgId = getOrgId();
 
-  // Idempotency key: same (userId, projectId, roleKey) → same enqueue row.
-  // Concurrent callers with different roleKeys get different keys → both enqueue,
-  // worker processes serially under advisory lock and merges correctly.
-  const idemKey = makeIdempotencyKey('add_or_update_user_grant', userId, projectId, roleKey);
+  // Idempotency key: bucketed by 10-second window so genuine network retries within
+  // a click dedupe, but grant → revoke → grant across seconds each produces a fresh
+  // event. Worker's advisory lock + merge logic makes multiple events safe anyway.
+  // (Prior form omitted the time bucket → re-grant after revoke was swallowed by
+  //  ON CONFLICT DO NOTHING referencing the original completed grant event.)
+  const timeBucket = Math.floor(Date.now() / 10_000).toString();
+  const idemKey = makeIdempotencyKey(
+    'add_or_update_user_grant',
+    userId,
+    projectId,
+    roleKey,
+    timeBucket,
+  );
 
   const outbox = await enqueueOutbox(
     writerPool,
@@ -132,7 +141,9 @@ export async function removeRoleFromUser(
   const orgId = getOrgId();
 
   if (targetRoleKey) {
-    // Partial revoke: fetch current roles, remove targetRoleKey, enqueue update
+    // Partial revoke: fetch current roles, remove targetRoleKey.
+    // If the result is empty, do a full grant DELETE — Zitadel doesn't allow empty
+    // grants and leaving one behind clutters the drawer with a zero-role row.
     let currentRoles: string[] = [];
     try {
       const grants = await listUserGrants(userId, orgId);
@@ -143,11 +154,31 @@ export async function removeRoleFromUser(
     }
 
     const updatedRoles = currentRoles.filter((r) => r !== targetRoleKey);
+
+    const timeBucket = Math.floor(Date.now() / 10_000).toString();
+
+    if (updatedRoles.length === 0) {
+      const idemKey = makeIdempotencyKey('remove_user_grant', userId, grantId, timeBucket);
+      const outbox = await enqueueOutbox(
+        writerPool,
+        'remove_user_grant',
+        { userId, orgId, grantId },
+        idemKey,
+        correlationId,
+      );
+      logger.info(
+        { userId, grantId, targetRoleKey, outboxId: outbox.id },
+        'user-grant-sync: last role revoked — enqueued remove_user_grant',
+      );
+      return { outbox };
+    }
+
     const idemKey = makeIdempotencyKey(
       'update_user_grant_revoke',
       userId,
       grantId,
       targetRoleKey,
+      timeBucket,
     );
 
     const outbox = await enqueueOutbox(
@@ -163,7 +194,8 @@ export async function removeRoleFromUser(
   }
 
   // Full grant removal
-  const idemKey = makeIdempotencyKey('remove_user_grant', userId, grantId);
+  const timeBucket = Math.floor(Date.now() / 10_000).toString();
+  const idemKey = makeIdempotencyKey('remove_user_grant', userId, grantId, timeBucket);
   const outbox = await enqueueOutbox(
     writerPool,
     'remove_user_grant',

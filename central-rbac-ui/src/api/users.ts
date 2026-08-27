@@ -16,7 +16,9 @@ export async function listUsers(q = '', limit = 50): Promise<ZitadelUser[]> {
   return res.data.data;
 }
 
-export async function getUserDetail(id: string): Promise<UserDetail> {
-  const res = await apiClient.get<UserDetail>(`/users/${id}`);
+export async function getUserDetail(id: string, fresh = false): Promise<UserDetail> {
+  const res = await apiClient.get<UserDetail>(`/users/${id}`, {
+    params: fresh ? { fresh: '1' } : undefined,
+  });
   return res.data;
 }

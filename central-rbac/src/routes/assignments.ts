@@ -40,6 +40,17 @@ function assignmentsCacheKey(userId: string): string {
   return `assignments:v1:${userId}`;
 }
 
+function userDetailCacheKey(userId: string): string {
+  return `user-detail:v1:${userId}`;
+}
+
+async function bustUserCaches(userId: string): Promise<void> {
+  await Promise.all([
+    redis.del(assignmentsCacheKey(userId)).catch(() => {}),
+    redis.del(userDetailCacheKey(userId)).catch(() => {}),
+  ]);
+}
+
 export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   // POST /v1/assignments — assign role to user
   app.post('/v1/assignments', { preHandler: [verifyJwt] }, async (request, reply) => {
@@ -59,8 +70,8 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(502).send({ error: 'Failed to enqueue assignment', detail: msg });
     }
 
-    // Invalidate assignments cache for this user
-    await redis.del(assignmentsCacheKey(user_id)).catch(() => {});
+    // Invalidate both user-detail (used by drawer) + assignments caches
+    await bustUserCaches(user_id);
 
     await writeAuditLog(request, {
       action: 'assignment.create',
@@ -109,7 +120,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(502).send({ error: 'Failed to enqueue revocation', detail: msg });
     }
 
-    await redis.del(assignmentsCacheKey(userId)).catch(() => {});
+    await bustUserCaches(userId);
 
     await writeAuditLog(request, {
       action: 'assignment.delete',

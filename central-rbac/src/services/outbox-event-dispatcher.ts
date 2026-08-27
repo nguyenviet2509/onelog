@@ -20,7 +20,33 @@ import {
   addOrUpdateUserGrant,
 } from './outbox-processor.js';
 import { type OutboxEvent, type OutboxOperation } from '../db/queries/outbox.js';
+import { redis } from '../lib/redis-client.js';
 import { logger } from '../lib/logger.js';
+
+/**
+ * Ops that mutate a user's grants — after success, bust the user-detail + assignments
+ * caches so the drawer refetch (see routes/assignments.ts scheduled polling) sees fresh
+ * Zitadel state. Without this, refetch caches stale grants for 60s.
+ */
+const USER_GRANT_OPS: Set<OutboxOperation> = new Set([
+  'add_user_grant',
+  'update_user_grant',
+  'remove_user_grant',
+  'add_or_update_user_grant',
+]);
+
+async function bustUserCachesFromArgs(
+  operation: OutboxOperation,
+  args: Record<string, unknown>,
+): Promise<void> {
+  if (!USER_GRANT_OPS.has(operation)) return;
+  const userId = args['userId'];
+  if (typeof userId !== 'string' || userId.length === 0) return;
+  await Promise.all([
+    redis.del(`user-detail:v1:${userId}`).catch(() => {}),
+    redis.del(`assignments:v1:${userId}`).catch(() => {}),
+  ]);
+}
 
 const MAX_ATTEMPTS = 5;
 
@@ -59,6 +85,8 @@ export async function processEvent(event: OutboxEvent): Promise<EventOutcome> {
 
   try {
     await dispatch(operation as OutboxOperation, args);
+    // Bust user-detail cache AFTER Zitadel commit so next drawer refetch sees fresh state
+    await bustUserCachesFromArgs(operation as OutboxOperation, args);
     return 'done';
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

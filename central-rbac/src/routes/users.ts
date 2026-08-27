@@ -79,14 +79,21 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     const orgId = config.ZITADEL_ORG_ID || '';
     const cacheKey = userDetailCacheKey(id);
 
+    // fresh=1 bypasses cache — used by UI polling right after grant/revoke mutations
+    // to avoid re-poisoning cache with stale Zitadel state before outbox worker commits.
+    const rawQuery = request.query as Record<string, string> | undefined;
+    const bypassCache = rawQuery?.['fresh'] === '1';
+
     // Cache read
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return reply.send(JSON.parse(cached));
+    if (!bypassCache) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          return reply.send(JSON.parse(cached));
+        }
+      } catch {
+        // Redis unavailable — fall through to live fetch
       }
-    } catch {
-      // Redis unavailable — fall through to live fetch
     }
 
     // Fetch user + grants in parallel
@@ -109,11 +116,18 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: 'User not found' });
     }
 
-    const grants = rawGrants.map((g) => ({
-      grant_id: g.grantId,
-      project_id: g.projectId,
-      role_keys: g.roleKeys,
-    }));
+    // Field `id` matches UI Grant type — drawer uses grant.id for revoke DELETE URL.
+    // Keep `grant_id` alias for any legacy callers (harmless).
+    // Filter empty-role grants: leftovers from pre-fix updates that emptied roleKeys
+    // instead of DELETE. UI would show them as bare "Thu hồi" rows.
+    const grants = rawGrants
+      .filter((g) => g.roleKeys.length > 0)
+      .map((g) => ({
+        id: g.grantId,
+        grant_id: g.grantId,
+        project_id: g.projectId,
+        role_keys: g.roleKeys,
+      }));
 
     const detail = {
       id: user.id,
@@ -124,8 +138,11 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       grants,
     };
 
-    // Cache write (non-blocking)
-    redis.setex(cacheKey, USER_DETAIL_CACHE_TTL, JSON.stringify(detail)).catch(() => {});
+    // Cache write (non-blocking). Skip write on bypass=fresh so a mutation-polling
+    // caller doesn't re-cache pre-worker-commit state.
+    if (!bypassCache) {
+      redis.setex(cacheKey, USER_DETAIL_CACHE_TTL, JSON.stringify(detail)).catch(() => {});
+    }
 
     return reply.send(detail);
   });

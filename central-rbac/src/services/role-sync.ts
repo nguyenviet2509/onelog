@@ -36,6 +36,27 @@ function getProjectId(): string {
   return id;
 }
 
+/**
+ * Resolve the Zitadel projectId to target for a role.
+ * Priority: (1) explicit override from caller, (2) role.app_id lookup, (3) env fallback.
+ * Migration 011 introduced roles.app_id — new wizard-created roles carry that link.
+ */
+export async function resolveProjectIdForRole(
+  roleKey: string,
+  override?: string,
+): Promise<string> {
+  if (override) return override;
+  const { rows } = await writerPool.query<{ zitadel_project_id: string | null }>(
+    `SELECT a.zitadel_project_id
+       FROM rbac.roles r
+       LEFT JOIN rbac.apps a ON a.id = r.app_id
+      WHERE r.key = $1`,
+    [roleKey],
+  );
+  const linked = rows[0]?.zitadel_project_id;
+  return linked ?? getProjectId();
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export interface CreateRoleResult {
@@ -50,8 +71,13 @@ export interface CreateRoleResult {
 export async function createRoleWithSync(
   input: CreateRoleInput,
   correlationId?: string,
+  /**
+   * Optional Zitadel projectId override. If omitted, falls back to env
+   * ZITADEL_PROJECT_ID (legacy). Wizard passes the new app's zitadel_project_id.
+   */
+  projectIdOverride?: string,
 ): Promise<CreateRoleResult> {
-  const projectId = getProjectId();
+  const projectId = projectIdOverride ?? getProjectId();
   const orgId = config.ZITADEL_ORG_ID || '';
   const idempotencyKey = makeIdempotencyKey('add_project_role', projectId, input.key);
 

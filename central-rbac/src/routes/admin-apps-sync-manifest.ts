@@ -70,6 +70,52 @@ async function persistEtag(appId: string, etag: string | null): Promise<void> {
   );
 }
 
+/**
+ * Auto-wire manifest.default_roles → rbac.role_permissions idempotently.
+ * Skips role_permission pairs where target permission doesn't exist yet
+ * (admin must apply-manifest-diff first to insert missing permissions).
+ * Sets role.app_id link if not already set (Migration 011).
+ * Returns count of pair rows actually INSERT'd this run.
+ */
+async function autoWireDefaultRoles(
+  manifest: { default_roles?: Array<{ key: string; description?: string; permissions: string[] }> },
+  appId: string,
+): Promise<number> {
+  if (!manifest.default_roles || manifest.default_roles.length === 0) return 0;
+  const client = await writerPool.connect();
+  try {
+    await client.query('BEGIN');
+    let inserted = 0;
+    for (const role of manifest.default_roles) {
+      // Ensure role row exists + linked to this app (Migration 011)
+      await client.query(
+        `INSERT INTO rbac.roles (key, description, app_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (key) DO UPDATE SET
+           app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id)`,
+        [role.key, role.description ?? `Role ${role.key} (from manifest)`, appId],
+      );
+      for (const permKey of role.permissions) {
+        const result = await client.query(
+          `INSERT INTO rbac.role_permissions (role_key, permission_key)
+           SELECT $1, $2
+           WHERE EXISTS (SELECT 1 FROM rbac.permissions WHERE key = $2 AND deprecated_at IS NULL)
+           ON CONFLICT (role_key, permission_key) DO NOTHING`,
+          [role.key, permKey],
+        );
+        inserted += result.rowCount ?? 0;
+      }
+    }
+    await client.query('COMMIT');
+    return inserted;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise<void> {
   // ── Sync (fetch + diff) ────────────────────────────────────────────────────
   app.post(
@@ -125,6 +171,14 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
       // Compute diff
       const diff = await computeDiff(validation.manifest);
 
+      // Auto-wire manifest.default_roles → role_permissions idempotently at SYNC time.
+      // Rationale: role_permission wiring doesn't require per-item admin approval; it's
+      // metadata describing how declared roles map to declared permissions. If admin
+      // wants to customize, they can adjust via /users grant dialog later.
+      // Only wires (role_key, permission_key) pairs where permission already exists in DB
+      // and isn't deprecated. New permissions still need apply() first.
+      const rolePermsWired = await autoWireDefaultRoles(validation.manifest, dbApp.id);
+
       // Persist etag for next sync (fast path via 304)
       await persistEtag(dbApp.id, fetchResult.etag);
 
@@ -133,7 +187,12 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
         action: 'manifest.sync.fetch',
         target_type: 'app',
         target_id: dbApp.id,
-        after_state: { sha256: fetchResult.sha256, etag: fetchResult.etag, counts: diff.counts },
+        after_state: {
+          sha256: fetchResult.sha256,
+          etag: fetchResult.etag,
+          counts: diff.counts,
+          role_perms_wired: rolePermsWired,
+        },
       });
 
       return reply.send({

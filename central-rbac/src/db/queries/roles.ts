@@ -33,14 +33,20 @@ export interface CreateRoleInput {
   key: string;
   description?: string;
   parent_key?: string | null;
+  /**
+   * Optional link to rbac.apps.id. When set, grant flow resolves Zitadel
+   * projectId from apps.zitadel_project_id instead of env ZITADEL_PROJECT_ID.
+   * Migration 011.
+   */
+  app_id?: string | null;
 }
 
 export async function createRole(pool: Pool | PoolClient, input: CreateRoleInput): Promise<Role> {
   const res = await pool.query<Role>(
-    `INSERT INTO rbac.roles (key, description, parent_key)
-     VALUES ($1, $2, $3)
+    `INSERT INTO rbac.roles (key, description, parent_key, app_id)
+     VALUES ($1, $2, $3, $4)
      RETURNING id, key, description, parent_key, created_at, updated_at`,
-    [input.key, input.description ?? '', input.parent_key ?? null],
+    [input.key, input.description ?? '', input.parent_key ?? null, input.app_id ?? null],
   );
   return res.rows[0]!;
 }

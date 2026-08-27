@@ -32,7 +32,7 @@ function makeIdempotencyKey(operation: string, ...parts: string[]): string {
   return createHash('sha256').update(payload).digest('hex').slice(0, 64);
 }
 
-function getProjectId(): string {
+function getFallbackProjectId(): string {
   const id = config.ZITADEL_PROJECT_ID;
   if (!id) throw new Error('ZITADEL_PROJECT_ID not configured');
   return id;
@@ -40,6 +40,22 @@ function getProjectId(): string {
 
 function getOrgId(): string {
   return config.ZITADEL_ORG_ID || '';
+}
+
+/**
+ * Migration 011: resolve Zitadel projectId from role.app_id → apps.zitadel_project_id.
+ * Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID.
+ * Inline here (not imported from role-sync) to avoid potential circular dep.
+ */
+async function resolveProjectIdForRole(roleKey: string): Promise<string> {
+  const { rows } = await writerPool.query<{ zitadel_project_id: string | null }>(
+    `SELECT a.zitadel_project_id
+       FROM rbac.roles r
+       LEFT JOIN rbac.apps a ON a.id = r.app_id
+      WHERE r.key = $1`,
+    [roleKey],
+  );
+  return rows[0]?.zitadel_project_id ?? getFallbackProjectId();
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -65,7 +81,10 @@ export async function assignRoleToUser(
   roleKey: string,
   correlationId?: string,
 ): Promise<AssignRoleResult> {
-  const projectId = getProjectId();
+  // Migration 011 — resolve target Zitadel projectId from role.app_id link.
+  // Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID.
+  // Wizard-created roles get routed to their app's own Zitadel project.
+  const projectId = await resolveProjectIdForRole(roleKey);
   const orgId = getOrgId();
 
   // Idempotency key: same (userId, projectId, roleKey) → same enqueue row.

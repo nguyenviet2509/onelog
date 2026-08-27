@@ -27,6 +27,7 @@ import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { addProject, findProjectByName, removeProject } from '../lib/zitadel-project-client.js';
 import { addOidcApp } from '../lib/zitadel-oidc-app-client.js';
+import { createRoleWithSync } from '../services/role-sync.js';
 import { logger } from '../lib/logger.js';
 
 // Slug: kebab-case, 3-32 chars, must start with letter (Fix #13)
@@ -124,18 +125,50 @@ async function insertApp(
   return rows[0];
 }
 
-async function createDefaultRoles(appSlug: string, adminSub: string): Promise<void> {
+/**
+ * Create 3 default roles ({slug}.viewer/editor/admin) + enqueue Zitadel sync.
+ * Migration 011: sets role.app_id → wizard-created app so grant flow routes
+ * to the NEW app's Zitadel project (not env ZITADEL_PROJECT_ID).
+ * Fix for Phase 08 e2e discovery: outbox add_user_grant landed 'dead' because
+ * roleKey did not exist in the target Zitadel project.
+ */
+async function createDefaultRoles(
+  appSlug: string,
+  appId: string,
+  zitadelProjectId: string,
+  adminSub: string,
+): Promise<void> {
   const roles = ['viewer', 'editor', 'admin'];
   for (const suffix of roles) {
     const key = `${appSlug}.${suffix}`;
-    await writerPool.query(
-      `INSERT INTO rbac.roles (key, description)
-       VALUES ($1, $2)
-       ON CONFLICT (key) DO NOTHING`,
-      [key, `Default ${suffix} role for app ${appSlug}`],
+    const description = `Default ${suffix} role for app ${appSlug}`;
+
+    // Skip if already exists (idempotent — wizard may be retried)
+    const existing = await writerPool.query<{ id: string }>(
+      `SELECT id FROM rbac.roles WHERE key = $1`,
+      [key],
     );
+    if (existing.rows.length > 0) {
+      logger.info({ key, admin: adminSub }, 'admin-apps: role exists, skipping create+sync');
+      continue;
+    }
+
+    try {
+      await createRoleWithSync(
+        { key, description, app_id: appId },
+        undefined,
+        zitadelProjectId,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, key }, 'admin-apps: createRoleWithSync failed');
+      throw err;
+    }
   }
-  logger.info({ app_slug: appSlug, admin: adminSub }, 'admin-apps: created 3 default roles');
+  logger.info(
+    { app_slug: appSlug, app_id: appId, zitadel_project_id: zitadelProjectId, admin: adminSub },
+    'admin-apps: created 3 default roles + enqueued Zitadel sync',
+  );
 }
 
 export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
@@ -222,7 +255,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
 
       // (7) INSERT rbac.apps + default roles + audit
       const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub);
-      await createDefaultRoles(slug, adminSub);
+      await createDefaultRoles(slug, newApp.id, projectId, adminSub);
       await writeAuditLog(request, {
         action: 'app.create',
         target_type: 'app',

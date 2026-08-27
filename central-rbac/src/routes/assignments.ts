@@ -26,7 +26,10 @@ const revokeParamsSchema = z.object({
 });
 
 const revokeQuerySchema = z.object({
-  role_key: z.string().min(1).optional(), // if present, partial revoke
+  /** Legacy single-role revoke — kept for backward compat with old UI. */
+  role_key: z.string().min(1).optional(),
+  /** Multi-role revoke: comma-separated list. Empty/omitted → full grant DELETE. */
+  role_keys: z.string().min(1).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -109,11 +112,17 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const grantId = params.data.id;
-    const targetRoleKey = query.data.role_key;
+    // Accept either role_keys=csv (new) or role_key=single (legacy). Empty list
+    // means full grant DELETE.
+    const targetRoleKeys: string[] | undefined = query.data.role_keys
+      ? query.data.role_keys.split(',').map((s) => s.trim()).filter(Boolean)
+      : query.data.role_key
+        ? [query.data.role_key]
+        : undefined;
 
     let result;
     try {
-      result = await removeRoleFromUser(userId, grantId, targetRoleKey, request.id);
+      result = await removeRoleFromUser(userId, grantId, targetRoleKeys, request.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, userId, grantId }, 'assignments: removeRoleFromUser failed');
@@ -126,7 +135,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
       action: 'assignment.delete',
       target_type: 'user_grant',
       target_id: grantId,
-      before_state: { user_id: userId, grant_id: grantId, role_key: targetRoleKey },
+      before_state: { user_id: userId, grant_id: grantId, role_keys: targetRoleKeys },
     });
 
     return reply.status(202).send({

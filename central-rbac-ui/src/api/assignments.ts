@@ -15,14 +15,23 @@ export async function createAssignment(
   return res.data;
 }
 
+/**
+ * Revoke a user grant. Modes:
+ *   - role_keys=[] (or omitted) → full grant DELETE
+ *   - role_keys=[a,b]           → partial revoke (removes listed roles, keeps rest;
+ *                                  if that empties the grant, backend auto-DELETEs)
+ * Backend sends `role_keys` as comma-separated csv on the URL.
+ */
 export async function deleteAssignment(
   grant_id: string,
   user_id: string,
-  role_key?: string,
+  role_keys?: string[],
 ): Promise<void> {
-  await apiClient.delete(`/assignments/${grant_id}`, {
-    params: { user_id, ...(role_key ? { role_key } : {}) },
-  });
+  const params: Record<string, string> = { user_id };
+  if (role_keys && role_keys.length > 0) {
+    params['role_keys'] = role_keys.join(',');
+  }
+  await apiClient.delete(`/assignments/${grant_id}`, { params });
 }
 
 export async function listAssignments(user_id: string, project_id?: string): Promise<Grant[]> {

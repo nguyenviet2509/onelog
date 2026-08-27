@@ -18,7 +18,11 @@ import { mgmtPost, mgmtDelete, mgmtPut } from './zitadel-http.js';
 export interface UserGrant {
   grantId: string;
   projectId: string;
+  /** Human-readable project name from Zitadel — populated by listUserGrants. */
+  projectName?: string;
   orgId: string;
+  /** Human-readable org name from Zitadel — populated by listUserGrants. */
+  orgName?: string;
   roleKeys: string[];
 }
 
@@ -34,7 +38,9 @@ interface ZitadelGrantObject {
   grantId?: string;
   id?: string; // some endpoints return 'id' not 'grantId'
   projectId?: string;
+  projectName?: string;
   orgId?: string;
+  orgName?: string;
   roleKeys?: string[];
 }
 
@@ -78,7 +84,9 @@ export async function listUserGrants(userId: string, orgId: string): Promise<Use
     const page: UserGrant[] = (data.result ?? []).map((g) => ({
       grantId: g.grantId ?? g.id ?? '',
       projectId: g.projectId ?? '',
+      projectName: g.projectName,
       orgId: g.orgId ?? orgId,
+      orgName: g.orgName,
       roleKeys: Array.isArray(g.roleKeys) ? g.roleKeys : [],
     }));
 

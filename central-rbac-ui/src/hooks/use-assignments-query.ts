@@ -55,8 +55,8 @@ export function useGrantMutation(userId: string, userEmail: string) {
 export function useRevokeMutation(userId: string, userEmail: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ grant_id, role_key }: { grant_id: string; role_key?: string }) =>
-      deleteAssignment(grant_id, userId, role_key),
+    mutationFn: ({ grant_id, role_keys }: { grant_id: string; role_keys?: string[] }) =>
+      deleteAssignment(grant_id, userId, role_keys),
     onSuccess: () => {
       toastSuccess(`Đã thu hồi quyền của ${userEmail} (đang đồng bộ...)`);
       scheduleUserDetailRefetch(qc, userId);

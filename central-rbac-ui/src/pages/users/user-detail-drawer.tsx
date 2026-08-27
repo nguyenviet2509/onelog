@@ -1,6 +1,10 @@
 /**
  * pages/users/user-detail-drawer.tsx — Right-side drawer showing user profile + grants.
- * Grant + Revoke actions rendered per-row. Mutations disabled when rbac_degraded.
+ *
+ * Grant row = header (project name · org) + checkbox list of roles + 2 revoke buttons:
+ *   - "Thu hồi đã chọn" (partial revoke of the checked role subset)
+ *   - "Thu hồi toàn bộ" (drop the whole grant regardless of selection)
+ * Both routes through the same RevokeDialog which sends role_keys to backend.
  */
 import { useState } from 'react';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -12,6 +16,12 @@ import { GrantDialog } from './grant-dialog';
 import { RevokeDialog } from './revoke-dialog';
 import type { Grant } from '@/lib/types';
 
+interface RevokeTarget {
+  grant: Grant;
+  /** empty array → full grant DELETE; non-empty → partial revoke of listed keys. */
+  roleKeys: string[];
+}
+
 interface UserDetailDrawerProps {
   userId: string | null;
   onClose: () => void;
@@ -19,10 +29,29 @@ interface UserDetailDrawerProps {
 
 export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
   const [grantOpen, setGrantOpen] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState<Grant | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
+  // Per-grant checkbox state: grantId → Set<roleKey>
+  const [selected, setSelected] = useState<Record<string, Set<string>>>({});
 
   const { data: user, isLoading, error } = useUserDetailQuery(userId);
   const { canWrite } = usePermissions();
+
+  function toggleRole(grantId: string, roleKey: string): void {
+    setSelected((prev) => {
+      const cur = new Set(prev[grantId] ?? []);
+      if (cur.has(roleKey)) cur.delete(roleKey);
+      else cur.add(roleKey);
+      return { ...prev, [grantId]: cur };
+    });
+  }
+
+  function clearSelection(grantId: string): void {
+    setSelected((prev) => {
+      const next = { ...prev };
+      delete next[grantId];
+      return next;
+    });
+  }
 
   const isOpen = !!userId;
 
@@ -77,39 +106,79 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                 {(user.grants ?? []).length === 0 ? (
                   <p className="text-sm text-gray-400">Chưa có quyền nào được cấp.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {user.grants.map((grant) => (
-                      <div
-                        key={grant.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5"
-                      >
-                        <div className="flex flex-col gap-1 min-w-0">
-                          <span className="text-xs text-gray-400">{grant.project_name ?? grant.project_id}</span>
-                          <div className="flex flex-wrap gap-1">
+                  <div className="space-y-3">
+                    {user.grants.map((grant) => {
+                      const selectedForGrant = selected[grant.id] ?? new Set<string>();
+                      const hasSelection = selectedForGrant.size > 0;
+                      return (
+                        <div
+                          key={grant.id}
+                          className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-2"
+                        >
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-sm font-medium text-gray-800">
+                              {grant.project_name ?? grant.project_id}
+                            </span>
+                            {grant.org_name && (
+                              <span className="text-xs text-gray-500">Tổ chức: {grant.org_name}</span>
+                            )}
+                            {grant.granted_at && (
+                              <span className="text-xs text-gray-400">
+                                {new Date(grant.granted_at).toLocaleDateString('vi-VN')}
+                                {grant.granted_by && ` · ${grant.granted_by}`}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
                             {grant.role_keys.map((rk) => (
-                              <Badge key={rk} variant="default">{rk}</Badge>
+                              <label
+                                key={rk}
+                                className="flex items-center gap-2 cursor-pointer text-sm text-gray-700"
+                              >
+                                {canWrite() && (
+                                  <input
+                                    type="checkbox"
+                                    className="rounded border-gray-300"
+                                    checked={selectedForGrant.has(rk)}
+                                    onChange={() => toggleRole(grant.id, rk)}
+                                    aria-label={`Chọn ${rk}`}
+                                  />
+                                )}
+                                <Badge variant="default">{rk}</Badge>
+                              </label>
                             ))}
                           </div>
-                          {grant.granted_at && (
-                            <span className="text-xs text-gray-400">
-                              {new Date(grant.granted_at).toLocaleDateString('vi-VN')}
-                              {grant.granted_by && ` · ${grant.granted_by}`}
-                            </span>
+
+                          {canWrite() && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={!hasSelection}
+                                onClick={() =>
+                                  setRevokeTarget({
+                                    grant,
+                                    roleKeys: Array.from(selectedForGrant),
+                                  })
+                                }
+                              >
+                                Thu hồi đã chọn ({selectedForGrant.size})
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setRevokeTarget({ grant, roleKeys: [] })
+                                }
+                              >
+                                Thu hồi toàn bộ
+                              </Button>
+                            </div>
                           )}
                         </div>
-
-                        {canWrite() && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setRevokeTarget(grant)}
-                            className="shrink-0"
-                          >
-                            Thu hồi
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -129,11 +198,17 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
           {revokeTarget && (
             <RevokeDialog
               open={!!revokeTarget}
-              onOpenChange={(v) => { if (!v) setRevokeTarget(null); }}
+              onOpenChange={(v) => {
+                if (!v) {
+                  clearSelection(revokeTarget.grant.id);
+                  setRevokeTarget(null);
+                }
+              }}
               userId={user.id}
               userEmail={user.email}
-              grantId={revokeTarget.id}
-              roleKey={revokeTarget.role_keys[0]}
+              grantId={revokeTarget.grant.id}
+              roleKeys={revokeTarget.roleKeys}
+              projectLabel={revokeTarget.grant.project_name ?? revokeTarget.grant.project_id}
             />
           )}
         </>

@@ -146,7 +146,7 @@ export interface RevokeRoleResult {
 export async function removeRoleFromUser(
   userId: string,
   grantId: string,
-  targetRoleKey?: string,
+  targetRoleKeys?: string[],
   correlationId?: string,
 ): Promise<RevokeRoleResult> {
   // Cross-org lookup: find the grant across all known project-owner orgs so the
@@ -167,15 +167,13 @@ export async function removeRoleFromUser(
     if (rows[0]?.zitadel_org_id) orgId = rows[0].zitadel_org_id;
   }
 
-  if (targetRoleKey) {
-    // Partial revoke: fetch current roles, remove targetRoleKey.
-    // If the result is empty, do a full grant DELETE — Zitadel doesn't allow empty
-    // grants and leaving one behind clutters the drawer with a zero-role row.
+  const timeBucket = Math.floor(Date.now() / 10_000).toString();
+
+  // Partial revoke: subset of roles → compute remaining. If empty → full DELETE.
+  if (targetRoleKeys && targetRoleKeys.length > 0) {
     const currentRoles = found?.roleKeys ?? [];
-
-    const updatedRoles = currentRoles.filter((r) => r !== targetRoleKey);
-
-    const timeBucket = Math.floor(Date.now() / 10_000).toString();
+    const toRemove = new Set(targetRoleKeys);
+    const updatedRoles = currentRoles.filter((r) => !toRemove.has(r));
 
     if (updatedRoles.length === 0) {
       const idemKey = makeIdempotencyKey('remove_user_grant', userId, grantId, timeBucket);
@@ -187,8 +185,8 @@ export async function removeRoleFromUser(
         correlationId,
       );
       logger.info(
-        { userId, grantId, targetRoleKey, outboxId: outbox.id },
-        'user-grant-sync: last role revoked — enqueued remove_user_grant',
+        { userId, grantId, removed: targetRoleKeys, outboxId: outbox.id },
+        'user-grant-sync: all listed roles revoked — enqueued remove_user_grant',
       );
       return { outbox };
     }
@@ -197,7 +195,7 @@ export async function removeRoleFromUser(
       'update_user_grant_revoke',
       userId,
       grantId,
-      targetRoleKey,
+      targetRoleKeys.slice().sort().join(','),
       timeBucket,
     );
 
@@ -209,12 +207,14 @@ export async function removeRoleFromUser(
       correlationId,
     );
 
-    logger.info({ userId, grantId, targetRoleKey, outboxId: outbox.id }, 'user-grant-sync: enqueued update_user_grant (partial revoke)');
+    logger.info(
+      { userId, grantId, removed: targetRoleKeys, remaining: updatedRoles, outboxId: outbox.id },
+      'user-grant-sync: enqueued update_user_grant (partial revoke)',
+    );
     return { outbox };
   }
 
-  // Full grant removal
-  const timeBucket = Math.floor(Date.now() / 10_000).toString();
+  // Full grant removal (no targetRoleKeys → drop entire grant)
   const idemKey = makeIdempotencyKey('remove_user_grant', userId, grantId, timeBucket);
   const outbox = await enqueueOutbox(
     writerPool,
@@ -224,7 +224,7 @@ export async function removeRoleFromUser(
     correlationId,
   );
 
-  logger.info({ userId, grantId, outboxId: outbox.id }, 'user-grant-sync: enqueued remove_user_grant');
+  logger.info({ userId, grantId, outboxId: outbox.id }, 'user-grant-sync: enqueued remove_user_grant (full)');
   return { outbox };
 }
 
@@ -248,17 +248,31 @@ async function getKnownGrantOwnerOrgs(): Promise<string[]> {
  * Zitadel Management API's x-zitadel-orgid header scopes results to that org's
  * owned resources; a user with grants in multiple orgs needs one call per org.
  */
-export async function listUserGrantsAllOrgs(
-  userId: string,
-): Promise<Array<{ grantId: string; projectId: string; roleKeys: string[] }>> {
+export interface UserGrantSummary {
+  grantId: string;
+  projectId: string;
+  projectName?: string;
+  orgId: string;
+  orgName?: string;
+  roleKeys: string[];
+}
+
+export async function listUserGrantsAllOrgs(userId: string): Promise<UserGrantSummary[]> {
   const orgs = await getKnownGrantOwnerOrgs();
-  const seen = new Map<string, { grantId: string; projectId: string; roleKeys: string[] }>();
+  const seen = new Map<string, UserGrantSummary>();
   for (const org of orgs) {
     try {
       const grants = await listUserGrants(userId, org);
       for (const g of grants) {
         if (!seen.has(g.grantId)) {
-          seen.set(g.grantId, { grantId: g.grantId, projectId: g.projectId, roleKeys: g.roleKeys });
+          seen.set(g.grantId, {
+            grantId: g.grantId,
+            projectId: g.projectId,
+            projectName: g.projectName,
+            orgId: g.orgId,
+            orgName: g.orgName,
+            roleKeys: g.roleKeys,
+          });
         }
       }
     } catch (err) {
@@ -272,8 +286,6 @@ export async function listUserGrantsAllOrgs(
  * List current user grants from Zitadel (live, cached by caller if needed).
  * Re-exports for use in route handlers.
  */
-export async function getUserGrants(
-  userId: string,
-): Promise<Array<{ grantId: string; projectId: string; roleKeys: string[] }>> {
+export async function getUserGrants(userId: string): Promise<UserGrantSummary[]> {
   return listUserGrantsAllOrgs(userId);
 }

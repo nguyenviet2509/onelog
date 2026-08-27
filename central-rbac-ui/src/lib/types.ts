@@ -30,6 +30,8 @@ export interface Grant {
   id: string;           // grantId from Zitadel
   project_id: string;
   project_name?: string;
+  org_id?: string;
+  org_name?: string;
   role_keys: string[];
   granted_at?: string;
   granted_by?: string;

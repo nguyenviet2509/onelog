@@ -105,7 +105,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
     // Fetch user + grants in parallel
     let user: { id: string; email: string; display_name: string; username?: string; home_org_id?: string } | null;
-    let rawGrants: Array<{ grantId: string; projectId: string; roleKeys: string[] }>;
+    let rawGrants: Array<{ grantId: string; projectId: string; projectName?: string; orgId: string; orgName?: string; roleKeys: string[] }>;
 
     try {
       [user, rawGrants] = await Promise.all([
@@ -136,6 +136,9 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
         id: g.grantId,
         grant_id: g.grantId,
         project_id: g.projectId,
+        project_name: g.projectName,
+        org_id: g.orgId,
+        org_name: g.orgName,
         role_keys: g.roleKeys,
       }));
 

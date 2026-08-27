@@ -133,19 +133,8 @@ export async function deleteRoleWithSync(
   const projectId = getProjectId();
   const orgId = config.ZITADEL_ORG_ID || '';
 
-  // Check for active grants in Zitadel before allowing delete
-  // This is a best-effort check; Zitadel is the authoritative source
-  if (orgId) {
-    try {
-      // Use a broad search to find any grants referencing this role
-      // (listUserGrants searches by userId; no role-based search available)
-      // We rely on Central DB referential integrity to block if role_permissions exist.
-      // For Zitadel-side check, admin must manually verify via GET /v1/drift before delete.
-      logger.debug({ roleKey }, 'role-sync: deleteRoleWithSync — no Zitadel pre-check (use /v1/drift)');
-    } catch (err) {
-      logger.warn({ err, roleKey }, 'role-sync: Zitadel grant check skipped');
-    }
-  }
+  // Zitadel-side active-grant check deferred to /v1/drift (admin-driven).
+  // Central DB referential integrity (role_permissions FK) blocks delete when in use.
 
   const idempotencyKey = makeIdempotencyKey('remove_project_role', projectId, roleKey);
 

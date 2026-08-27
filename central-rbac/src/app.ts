@@ -20,6 +20,7 @@ import { assignmentRoutes } from './routes/assignments.js';
 import { driftRoutes } from './routes/drift.js';
 import { permissionsLookupRoutes } from './routes/permissions-lookup.js';
 import { outboxAdminRoutes } from './routes/outbox-admin.js';
+import { metricsRoutes } from './routes/metrics.js';
 import { userRoutes } from './routes/users.js';
 import { projectRoutes } from './routes/projects.js';
 import { adminAppsRoutes } from './routes/admin-apps.js';
@@ -111,6 +112,7 @@ export async function buildApp() {
 
   // Register all route plugins
   await app.register(healthRoutes);
+  await app.register(metricsRoutes);
   await app.register(permissionRoutes);
   await app.register(roleRoutes);
   await app.register(resolveRoutes);

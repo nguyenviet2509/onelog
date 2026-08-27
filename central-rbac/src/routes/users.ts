@@ -138,15 +138,12 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     // Enrich user's home org (Zitadel resourceOwner) — cache-hot after list call.
     const organization = user.home_org_id ? await getOrgById(user.home_org_id) : null;
 
-    // Field `id` matches UI Grant type — drawer uses grant.id for revoke DELETE URL.
-    // Keep `grant_id` alias for any legacy callers (harmless).
     // Filter empty-role grants: leftovers from pre-fix updates that emptied roleKeys
     // instead of DELETE. UI would show them as bare "Thu hồi" rows.
     const grants = rawGrants
       .filter((g) => g.roleKeys.length > 0)
       .map((g) => ({
         id: g.grantId,
-        grant_id: g.grantId,
         project_id: g.projectId,
         project_name: g.projectName,
         org_id: g.orgId,

@@ -2,14 +2,13 @@
  * api/users.ts — User list + detail endpoints.
  * GET /v1/users?q=&limit= — list with aggregated grant_count
  * GET /v1/users/:id       — user detail + grants array
- *
- * TODO(backend): /v1/users and /v1/users/:id endpoints not yet implemented in central-rbac.
- * These calls will 404 until Phase 5 backend adds user proxy routes (Zitadel user list API).
  */
 import { apiClient } from './client';
 import type { UserDetail, ZitadelUser } from '@/lib/types';
 
-export async function listUsers(q = '', limit = 50): Promise<ZitadelUser[]> {
+// Default limit = backend max (200). Pagination UI deferred — scales to
+// current spike-test cohorts; revisit with cursor pagination when > 200 users.
+export async function listUsers(q = '', limit = 200): Promise<ZitadelUser[]> {
   const res = await apiClient.get<{ data: ZitadelUser[] }>('/users', {
     params: { q, limit },
   });

@@ -22,6 +22,8 @@ import {
 import { type OutboxEvent, type OutboxOperation } from '../db/queries/outbox.js';
 import { redis } from '../lib/redis-client.js';
 import { logger } from '../lib/logger.js';
+import { ZitadelHttpError } from '../lib/zitadel-http-error.js';
+import { outboxDispatchTotal } from '../lib/metrics.js';
 
 /**
  * Ops that mutate a user's grants — after success, bust the user-detail + assignments
@@ -87,13 +89,20 @@ export async function processEvent(event: OutboxEvent): Promise<EventOutcome> {
     await dispatch(operation as OutboxOperation, args);
     // Bust user-detail cache AFTER Zitadel commit so next drawer refetch sees fresh state
     await bustUserCachesFromArgs(operation as OutboxOperation, args);
+    outboxDispatchTotal.inc({ operation, outcome: 'done' });
     return 'done';
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
 
-    // Parse HTTP status from error message (convention: "... HTTP NNN")
-    const statusMatch = /HTTP (\d{3})/.exec(msg);
-    const httpStatus = statusMatch ? parseInt(statusMatch[1]!, 10) : 0;
+    // Prefer typed ZitadelHttpError.status. Regex fallback preserved so a legacy
+    // throw site (or a wrapper that stringified the error) still classifies right.
+    let httpStatus = 0;
+    if (err instanceof ZitadelHttpError) {
+      httpStatus = err.status;
+    } else {
+      const statusMatch = /HTTP (\d{3})/.exec(msg);
+      if (statusMatch) httpStatus = parseInt(statusMatch[1]!, 10);
+    }
 
     // 4xx (except 404/409 handled as success in processor) = data problem → dead immediately
     if (httpStatus >= 400 && httpStatus < 500) {
@@ -101,6 +110,7 @@ export async function processEvent(event: OutboxEvent): Promise<EventOutcome> {
         { eventId: id, operation, httpStatus, err: msg },
         'outbox-dispatcher: 4xx error — marking dead (no retry)',
       );
+      outboxDispatchTotal.inc({ operation, outcome: 'dead' });
       return 'dead';
     }
 
@@ -111,6 +121,7 @@ export async function processEvent(event: OutboxEvent): Promise<EventOutcome> {
         { eventId: id, operation, attempts: newAttempts },
         '[OUTBOX-DEAD] outbox-dispatcher: max retries reached — marking dead',
       );
+      outboxDispatchTotal.inc({ operation, outcome: 'dead' });
       return 'dead';
     }
 
@@ -118,6 +129,7 @@ export async function processEvent(event: OutboxEvent): Promise<EventOutcome> {
       { eventId: id, operation, err: msg, attempt: newAttempts },
       'outbox-dispatcher: transient error — will retry',
     );
+    outboxDispatchTotal.inc({ operation, outcome: 'failed' });
     return 'failed';
   }
 }

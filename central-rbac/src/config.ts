@@ -9,9 +9,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 
-  // DB connections
-  WRITER_DATABASE_URL: z.string().url('WRITER_DATABASE_URL must be a valid postgres URL'),
-  AUDITOR_DATABASE_URL: z.string().url('AUDITOR_DATABASE_URL must be a valid postgres URL'),
+  // DB connections — refuse the migration-001 placeholder `changeme` so a forgotten
+  // ops rotation trips at startup instead of shipping default creds to prod.
+  WRITER_DATABASE_URL: z
+    .string()
+    .url('WRITER_DATABASE_URL must be a valid postgres URL')
+    .refine((v) => !v.includes('changeme'), 'WRITER_DATABASE_URL uses migration-001 default password — rotate before starting'),
+  AUDITOR_DATABASE_URL: z
+    .string()
+    .url('AUDITOR_DATABASE_URL must be a valid postgres URL')
+    .refine((v) => !v.includes('changeme'), 'AUDITOR_DATABASE_URL uses migration-001 default password — rotate before starting'),
 
   // Zitadel JWT
   ZITADEL_ISSUER: z.string().min(1, 'ZITADEL_ISSUER required'),
@@ -40,9 +47,10 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6380),
   REDIS_PASSWORD: z.string().default(''),
 
-  // Zitadel Management API
+  // Zitadel Management API — SA PAT required in every environment; empty string
+  // used to slip through and blow up at first Mgmt API call. Fail closed at boot.
   ZITADEL_MGMT_URL: z.string().url('ZITADEL_MGMT_URL must be a valid URL').default('http://authway-vps.local:8080'),
-  ZITADEL_SA_PAT: z.string().default(''),   // optional in dev; required if Mgmt API calls needed
+  ZITADEL_SA_PAT: z.string().min(1, 'ZITADEL_SA_PAT required — grant Central RBAC a service-account PAT with IAM read + user-grant write'),
   ZITADEL_ORG_ID: z.string().default(''),   // default org context for ListUserGrants
   // Zitadel resolves instance from Host header; required when calling via internal Docker alias.
   // Set to the ExternalDomain configured in Zitadel (e.g., 10.200.0.125 or rbac.example.com).
@@ -55,8 +63,10 @@ const envSchema = z.object({
   // Admin fail-close role pattern (regex) — roles matching this trigger fail-close path
   FAIL_CLOSE_ROLE_PATTERN: z.string().default('^(rbac\\..*|.*\\.admin)$'),
 
-  // Phase 3: Zitadel project ID for outbox role sync
-  ZITADEL_PROJECT_ID: z.string().default(''),
+  // Phase 3: Zitadel project ID for outbox role sync — the "central-rbac" project
+  // in Zitadel. Empty here → outbox operations that fall back to env project id
+  // silently target the wrong project.
+  ZITADEL_PROJECT_ID: z.string().min(1, 'ZITADEL_PROJECT_ID required — set to the Zitadel project id for central-rbac'),
 
   // Phase 3: Outbox worker — set to 'false' to disable background loop (e.g., in tests)
   OUTBOX_WORKER_ENABLED: z

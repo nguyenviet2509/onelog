@@ -10,6 +10,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import {
   listOutboxEvents,
@@ -29,8 +30,11 @@ const listQuerySchema = z.object({
 const idParamSchema = z.object({ id: z.string().min(1) });
 
 export async function outboxAdminRoutes(app: FastifyInstance): Promise<void> {
+  // Outbox event args carry userIds/orgIds/roleKeys — gate to rbac.admin.
+  const adminGate = { preHandler: [verifyJwt, requireAdmin] };
+
   // GET /v1/outbox — list events with optional status filter
-  app.get('/v1/outbox', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/outbox', adminGate, async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -47,7 +51,7 @@ export async function outboxAdminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/outbox/:id — single event detail
-  app.get('/v1/outbox/:id', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/outbox/:id', adminGate, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid id' });
@@ -59,7 +63,7 @@ export async function outboxAdminRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/outbox/:id/retry — reset dead event to pending
-  app.post('/v1/outbox/:id/retry', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.post('/v1/outbox/:id/retry', adminGate, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid id' });

@@ -17,7 +17,11 @@ ALTER TABLE rbac.apps
 -- Backfill known apps by slug — safe because slug is unique + this migration
 -- ships together with app-registration code that requires zitadel_org_id.
 -- After this migration, wizard writes zitadel_org_id explicitly on INSERT.
+-- Guard AND zitadel_org_id IS NULL makes the UPDATE idempotent on migration re-run
+-- (won't clobber a manually-corrected org id set by an operator).
 UPDATE rbac.apps SET zitadel_org_id = '385591139173990404'
- WHERE slug = 'onemcp' AND zitadel_project_id = '385595003772076035';
+ WHERE slug = 'onemcp'
+   AND zitadel_project_id = '385595003772076035'
+   AND zitadel_org_id IS NULL;
 
 COMMIT;

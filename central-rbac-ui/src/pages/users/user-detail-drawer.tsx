@@ -122,12 +122,6 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                             {grant.org_name && (
                               <span className="text-xs text-gray-500">Tổ chức: {grant.org_name}</span>
                             )}
-                            {grant.granted_at && (
-                              <span className="text-xs text-gray-400">
-                                {new Date(grant.granted_at).toLocaleDateString('vi-VN')}
-                                {grant.granted_by && ` · ${grant.granted_by}`}
-                              </span>
-                            )}
                           </div>
 
                           <div className="flex flex-col gap-1.5">

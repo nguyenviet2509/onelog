@@ -19,9 +19,10 @@ vi.mock('../../src/lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Mock mgmtPost from zitadel-http — searchUsers calls this
+// Mock mgmtPost + mgmtGet from zitadel-http — searchUsers/getUserById call these
 vi.mock('../../src/lib/zitadel-http.js', () => ({
   mgmtPost: vi.fn(),
+  mgmtGet: vi.fn(),
   buildHeaders: vi.fn(() => ({
     'Content-Type': 'application/json',
     Authorization: 'Bearer test-pat-token',
@@ -29,8 +30,9 @@ vi.mock('../../src/lib/zitadel-http.js', () => ({
   })),
 }));
 
-import { mgmtPost } from '../../src/lib/zitadel-http.js';
+import { mgmtPost, mgmtGet } from '../../src/lib/zitadel-http.js';
 const mockMgmtPost = vi.mocked(mgmtPost);
+const mockMgmtGet = vi.mocked(mgmtGet);
 
 const { searchUsers, getUserById } = await import('../../src/lib/zitadel-user-search-client.js');
 
@@ -162,17 +164,11 @@ describe('searchUsers', () => {
 
 describe('getUserById', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('returns normalized user on 200', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(makeOk({ user: RAW_HUMAN_USER }));
-    vi.stubGlobal('fetch', mockFetch);
+    mockMgmtGet.mockResolvedValue(makeOk({ user: RAW_HUMAN_USER }));
 
     const result = await getUserById('u-001', ORG_ID);
 
@@ -183,35 +179,34 @@ describe('getUserById', () => {
   });
 
   it('returns null on 404', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeError(404)));
+    mockMgmtGet.mockResolvedValue(makeError(404));
     const result = await getUserById('u-missing', ORG_ID);
     expect(result).toBeNull();
   });
 
   it('returns null when user field absent in 200 body', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeOk({})));
+    mockMgmtGet.mockResolvedValue(makeOk({}));
     const result = await getUserById('u-001', ORG_ID);
     expect(result).toBeNull();
   });
 
   it('throws on 403 non-2xx', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeError(403)));
+    mockMgmtGet.mockResolvedValue(makeError(403));
     await expect(getUserById('u-001', ORG_ID)).rejects.toThrow('HTTP 403');
   });
 
   it('wraps network error with readable message', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ETIMEDOUT')));
+    mockMgmtGet.mockRejectedValue(new Error('ETIMEDOUT'));
     await expect(getUserById('u-001', ORG_ID)).rejects.toThrow('Zitadel get user unreachable');
   });
 
   it('URL-encodes userId in path', async () => {
-    const mockFetch = vi.fn().mockResolvedValue(makeError(404));
-    vi.stubGlobal('fetch', mockFetch);
+    mockMgmtGet.mockResolvedValue(makeError(404));
 
     await getUserById('user/with/slashes', ORG_ID);
 
-    const calledUrl = mockFetch.mock.calls[0]?.[0] as string;
-    expect(calledUrl).toContain('user%2Fwith%2Fslashes');
+    const calledPath = mockMgmtGet.mock.calls[0]?.[0] as string;
+    expect(calledPath).toContain('user%2Fwith%2Fslashes');
   });
 });
 

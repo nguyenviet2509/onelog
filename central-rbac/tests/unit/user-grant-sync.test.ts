@@ -20,11 +20,23 @@ vi.mock('../../src/config.js', () => ({
   },
 }));
 
-vi.mock('../../src/db/writer-pool.js', () => ({ writerPool: {} }));
+// writerPool.query is used by resolveProjectContextForRole (assign path — looks up
+// rbac.roles JOIN rbac.apps for {projectId, orgId}) and by getKnownGrantOwnerOrgs
+// (revoke path — SELECT DISTINCT zitadel_org_id FROM rbac.apps). Default: empty
+// rows → fallback to env ZITADEL_PROJECT_ID + ZITADEL_ORG_ID (matches Migration 011
+// legacy roles where app_id IS NULL). Individual tests can rewire per case.
+const { mockWriterQuery } = vi.hoisted(() => ({
+  mockWriterQuery: vi.fn<(...args: unknown[]) => Promise<{ rows: unknown[] }>>()
+    .mockResolvedValue({ rows: [] }),
+}));
+
+vi.mock('../../src/db/writer-pool.js', () => ({
+  writerPool: { query: mockWriterQuery },
+}));
 
 const { mockEnqueueOutbox, mockListUserGrants } = vi.hoisted(() => ({
   mockEnqueueOutbox: vi.fn().mockResolvedValue({ id: 'outbox-10', idempotency_key: 'k', inserted: true }),
-  mockListUserGrants: vi.fn(),
+  mockListUserGrants: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../src/db/queries/outbox.js', () => ({ enqueueOutbox: mockEnqueueOutbox }));
@@ -33,7 +45,13 @@ vi.mock('../../src/lib/zitadel-mgmt-client.js', () => ({ listUserGrants: mockLis
 import { assignRoleToUser, removeRoleFromUser } from '../../src/services/user-grant-sync.js';
 
 describe('assignRoleToUser', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Restore default empty-row behavior after clearAllMocks wiped it
+    mockWriterQuery.mockResolvedValue({ rows: [] });
+    mockEnqueueOutbox.mockResolvedValue({ id: 'outbox-10', idempotency_key: 'k', inserted: true });
+    mockListUserGrants.mockResolvedValue([]);
+  });
 
   it('always enqueues add_or_update_user_grant (enqueue-first — no Zitadel call)', async () => {
     // H4: listUserGrants must NOT be called — Zitadel read belongs in the worker
@@ -117,9 +135,14 @@ describe('assignRoleToUser', () => {
 });
 
 describe('removeRoleFromUser', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWriterQuery.mockResolvedValue({ rows: [] });
+    mockEnqueueOutbox.mockResolvedValue({ id: 'outbox-10', idempotency_key: 'k', inserted: true });
+    mockListUserGrants.mockResolvedValue([]);
+  });
 
-  it('enqueues remove_user_grant when no targetRoleKey (full removal)', async () => {
+  it('enqueues remove_user_grant when no targetRoleKeys (full removal)', async () => {
     const result = await removeRoleFromUser('user-1', 'grant-99', undefined, 'corr-2');
 
     expect(result.outbox.id).toBe('outbox-10');
@@ -129,12 +152,12 @@ describe('removeRoleFromUser', () => {
     expect(args['userId']).toBe('user-1');
   });
 
-  it('enqueues update_user_grant with role removed when targetRoleKey given', async () => {
+  it('enqueues update_user_grant with role removed when targetRoleKeys given', async () => {
     mockListUserGrants.mockResolvedValue([
       { grantId: 'grant-99', projectId: 'proj-abc', orgId: 'org-abc', roleKeys: ['role.a', 'role.b'] },
     ]);
 
-    await removeRoleFromUser('user-1', 'grant-99', 'role.a');
+    await removeRoleFromUser('user-1', 'grant-99', ['role.a']);
 
     const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
     expect(operation).toBe('update_user_grant');
@@ -144,26 +167,31 @@ describe('removeRoleFromUser', () => {
     expect(roleKeys).toContain('role.b');
   });
 
-  it('enqueues update with empty roleKeys if only role is removed', async () => {
+  it('degrades partial revoke to remove_user_grant when the last role is dropped', async () => {
+    // updatedRoles.length === 0 branch — service enqueues remove_user_grant (not empty update)
+    // to avoid leaving an empty grant behind, which Zitadel would reject on next add.
     mockListUserGrants.mockResolvedValue([
       { grantId: 'grant-99', projectId: 'proj-abc', orgId: 'org-abc', roleKeys: ['role.only'] },
     ]);
 
-    await removeRoleFromUser('user-1', 'grant-99', 'role.only');
+    await removeRoleFromUser('user-1', 'grant-99', ['role.only']);
 
-    const [, , args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
-    expect(args['roleKeys']).toEqual([]);
+    const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
+    expect(operation).toBe('remove_user_grant');
+    expect(args['grantId']).toBe('grant-99');
   });
 
   it('still enqueues update_user_grant for partial revoke even if listUserGrants throws', async () => {
-    // Falls back to empty role set when Zitadel unreachable — still enqueues
+    // Falls back to empty role set when Zitadel unreachable — still enqueues.
+    // getKnownGrantOwnerOrgs must return at least one org for the loop to attempt
+    // listUserGrants — env fallback `org-abc` covers that.
     mockListUserGrants.mockRejectedValue(new Error('Zitadel unreachable'));
 
-    await removeRoleFromUser('user-1', 'grant-99', 'role.a');
+    await removeRoleFromUser('user-1', 'grant-99', ['role.a']);
 
     const [, operation, args] = mockEnqueueOutbox.mock.calls[0] as [unknown, string, Record<string, unknown>];
-    expect(operation).toBe('update_user_grant');
-    // roleKeys falls back to empty array (currentRoles = [])
-    expect(args['roleKeys']).toEqual([]);
+    // With no grant found and updatedRoles = [] → service degrades to remove_user_grant
+    expect(operation).toBe('remove_user_grant');
+    expect(args['grantId']).toBe('grant-99');
   });
 });

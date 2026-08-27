@@ -11,6 +11,7 @@
  */
 import { logger } from './logger.js';
 import { mgmtPost, mgmtDelete } from './zitadel-http.js';
+import { ZitadelHttpError } from './zitadel-http-error.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ export async function addProjectRole(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ projectId, roleKey, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: addProjectRole failed');
-    throw new Error(`Zitadel addProjectRole error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel addProjectRole error: HTTP ${res.status}`);
   }
 
   logger.info({ projectId, roleKey }, 'zitadel-mgmt: addProjectRole ok');
@@ -87,7 +88,7 @@ export async function removeProjectRole(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ projectId, roleKey, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: removeProjectRole failed');
-    throw new Error(`Zitadel removeProjectRole error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel removeProjectRole error: HTTP ${res.status}`);
   }
   logger.info({ projectId, roleKey }, 'zitadel-mgmt: removeProjectRole ok');
 }
@@ -120,7 +121,7 @@ export async function listProjectRoles(
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       logger.error({ projectId, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: listProjectRoles failed');
-      throw new Error(`Zitadel listProjectRoles error: HTTP ${res.status}`);
+      throw new ZitadelHttpError(res.status, `Zitadel listProjectRoles error: HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as ListProjectRolesResponse;

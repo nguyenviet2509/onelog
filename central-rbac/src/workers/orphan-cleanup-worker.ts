@@ -24,42 +24,6 @@ interface PendingRow {
   last_error: string | null;
 }
 
-async function claimOne(): Promise<PendingRow | null> {
-  const { rows } = await writerPool.query<PendingRow>(
-    `SELECT id, zitadel_project_id, project_name, admin_sub, attempt_count, last_error
-       FROM rbac.pending_cleanups
-      WHERE next_retry_at <= now()
-      ORDER BY next_retry_at ASC
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED`,
-  );
-  return rows[0] ?? null;
-}
-
-async function markSuccess(id: string): Promise<void> {
-  await writerPool.query(`DELETE FROM rbac.pending_cleanups WHERE id = $1`, [id]);
-}
-
-async function markFailure(id: string, attempt: number, error: string): Promise<void> {
-  if (attempt >= MAX_ATTEMPTS) {
-    logger.error(
-      { id, attempt, error },
-      'orphan-cleanup: max attempts reached — deleting row (manual intervention required)',
-    );
-    await writerPool.query(`DELETE FROM rbac.pending_cleanups WHERE id = $1`, [id]);
-    return;
-  }
-  const backoff = BACKOFF_SEC[Math.min(attempt, BACKOFF_SEC.length - 1)] ?? 21600;
-  await writerPool.query(
-    `UPDATE rbac.pending_cleanups
-        SET attempt_count = $2,
-            last_error = $3,
-            next_retry_at = now() + make_interval(secs => $4)
-      WHERE id = $1`,
-    [id, attempt, error, backoff],
-  );
-}
-
 async function processOne(): Promise<boolean> {
   const client = await writerPool.connect();
   try {
@@ -144,6 +108,3 @@ export function stopOrphanCleanupWorker(): void {
     logger.info('orphan-cleanup-worker: stopped');
   }
 }
-
-// Unused helpers exported for testing (avoid unused-vars complaint)
-export { claimOne, markSuccess, markFailure };

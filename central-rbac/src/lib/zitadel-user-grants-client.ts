@@ -12,6 +12,7 @@
  */
 import { logger } from './logger.js';
 import { mgmtPost, mgmtDelete, mgmtPut } from './zitadel-http.js';
+import { ZitadelHttpError } from './zitadel-http-error.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export async function listUserGrants(userId: string, orgId: string): Promise<Use
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       logger.error({ userId, orgId, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: listUserGrants non-2xx');
-      throw new Error(`Zitadel Mgmt API error: HTTP ${res.status}`);
+      throw new ZitadelHttpError(res.status, `Zitadel Mgmt API error: HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as ListGrantsResponse;
@@ -132,7 +133,7 @@ export async function addUserGrant(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ userId, projectId, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: addUserGrant failed');
-    throw new Error(`Zitadel addUserGrant error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel addUserGrant error: HTTP ${res.status}`);
   }
 
   const data = (await res.json()) as { userGrantId?: string };
@@ -165,7 +166,7 @@ export async function updateUserGrant(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ userId, grantId, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: updateUserGrant failed');
-    throw new Error(`Zitadel updateUserGrant error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel updateUserGrant error: HTTP ${res.status}`);
   }
   logger.info({ userId, grantId, roleCount: roleKeys.length }, 'zitadel-mgmt: updateUserGrant ok');
 }
@@ -197,7 +198,7 @@ export async function removeUserGrant(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ userId, grantId, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: removeUserGrant failed');
-    throw new Error(`Zitadel removeUserGrant error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel removeUserGrant error: HTTP ${res.status}`);
   }
   logger.info({ userId, grantId }, 'zitadel-mgmt: removeUserGrant ok');
 }

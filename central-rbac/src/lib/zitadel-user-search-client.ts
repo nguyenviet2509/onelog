@@ -10,8 +10,8 @@
  * Transport via zitadel-http.ts (mgmtPost + retry-once on 5xx).
  */
 import { logger } from './logger.js';
-import { mgmtPost, buildHeaders } from './zitadel-http.js';
-import { config } from '../config.js';
+import { mgmtPost, mgmtGet } from './zitadel-http.js';
+import { ZitadelHttpError } from './zitadel-http-error.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ export async function searchUsers(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ q, status: res.status, body: text.slice(0, 200) }, 'zitadel-user-search: searchUsers non-2xx');
-    throw new Error(`Zitadel user search error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel user search error: HTTP ${res.status}`);
   }
 
   const data = (await res.json()) as SearchUsersResponse;
@@ -136,20 +136,15 @@ export async function searchUsers(
 
 /**
  * Get a single user by ID from Zitadel (/v2/users/:id — GET).
- * Returns null if 404.
+ * Returns null if 404. Uses shared mgmtGet for consistent 5xx retry behavior.
  */
 export async function getUserById(
   userId: string,
   orgId: string,
 ): Promise<Omit<UserSummary, 'grant_count'> | null> {
-  const url = `${config.ZITADEL_MGMT_URL}/v2/users/${encodeURIComponent(userId)}`;
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: buildHeaders(orgId),
-      signal: AbortSignal.timeout(3000),
-    });
+    res = await mgmtGet(`/v2/users/${encodeURIComponent(userId)}`, orgId);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ userId, err: msg }, 'zitadel-user-search: getUserById fetch failed');
@@ -161,7 +156,7 @@ export async function getUserById(
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     logger.error({ userId, status: res.status, body: text.slice(0, 200) }, 'zitadel-user-search: getUserById non-2xx');
-    throw new Error(`Zitadel get user error: HTTP ${res.status}`);
+    throw new ZitadelHttpError(res.status, `Zitadel get user error: HTTP ${res.status}`);
   }
 
   const data = (await res.json()) as { user?: ZitadelUserRaw };

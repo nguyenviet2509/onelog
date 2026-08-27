@@ -222,7 +222,35 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
             appliedCounts['implicit-deprecate'] += 1;
           }
         }
+        // Wire manifest.default_roles → role_permissions (idempotent, ON CONFLICT DO NOTHING).
+        // Only wires permissions that (a) exist in DB (either just-inserted or pre-existing),
+        // (b) aren't deprecated, (c) belong to this app's namespace.
+        // If admin later customizes a role, existing rows preserved (only new pairs INSERT'd).
+        let rolePermsAdded = 0;
+        if (manifest.default_roles && manifest.default_roles.length > 0) {
+          for (const role of manifest.default_roles) {
+            // Ensure role exists (wizard already creates {slug}.viewer/editor/admin, but
+            // manifest may declare additional custom roles — create if missing).
+            await client.query(
+              `INSERT INTO rbac.roles (key, description)
+               VALUES ($1, $2)
+               ON CONFLICT (key) DO NOTHING`,
+              [role.key, role.description ?? `Role ${role.key} (from manifest)`],
+            );
+            for (const permKey of role.permissions) {
+              const result = await client.query(
+                `INSERT INTO rbac.role_permissions (role_key, permission_key)
+                 SELECT $1, $2
+                 WHERE EXISTS (SELECT 1 FROM rbac.permissions WHERE key = $2 AND deprecated_at IS NULL)
+                 ON CONFLICT (role_key, permission_key) DO NOTHING`,
+                [role.key, permKey],
+              );
+              rolePermsAdded += result.rowCount ?? 0;
+            }
+          }
+        }
         await client.query('COMMIT');
+        appliedCounts['add'] += rolePermsAdded;  // count role_permissions inserted under add
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         const msg = err instanceof Error ? err.message : String(err);

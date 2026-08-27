@@ -3,8 +3,9 @@ Description=Weekly prune of Docker unused images + build cache
 Requires=docker-system-prune.service
 
 [Timer]
-# Chạy Sunday 03:00 UTC (10:00 ICT) — off-hours, sau qdrant prune (03:30) UTC
-# vẫn còn buffer 30 phút (weekly vs daily nên không đụng cùng lúc).
+# Server tz = Asia/Ho_Chi_Minh (+07) → OnCalendar dùng local time.
+# Chạy Sunday 03:00 ICT (= 20:00 UTC Sat) — off-hours. Weekly, đủ thưa để
+# không đụng qdrant-log-templates-prune (daily 03:30 ICT).
 OnCalendar=Sun *-*-* 03:00:00
 Persistent=true
 AccuracySec=1min

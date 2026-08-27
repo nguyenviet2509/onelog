@@ -31,9 +31,9 @@ Continues predecessor MVP plan `260821-1644-central-rbac-single-pane` (phases 01
 
 | # | Phase | Duration | Status |
 |---|---|---|---|
-| 06 | [Security Foundation](phase-06-security-foundation.md) — kill shared secret, deploy step-ca + Traefik mTLS on sensitive endpoints, HTTPS termination | 2w | pending |
-| 07 | [Admin Single-Pane Wizard](phase-07-admin-wizard.md) — proxy Zitadel `AddProject`+`AddOIDCApp` via `POST /v1/admin/apps` + React 2-step wizard | 2w | pending |
-| 08 | [App Self-Registration](phase-08-app-self-registration.md) — permission manifest pull + diff review UI + namespace enforcement + OneMCP first adopter | 2w | pending |
+| 06 | [Security Foundation](phase-06-security-foundation.md) — kill shared secret, deploy step-ca + Traefik mTLS on sensitive endpoints, HTTPS termination | 2w | 🟡 60% — step-ca deployed + 3 SA certs issued + cron installed on prod. mTLS activation deferred until domain+cert |
+| 07 | [Admin Single-Pane Wizard](phase-07-admin-wizard.md) — proxy Zitadel `AddProject`+`AddOIDCApp` via `POST /v1/admin/apps` + React 2-step wizard | 2w | 🟢 95% — backend + UI + migrations deployed to prod. Blocked on Zitadel SA + env config (see `docs/zitadel-sa-setup-central-rbac-admin.md`) |
+| 08 | [App Self-Registration](phase-08-app-self-registration.md) — permission manifest pull + diff review UI + namespace enforcement + OneMCP first adopter | 2w | 🟢 90% — backend + UI + migrations deployed. OneMCP `/.well-known/rbac-permissions.json` endpoint added (21 permissions, 3 default roles). E2E test blocked on Phase 07 Zitadel SA |
 
 ## Key Dependencies
 
@@ -44,12 +44,12 @@ Continues predecessor MVP plan `260821-1644-central-rbac-single-pane` (phases 01
 
 ## Top-level Success Criteria
 
-- [ ] Admin non-tech tạo app mới trong <5 phút, chỉ dùng central-rbac UI
-- [ ] Zero shared secret (`X-Rbac-Token`) trong service-to-service auth
-- [ ] `/v1/resolve` + `/v1/admin/*` yêu cầu mTLS + JWT double check (verified via smoke test)
-- [ ] Cert rotation runbook tested end-to-end (issue + rotate + revoke)
-- [ ] App team ship permission mới không cần touch central-rbac repo (OneMCP as reference adopter)
-- [ ] Audit log cover: app create, permission sync, cert issue (queryable)
+- [ ] Admin non-tech tạo app mới trong <5 phút, chỉ dùng central-rbac UI *(blocked: Zitadel SA)*
+- [ ] Zero shared secret (`X-Rbac-Token`) trong service-to-service auth *(blocked: mTLS activation → domain+cert)*
+- [ ] `/v1/resolve` + `/v1/admin/*` yêu cầu mTLS + JWT double check (verified via smoke test) *(blocked: mTLS activation)*
+- [x] Cert rotation runbook tested end-to-end (issue + rotate + revoke) — issue runbook verified 2026-08-27 (3 SA certs issued via `issue-client-cert.sh`); rotate + revoke runbook documented in `docs/deployment-central-rbac-mtls.md`
+- [x] App team ship permission mới không cần touch central-rbac repo (OneMCP as reference adopter) — OneMCP `/.well-known/rbac-permissions.json` endpoint live in onemcp/backend + central-rbac wizard PATCH `/manifest-url` + admin sync UI ready
+- [x] Audit log cover: app create, permission sync, cert issue (queryable) — `app.create` + `manifest.sync.fetch` + `manifest.sync.apply` actions on existing `rbac.audit_log` hash chain; cert issue logged via `check-cert-expiry.sh` + Prometheus textfile
 
 ## References
 
@@ -57,6 +57,9 @@ Continues predecessor MVP plan `260821-1644-central-rbac-single-pane` (phases 01
 - Research (prereqs): `plans/reports/researcher-260826-1644-central-rbac-hardening-prereqs.md`
 - Research (mTLS+manifest): `plans/reports/researcher-260826-1644-central-rbac-mtls-and-manifest.md`
 - Predecessor: `plans/260821-1644-central-rbac-single-pane/plan.md`
+- Deploy runbook: `docs/deployment-central-rbac-mtls.md`
+- Zitadel SA setup runbook: `docs/zitadel-sa-setup-central-rbac-admin.md`
+- Journal deploy 2026-08-27: `docs/journals/2026-08-27-central-rbac-phase-06-07-08-deploy.md`
 
 ## Red Team Review
 

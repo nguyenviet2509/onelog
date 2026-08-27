@@ -91,6 +91,24 @@ export async function buildApp() {
   // Global error handler
   app.setErrorHandler(errorHandler);
 
+  // Phase 06 mTLS global preHandler (Red Team Fix #3) — DISABLED by default.
+  // Enable with MTLS_GLOBAL_ENFORCE=true after signer sidecar + Traefik chain deployed.
+  // Explicit opt-outs: /webhooks/pre-token (Zitadel HMAC), /health, /ready, /.well-known/*.
+  if (process.env['MTLS_GLOBAL_ENFORCE'] === 'true') {
+    const { verifyMtls, verifyCertJwtCrosscheck } = await import('./middleware/auth-mtls.js');
+    const { verifyJwt } = await import('./middleware/auth-jwt.js');
+    const OPT_OUT_PREFIXES = ['/v1/webhooks/pre-token', '/health', '/ready', '/.well-known/'];
+    app.addHook('preHandler', async (req, reply) => {
+      if (OPT_OUT_PREFIXES.some((p) => req.url.startsWith(p))) return;
+      await verifyMtls(req, reply);
+      if (reply.sent) return;
+      await verifyJwt(req, reply);
+      if (reply.sent) return;
+      await verifyCertJwtCrosscheck(req, reply);
+    });
+    logger.info('mTLS global enforcement ENABLED — cert-header-signer + Traefik chain must be live');
+  }
+
   // Register all route plugins
   await app.register(healthRoutes);
   await app.register(permissionRoutes);

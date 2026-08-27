@@ -161,6 +161,31 @@ function preManagementCall(ctx, api) {
 # 6. Update Bitwarden note: version bump + expiry date mới
 ```
 
+## After SA setup — register OneMCP as first adopter (Phase 08 test)
+
+Sau khi SA setup xong, test end-to-end wizard + manifest sync với OneMCP:
+
+```bash
+# 1. Vào http://localhost:8082/apps → bấm "+ App mới"
+# 2. Điền form:
+#    - Tên: OneMCP
+#    - Slug: onemcp
+#    - Callback URLs: https://oneconnector.000nethost.com/oidc/callback
+#    - Manifest URL: https://oneconnector.000nethost.com/api/.well-known/rbac-permissions.json
+# 3. Bấm "Tiếp →" → "Xác nhận + Tạo"
+# 4. Modal reveal client_id + client_secret — save vào Bitwarden ngay
+# 5. Đóng dialog → về /apps list, thấy app OneMCP mới
+# 6. Bấm "Sync" trên row OneMCP → chuyển sang /apps/:id/manifest
+# 7. Bấm "Fetch + Diff" → xem 4-column diff (21 permissions "add")
+# 8. Bấm "Apply 21 thay đổi" → success message
+# 9. Verify DB:
+docker exec central-rbac-postgres psql -U postgres_admin -d central_rbac -c \
+  "SELECT key, description FROM rbac.permissions WHERE key LIKE 'onemcp:%' ORDER BY key;"
+# Expect: 21 rows
+```
+
+**OneMCP manifest verified live at:** `https://oneconnector.000nethost.com/api/.well-known/rbac-permissions.json` (HTTP 200, 3050 bytes, ETag `"2026.08.27"`)
+
 ## Verify SA setup complete
 
 - [ ] SA `central-rbac-admin-sa` visible trong Zitadel Users → Service Users

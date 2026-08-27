@@ -12,6 +12,9 @@ import { LoginPage } from '@/pages/login/login-page';
 import { CallbackPage } from '@/pages/login/callback-page';
 import { SilentRenewPage } from '@/pages/login/silent-renew-page';
 import { UsersListPage } from '@/pages/users/users-list-page';
+import { AppsListPage } from '@/pages/apps/apps-list-page';
+import { NewAppWizardPage } from '@/pages/apps/new-app-wizard-page';
+import { ManifestSyncPage } from '@/pages/apps/manifest-sync-page';
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +41,10 @@ export const router = createBrowserRouter([
           { path: 'users', element: <UsersListPage /> },
           // /users/:id is handled as a drawer overlay within UsersListPage
           { path: 'users/:id', element: <UsersListPage /> },
+          // Phase 07-08: apps registry
+          { path: 'apps', element: <AppsListPage /> },
+          { path: 'apps/new', element: <NewAppWizardPage /> },
+          { path: 'apps/:id/manifest', element: <ManifestSyncPage /> },
         ],
       },
     ],

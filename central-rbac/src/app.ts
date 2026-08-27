@@ -23,6 +23,8 @@ import { outboxAdminRoutes } from './routes/outbox-admin.js';
 import { userRoutes } from './routes/users.js';
 import { projectRoutes } from './routes/projects.js';
 import { adminAppsRoutes } from './routes/admin-apps.js';
+import { adminAppsSyncManifestRoutes } from './routes/admin-apps-sync-manifest.js';
+import { wellKnownManifestSchemaRoutes } from './routes/well-known-manifest-schema.js';
 import { auditorPool } from './db/auditor-pool.js';
 import { writerPool } from './db/writer-pool.js';
 import { verifyAuditChainIntegrity } from './db/queries/audit.js';
@@ -110,6 +112,10 @@ export async function buildApp() {
 
   // Phase 07 routes — admin single-pane wizard
   await app.register(adminAppsRoutes);
+
+  // Phase 08 routes — app self-registration (manifest sync + apply)
+  await app.register(adminAppsSyncManifestRoutes);
+  await app.register(wellKnownManifestSchemaRoutes);
 
   return app;
 }

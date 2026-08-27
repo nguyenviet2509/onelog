@@ -419,6 +419,36 @@ groups:
           summary: "NATS JetStream storage > 85% of configured cap"
           description: "Stream approaching quota. Review retention or raise max_bytes."
 
+      # Consumer lag — early warning trước NATS `discard=old` ăn vào backlog.
+      # Threshold math (ingest ~290 msg/s @ 70-host, 25GB cap = ~48h buffer):
+      #   100k pending  ≈ 6 phút ingest  → transient burst OK, sustain 15m = có vấn đề
+      #   1M pending    ≈ 57 phút ingest → serious stall, còn ~47h trước data loss
+      # Metric: nats-exporter per-consumer từ streams=1 flag.
+      # KHÔNG dùng NatsSlowConsumer standalone vì đó là internal NATS threshold
+      # (pending limit exceeded), có thể miss trường hợp Qdrant/embed API slow
+      # nhưng consumer chưa vượt NATS internal limit.
+      - alert: IndexerConsumerLag
+        expr: jetstream_consumer_num_pending{consumer_name="indexer-v1"} > 100000
+        for: 15m
+        labels:
+          severity: warning
+          category: reliability
+          component: indexer
+        annotations:
+          summary: "Indexer NATS consumer lag > 100k msgs for 15m"
+          description: "Indexer không kịp consume warn+ stream. Check indexer logs + Qdrant + embed API. Nếu backlog vượt 48h ingest → NATS discard=old sẽ gây mất RAG index (VL vẫn giữ log gốc)."
+
+      - alert: IndexerConsumerLagCritical
+        expr: jetstream_consumer_num_pending{consumer_name="indexer-v1"} > 1000000
+        for: 30m
+        labels:
+          severity: critical
+          category: reliability
+          component: indexer
+        annotations:
+          summary: "Indexer NATS consumer lag > 1M msgs for 30m — RAG data loss risk"
+          description: "Backlog ~1 giờ ingest. Còn ~47h trước NATS discard=old bắt đầu ăn vào backlog → mất RAG semantic index cho window đó (log gốc vẫn trong VL 30d). Fix indexer/Qdrant ngay."
+
   # ─────────────────────────────────────────────────────────────────────────
   # AUTHWAY-VPS — Zitadel IdP monitoring (plan 260821-1013).
   # All rules carry `cluster: authway` → routed to Log-Server topic (880) via

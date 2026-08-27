@@ -11,6 +11,8 @@
 name: central-rbac
 
 networks:
+  authway-prod_edge:
+    external: true
   authway-prod_internal:
     external: true
 
@@ -69,6 +71,7 @@ services:
     restart: unless-stopped
     networks:
       - authway-prod_internal
+      - authway-prod_edge
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,7 +93,7 @@ services:
 
       # Zitadel JWT verification
       ZITADEL_ISSUER: http://10.200.0.125
-      ZITADEL_JWKS_URL: http://authway-prod-zitadel-1:8080/oauth/v2/keys
+      ZITADEL_JWKS_URL: http://10.200.0.125/oauth/v2/keys
       ZITADEL_AUD_CLIENT_ID: ${ZITADEL_AUD_CLIENT_ID}
       ZITADEL_AZP_ADMIN_CLIENT_ID: ${ZITADEL_AZP_ADMIN_CLIENT_ID}
 
@@ -118,10 +121,17 @@ services:
       # VictoriaLogs alert sink
       VL_INGEST_URL: ${VL_INGEST_URL:-}
 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=authway-prod_edge"
+      - "traefik.http.routers.central-rbac-api.rule=(PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api.entrypoints=rbac-review"
+      - "traefik.http.routers.central-rbac-api.priority=200"
+      - "traefik.http.services.central-rbac-api.loadbalancer.server.port=8083"
     # Internal only — no host port published
     # Zitadel container reaches us via container name: http://central-rbac:8083
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8083/v1/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8083/v1/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -131,3 +141,32 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # ── Phase 5 IP-first review mode (V6-V9 locked 2026-08-25) ──────────────
+  central-rbac-ui:
+    build:
+      context: /opt/central-rbac-ui
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /v1
+        VITE_ZITADEL_ISSUER: http://10.200.0.125
+        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-PLACEHOLDER}
+        VITE_REVIEW_MODE: "true"
+    image: central-rbac-ui:phase04
+    container_name: central-rbac-ui
+    restart: unless-stopped
+    networks:
+      - authway-prod_edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=authway-prod_edge"
+      - "traefik.http.routers.central-rbac-ui.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.central-rbac-ui.entrypoints=rbac-review"
+      - "traefik.http.routers.central-rbac-ui.priority=100"
+      - "traefik.http.services.central-rbac-ui.loadbalancer.server.port=80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

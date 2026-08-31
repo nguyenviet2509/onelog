@@ -600,38 +600,45 @@ transforms:
     merge_strategies:
       dedup_count: sum
 
-  # VL branch dedup — parallel với reduce_dupes ở NATS branch. Group cùng
-  # (host, service, _msg) trong window 10s → collapse identical spam
-  # (nethost-3011 apache-error PHP Deprecated split() case: 3M identical
-  # events / 5min = 91% toàn pipeline). Redact upstream đã normalize BIGINT,
-  # IP high-cardinality tokens → dedup ratio kỳ vọng cao.
-  # `dedup_count: sum` preserve accurate volume cho audit/forensic — ops query
-  # dùng `stats sum(dedup_count)` thay `count()` để lấy true event count.
-  # Group thêm .service (so với NATS chỉ .host + ._msg) vì VL branch mixed
-  # nhiều service pattern rộng hơn, tách theo service tránh false-merge.
-  # `inputs: [reclassify_severity]` (không phải redact) → VL nhận severity đã
-  # sửa từ imfile misclass (bonus fix cho query `severity:err` trên VL).
-  # max_events cap chống unbounded accumulator khi cardinality cao.
-  # Refs: docs/journals/2026-08-25-onelog-nats-disk-root-cause-and-vector-reclassify.md
+  # VL branch dedup — SPLIT design (Option B, escalated 2026-08-31 sau khi
+  # Option A "bump buffer" chỉ đạt dedup 1.18x <<3x target).
+  #
+  # Root problem: VL branch = full firehose diverse services. reduce buffer
+  # bị fill bởi high-cardinality diverse events (kernel, sshd, systemd, ...)
+  # trước khi spam (apache-error nethost-3011 PHP Deprecated split()) có thời
+  # gian collapse. Solution: filter high-volume noisy services (apache-error,
+  # php-domain-error) vào reduce DEDICATED, mọi service khác pass-through.
+  #
+  # Benefits:
+  # - Cardinality isolation: buffer chỉ chứa apache/php spam patterns → dedup
+  #   effectiveness cao (target 5-10x) vì spam từ 1 site = 100% identical
+  # - DDoS-proof: khi 1 host bị scan/DDoS → hot_reduce chịu áp lực, diverse
+  #   services (auth log, kernel) không bị chia buffer
+  # - Sức chứa buffer 50k giờ dành riêng cho ~2 services thay vì ~15
+  #
+  # Refs: docs/journals/2026-08-31-onelog-disk-full-apache-spam-fix.md
+  vl_noise_filter:
+    type: filter
+    inputs: [reclassify_severity]
+    condition: 'includes(["apache-error", "php-domain-error"], string!(.service))'
+
+  vl_other_pass:
+    type: filter
+    inputs: [reclassify_severity]
+    condition: '!includes(["apache-error", "php-domain-error"], string!(.service))'
+
+  # Dedicated reduce chỉ cho apache-error + php-domain-error (top 2 spam
+  # sources). `dedup_count: sum` preserve audit-accurate volume — ops query
+  # dùng `stats sum(dedup_count)` thay `count()` cho true event count.
+  # Group by (host, service, _msg): redact upstream đã normalize BIGINT/IP
+  # high-cardinality tokens → identical spam collapse thành 1 entry.
   vl_reduce_dupes:
     type: reduce
-    inputs: [reclassify_severity]
+    inputs: [vl_noise_filter]
     group_by:
       - .host
       - .service
       - ._msg
-    # Tuning history:
-    # - v1 (100k/10s @ 512m mem): OOM crash loop, exitCode=137 @ 22:03 UTC.
-    # - v2 (20k/5s @ 1g mem): stable but dedup 1.07x — buffer overflow
-    #   ~4x/window at 15k events/s ingest, không đủ time-in-buffer để
-    #   accumulate duplicates.
-    # - v3 (50k/10s @ 1g mem, current): mem headroom sau bump 1g comfortably
-    #   handle 50k entries; longer window cho apache-error spam (nethost-3011
-    #   split() deprecated case) đủ time collapse per key. Ước tính 3-5x
-    #   dedup steady-state.
-    # Nếu dedup ratio vẫn < 3x → escalate Option B: split hot-service filter
-    # (apache-error, php-domain-error, lsws-*) vào reduce dedicated riêng
-    # (isolate cardinality khỏi diverse services).
     expire_after_ms: 10000
     max_events: 50000
     merge_strategies:
@@ -640,11 +647,14 @@ transforms:
 sinks:
   victorialogs:
     type: elasticsearch
-    # vl_reduce_dupes = dedup collapse identical events per (host,service,_msg)
-    # trong 10s window. Upstream chain: sources → enrich → redact →
-    # reclassify_severity → vl_reduce_dupes. Redact + severity fix vẫn áp đủ
-    # trước dedup.
-    inputs: [vl_reduce_dupes]
+    # Split VL inputs:
+    # - vl_reduce_dupes: apache-error + php-domain-error (dedup'd, hot
+    #   spam services isolated tại vl_noise_filter)
+    # - vl_other_pass: mọi service khác (kernel, sshd, systemd, zimbra-*,
+    #   mariadb-error, ...) pass through raw — low cardinality, không cần
+    #   dedup, tránh chia buffer với hot services
+    # Cả 2 branch đã qua redact + reclassify_severity upstream.
+    inputs: [vl_reduce_dupes, vl_other_pass]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

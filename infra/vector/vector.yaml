@@ -536,6 +536,9 @@ transforms:
       # Không dùng backreference vì Vector interpolates env var ở config
       # load time — escape phức tạp, trade-off không đáng cho dedup use case.
       msg = replace(msg, r'\b(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}\b', "<CONN>")
+      # LSWS worker-ID suffix: '<CONN>-4', '<CONN>-14', '<CONN>-27' split 1
+      # spam pattern thành N buckets. Normalize để dedup collapse hoàn toàn.
+      msg = replace(msg, r'<CONN>-\d+', "<CONN>")
 
       # WordPress request query ID (postmeta / option_id / user_id numeric > 6 digits).
       # Giữ số nhỏ (HTTP status, port) để không mất context.

@@ -517,6 +517,26 @@ transforms:
       # Đặt sau <HEX_ID> để không đè.
       msg = replace(msg, r'\b0[xX]?[0-9a-fA-F]{11,23}\b', "<HEX_ADDR>")
 
+      # Volatile timestamps embedded IN message body — must normalize để dedup
+      # hoạt động (dedup key = (host, service, _msg); mỗi event có microsec-
+      # precision TS = mỗi _msg unique = zero dedup). Discovery 2026-08-31:
+      # LSWS/Apache error_log format `2026-08-31 22:32:23.139665 [LEVEL] ...`
+      # cause vl_reduce_dupes ratio 1.03x post Option B split — root cause
+      # là embedded TS chưa redact.
+      # ISO-like: "2026-08-31 22:32:23.139665" hoặc "2026-08-31T22:32:23Z"
+      msg = replace(msg, r'\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b', "<TS>")
+      # RFC3164 syslog TS: "Aug 31 22:32:23", "Aug  1 22:32:23" (double space)
+      msg = replace(msg, r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s{1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}\b', "<TS>")
+      # IPv4:PORT session marker — replace entire IP:port với <CONN> để dedup
+      # collapse identical spam. LSWS format `[103.57.221.26:46242#APVH_...]`
+      # = port unique per connection = mỗi event unique nếu không normalize.
+      # Note: source client IP lost trong _msg nhưng vẫn có ở structured
+      # field .host_ip (server ingest) — nếu cần forensic source IP cho DDoS
+      # analysis, extract vào structured field riêng ở transform sau (defer).
+      # Không dùng backreference vì Vector interpolates env var ở config
+      # load time — escape phức tạp, trade-off không đáng cho dedup use case.
+      msg = replace(msg, r'\b(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}\b', "<CONN>")
+
       # WordPress request query ID (postmeta / option_id / user_id numeric > 6 digits).
       # Giữ số nhỏ (HTTP status, port) để không mất context.
       msg = replace(msg, r'\b\d{7,}\b', "<BIGINT>")

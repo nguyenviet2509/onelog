@@ -620,15 +620,20 @@ transforms:
       - .host
       - .service
       - ._msg
-    # Shorter window (5s) + tighter max_events (20k) than initial 10s/100k
-    # design: VL branch = FULL firehose (13k events/s post fleet-rollout),
-    # 10s × 100k accumulator OOM'd Vector at mem_limit=512M (exitCode=137
-    # crash loop @ 22:03-22:05 UTC 2026-08-31). Reduced accumulator +
-    # bumped compose mem_limit 512m → 1g for headroom. Apache-error spam
-    # case (nethost-3011 = identical msg) collapses to 1 buffer entry
-    # regardless of window — dedup effectiveness preserved.
-    expire_after_ms: 5000
-    max_events: 20000
+    # Tuning history:
+    # - v1 (100k/10s @ 512m mem): OOM crash loop, exitCode=137 @ 22:03 UTC.
+    # - v2 (20k/5s @ 1g mem): stable but dedup 1.07x — buffer overflow
+    #   ~4x/window at 15k events/s ingest, không đủ time-in-buffer để
+    #   accumulate duplicates.
+    # - v3 (50k/10s @ 1g mem, current): mem headroom sau bump 1g comfortably
+    #   handle 50k entries; longer window cho apache-error spam (nethost-3011
+    #   split() deprecated case) đủ time collapse per key. Ước tính 3-5x
+    #   dedup steady-state.
+    # Nếu dedup ratio vẫn < 3x → escalate Option B: split hot-service filter
+    # (apache-error, php-domain-error, lsws-*) vào reduce dedicated riêng
+    # (isolate cardinality khỏi diverse services).
+    expire_after_ms: 10000
+    max_events: 50000
     merge_strategies:
       dedup_count: sum
 

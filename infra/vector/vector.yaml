@@ -600,13 +600,39 @@ transforms:
     merge_strategies:
       dedup_count: sum
 
+  # VL branch dedup — parallel với reduce_dupes ở NATS branch. Group cùng
+  # (host, service, _msg) trong window 10s → collapse identical spam
+  # (nethost-3011 apache-error PHP Deprecated split() case: 3M identical
+  # events / 5min = 91% toàn pipeline). Redact upstream đã normalize BIGINT,
+  # IP high-cardinality tokens → dedup ratio kỳ vọng cao.
+  # `dedup_count: sum` preserve accurate volume cho audit/forensic — ops query
+  # dùng `stats sum(dedup_count)` thay `count()` để lấy true event count.
+  # Group thêm .service (so với NATS chỉ .host + ._msg) vì VL branch mixed
+  # nhiều service pattern rộng hơn, tách theo service tránh false-merge.
+  # `inputs: [reclassify_severity]` (không phải redact) → VL nhận severity đã
+  # sửa từ imfile misclass (bonus fix cho query `severity:err` trên VL).
+  # max_events cap chống unbounded accumulator khi cardinality cao.
+  # Refs: docs/journals/2026-08-25-onelog-nats-disk-root-cause-and-vector-reclassify.md
+  vl_reduce_dupes:
+    type: reduce
+    inputs: [reclassify_severity]
+    group_by:
+      - .host
+      - .service
+      - ._msg
+    expire_after_ms: 10000
+    max_events: 100000
+    merge_strategies:
+      dedup_count: sum
+
 sinks:
   victorialogs:
     type: elasticsearch
-    # redact = single sanitized entry point — all pipelines (syslog, docker_logs,
-    # cost events, exec probes) route through redact for uniform secret scrub +
-    # structured field denylist. Never route a raw pipeline directly to sink.
-    inputs: [redact]
+    # vl_reduce_dupes = dedup collapse identical events per (host,service,_msg)
+    # trong 10s window. Upstream chain: sources → enrich → redact →
+    # reclassify_severity → vl_reduce_dupes. Redact + severity fix vẫn áp đủ
+    # trước dedup.
+    inputs: [vl_reduce_dupes]
     endpoints:
       - http://victorialogs:9428/insert/elasticsearch/
     mode: bulk

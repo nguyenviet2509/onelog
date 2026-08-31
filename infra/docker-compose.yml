@@ -70,10 +70,13 @@ services:
     # in-memory buffer on SIGTERM (Red Team #4). Without this, restart drops
     # up to 30s of aggregated events on the NATS branch.
     stop_grace_period: 40s
-    # Hard cap on reduce_dupes buffer + normal pipeline memory. 512m allows
-    # 10k accumulator entries × per-event overhead + reasonable headroom.
-    mem_limit: 512m
-    mem_reservation: 256m
+    # Hard cap on reduce buffers (NATS reduce_dupes 10k + VL vl_reduce_dupes
+    # 20k accumulator entries) + normal pipeline memory. Bumped 512m → 1g
+    # after vl_reduce_dupes added: VL branch = full firehose ~7x NATS branch
+    # volume (post fleet 77-host rollout 2026-08-31), 512m OOM crash loop.
+    # 1g holds 30k combined entries with headroom.
+    mem_limit: 1g
+    mem_reservation: 512m
     ports:
       - "514:514/udp"           # syslog UDP (RFC3164) from servers
       - "6514:6514/tcp"         # syslog TCP (RFC5424) optional

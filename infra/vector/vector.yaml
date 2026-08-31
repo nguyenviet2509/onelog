@@ -620,8 +620,15 @@ transforms:
       - .host
       - .service
       - ._msg
-    expire_after_ms: 10000
-    max_events: 100000
+    # Shorter window (5s) + tighter max_events (20k) than initial 10s/100k
+    # design: VL branch = FULL firehose (13k events/s post fleet-rollout),
+    # 10s × 100k accumulator OOM'd Vector at mem_limit=512M (exitCode=137
+    # crash loop @ 22:03-22:05 UTC 2026-08-31). Reduced accumulator +
+    # bumped compose mem_limit 512m → 1g for headroom. Apache-error spam
+    # case (nethost-3011 = identical msg) collapses to 1 buffer entry
+    # regardless of window — dedup effectiveness preserved.
+    expire_after_ms: 5000
+    max_events: 20000
     merge_strategies:
       dedup_count: sum
 

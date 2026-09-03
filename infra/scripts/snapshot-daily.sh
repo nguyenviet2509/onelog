@@ -83,6 +83,14 @@ else
   COLLECTIONS=$(printf '%s' "$COLS_JSON" | tr ',' '\n' | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' || true)
 fi
 
+# Track fresh snapshots (col:name pairs) created trong run này. Sau khi archive
+# tạo xong (line ~190), snapshots CŨ được prune, chỉ giữ 1 mới nhất per collection.
+# Rationale: mỗi run tạo snapshot ~2.4GB × 30d retention = 72GB tích lũy → OOM disk
+# (incident 2026-09-03). S3 archive đã bundle snapshot → local Qdrant snapshot cũ
+# = redundancy dư thừa. Rolling 1 local đủ cho fast-recovery (<1 min curl restore)
+# without cần age key + S3 network như restore từ archive.
+QDRANT_FRESH_SNAPS=""
+
 if [[ -n "${COLLECTIONS:-}" ]]; then
   mkdir -p "$STAGE/qdrant"
   while IFS= read -r col; do
@@ -100,9 +108,37 @@ if [[ -n "${COLLECTIONS:-}" ]]; then
       curl -fsS -H "api-key: ${QDRANT_API_KEY:-}" \
         "$QDRANT_URL/collections/$col/snapshots/$SNAP" \
         -o "$STAGE/qdrant/$col/$SNAP"
+      QDRANT_FRESH_SNAPS+="${col}|${SNAP}"$'\n'
     fi
   done <<< "$COLLECTIONS"
 fi
+
+# Prune helper: gọi sau khi archive tạo thành công. Rolling replace — giữ snapshot
+# mới nhất per collection (thứ vừa bundle vào archive), xóa mọi cái cũ hơn.
+qdrant_prune_old_snapshots() {
+  [[ -z "$QDRANT_FRESH_SNAPS" ]] && return 0
+  echo "[snapshot] qdrant prune old snapshots (keep newest per collection)"
+  local col keep_snap all_snaps snap
+  while IFS='|' read -r col keep_snap; do
+    [[ -z "$col" || -z "$keep_snap" ]] && continue
+    if command -v jq >/dev/null 2>&1; then
+      all_snaps=$(curl -fsS -H "api-key: ${QDRANT_API_KEY:-}" \
+        "$QDRANT_URL/collections/$col/snapshots" \
+        | jq -r '.result[].name' 2>/dev/null || true)
+    else
+      all_snaps=$(curl -fsS -H "api-key: ${QDRANT_API_KEY:-}" \
+        "$QDRANT_URL/collections/$col/snapshots" \
+        | tr ',' '\n' | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' || true)
+    fi
+    while IFS= read -r snap; do
+      [[ -z "$snap" || "$snap" == "$keep_snap" ]] && continue
+      echo "  del: $col/$snap"
+      curl -fsS -X DELETE -H "api-key: ${QDRANT_API_KEY:-}" \
+        "$QDRANT_URL/collections/$col/snapshots/$snap" >/dev/null 2>&1 || \
+        echo "  warn: delete failed for $col/$snap"
+    done <<< "$all_snaps"
+  done <<< "$QDRANT_FRESH_SNAPS"
+}
 
 # --- 3. VictoriaLogs data dir (filesystem copy) ---
 # Single-node VL has no snapshot API; hot copy is best-effort. Nightly 02:00 is
@@ -188,6 +224,11 @@ if ! command -v age >/dev/null 2>&1; then
 fi
 tar -C "$STAGE" -czf - . | age -R "$AGE_PUB" -o "$ARCHIVE"
 echo "[snapshot] wrote $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
+
+# Archive tạo xong → snapshot cũ trong Qdrant an toàn để prune. S3 upload có
+# thể fail phía dưới, nhưng archive local đã capture snapshot mới. Fast-recovery
+# path (rolling 1 snapshot per collection) preserved regardless of S3 outcome.
+qdrant_prune_old_snapshots
 
 # --- S3 offsite push (optional) ---
 # Config via infra/.env:

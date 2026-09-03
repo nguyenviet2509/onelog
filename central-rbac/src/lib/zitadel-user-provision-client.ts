@@ -15,13 +15,25 @@ import { ZitadelHttpError } from './zitadel-http-error.js';
 import { logger } from './logger.js';
 import { searchUsers } from './zitadel-user-search-client.js';
 
+export type ProvisionMode = 'setup_later' | 'invite_email' | 'set_password';
+
 export interface CreateHumanUserInput {
   email: string;
   firstName: string;
   lastName: string;
   displayName?: string;
   orgId: string;
-  /** true → Zitadel emails a set-password link. false → creator supplies password out-of-band. */
+  /**
+   * Phase 03: matches Zitadel Console 3-mode create-user form.
+   *   setup_later  — Zitadel state `initial`, no email, admin invites later
+   *   invite_email — Zitadel sends verify + set-password link (needs SMTP config)
+   *   set_password — admin supplies initial password; changeRequired forces rotation
+   */
+  mode?: ProvisionMode;
+  /** Required when mode === 'set_password'. Zitadel enforces its complexity policy. */
+  password?: string;
+  passwordChangeRequired?: boolean;
+  /** Legacy Phase 02 flag — treated as mode='invite_email' when true, 'setup_later' when false. */
   sendInviteEmail?: boolean;
   preferredLanguage?: string;
 }
@@ -42,6 +54,22 @@ export interface CreateHumanUserResult {
  * out of credential storage.
  */
 export async function createHumanUser(input: CreateHumanUserInput): Promise<CreateHumanUserResult> {
+  // Resolve effective mode: explicit `mode` wins, else derive from legacy sendInviteEmail flag.
+  const mode: ProvisionMode =
+    input.mode ?? (input.sendInviteEmail === false ? 'setup_later' : 'invite_email');
+
+  const emailBlock: Record<string, unknown> = { email: input.email };
+  if (mode === 'invite_email') {
+    emailBlock['sendCode'] = {};
+  } else if (mode === 'set_password') {
+    // With admin-supplied password we don't need Zitadel to send a verify link;
+    // treat the email as verified so the user can log in immediately.
+    emailBlock['isVerified'] = true;
+  } else {
+    // setup_later: user sits in `initial` state, no email sent
+    emailBlock['isVerified'] = false;
+  }
+
   const body: Record<string, unknown> = {
     username: input.email,
     organization: { orgId: input.orgId },
@@ -51,14 +79,16 @@ export async function createHumanUser(input: CreateHumanUserInput): Promise<Crea
       displayName: input.displayName ?? `${input.firstName} ${input.lastName}`.trim(),
       preferredLanguage: input.preferredLanguage ?? 'vi',
     },
-    email: {
-      email: input.email,
-      // sendCode kicks off the built-in verification + set-password flow.
-      // Omit → user is created with `state: initial` but no email sent; admin
-      // must supply password some other way (not recommended).
-      ...(input.sendInviteEmail !== false ? { sendCode: {} } : { isVerified: false }),
-    },
+    email: emailBlock,
   };
+
+  if (mode === 'set_password') {
+    if (!input.password) throw new Error('createHumanUser: password required when mode=set_password');
+    body['password'] = {
+      password: input.password,
+      changeRequired: input.passwordChangeRequired ?? true,
+    };
+  }
 
   const res = await mgmtPost('/v2/users/human', input.orgId, body);
 

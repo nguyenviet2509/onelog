@@ -40,6 +40,14 @@ export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: 'org_id required (ZITADEL_ORG_ID not set as default)' });
     }
 
+    // Guard: invite_email mode is disabled until Zitadel SMTP is wired for INET
+    // (see plan 260903-...). Reject with a clear message rather than silent fail.
+    if (body.mode === 'invite_email' && !config.ZITADEL_SMTP_ENABLED) {
+      return reply.status(400).send({
+        error: 'SMTP chưa cấu hình — chọn mode "set_password" hoặc "setup_later"',
+      });
+    }
+
     try {
       const result = await createHumanUser({
         email: body.email,
@@ -47,7 +55,9 @@ export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
         lastName: body.last_name,
         displayName: body.display_name,
         orgId,
-        sendInviteEmail: body.send_invite,
+        mode: body.mode,
+        password: body.password,
+        passwordChangeRequired: body.password_change_required,
         preferredLanguage: body.preferred_language,
       });
 
@@ -58,7 +68,7 @@ export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
         after_state: {
           email: body.email,
           org_id: orgId,
-          send_invite: body.send_invite,
+          mode: body.mode,
           already_existed: result.alreadyExisted,
         },
       });

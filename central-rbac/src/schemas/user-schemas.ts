@@ -14,19 +14,38 @@ export const userIdParamSchema = z.object({
   id: z.string().min(1).max(128),
 });
 
-// ── Phase 02 — user provision ────────────────────────────────────────────────
+// ── Phase 02 / 03 — user provision ───────────────────────────────────────────
 
-export const createUserBodySchema = z.object({
-  email: z.string().email().max(200),
-  first_name: z.string().min(1).max(100),
-  last_name: z.string().min(1).max(100),
-  display_name: z.string().max(200).optional(),
-  /** Optional — falls back to env ZITADEL_ORG_ID if unset. Admin can target another org. */
-  org_id: z.string().max(64).optional(),
-  /** default true → Zitadel emails set-password link */
-  send_invite: z.boolean().default(true),
-  preferred_language: z.string().max(10).optional(),
-});
+/**
+ * Provision mode — matches Zitadel Console's 3-radio create-user form.
+ *   setup_later  — user in `initial` state, no email, admin invites manually
+ *   invite_email — Zitadel sends verification + set-password link (needs SMTP)
+ *   set_password — admin picks initial password; user forced to change on 1st login
+ * Default is `set_password` because Zitadel SMTP is not yet configured for INET.
+ */
+export const provisionModeSchema = z.enum(['setup_later', 'invite_email', 'set_password']);
+export type ProvisionMode = z.infer<typeof provisionModeSchema>;
+
+export const createUserBodySchema = z
+  .object({
+    email: z.string().email().max(200),
+    first_name: z.string().min(1).max(100),
+    last_name: z.string().min(1).max(100),
+    display_name: z.string().max(200).optional(),
+    org_id: z.string().max(64).optional(),
+    mode: provisionModeSchema.default('set_password'),
+    /** Required when mode === 'set_password'. Zitadel enforces complexity policy. */
+    password: z.string().min(1).max(200).optional(),
+    /** default true — user must rotate the admin-set password on first login */
+    password_change_required: z.boolean().default(true),
+    preferred_language: z.string().max(10).optional(),
+    /** Legacy Phase 02 field — kept for backwards compat, ignored when `mode` set. */
+    send_invite: z.boolean().optional(),
+  })
+  .refine((v) => v.mode !== 'set_password' || !!v.password, {
+    message: 'password required when mode = set_password',
+    path: ['password'],
+  });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type UserIdParam = z.infer<typeof userIdParamSchema>;

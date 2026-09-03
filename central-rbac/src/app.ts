@@ -25,6 +25,7 @@ import { metricsRoutes } from './routes/metrics.js';
 import { ensureAssertionFlags } from './lib/zitadel-oidc-app-client.js';
 import { userRoutes } from './routes/users.js';
 import { userProvisionRoutes } from './routes/user-provision.js';
+import { userProvisionConfigRoutes } from './routes/user-provision-config.js';
 import { projectRoutes } from './routes/projects.js';
 import { adminAppsRoutes } from './routes/admin-apps.js';
 import { adminAppsSyncManifestRoutes } from './routes/admin-apps-sync-manifest.js';
@@ -132,6 +133,7 @@ export async function buildApp() {
   // Phase 5 routes — UI proxy endpoints
   await app.register(userRoutes);
   await app.register(userProvisionRoutes);
+  await app.register(userProvisionConfigRoutes);
   await app.register(projectRoutes);
 
   // Phase 07 routes — admin single-pane wizard

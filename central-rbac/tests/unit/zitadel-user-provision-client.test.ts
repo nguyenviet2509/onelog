@@ -106,6 +106,89 @@ describe('createHumanUser', () => {
     expect((body as { email: Record<string, unknown> }).email.sendCode).toBeUndefined();
     expect((body as { email: { isVerified?: boolean } }).email.isVerified).toBe(false);
   });
+
+  // ── Phase 03: 3-mode provisioning ──────────────────────────────────────────
+
+  it('mode=setup_later → email.isVerified=false, no sendCode, no password', async () => {
+    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-later' }));
+    await createHumanUser({
+      email: 'later@example.com',
+      firstName: 'L',
+      lastName: 'A',
+      orgId: ORG,
+      mode: 'setup_later',
+    });
+    const [, , body] = mockMgmtPost.mock.calls[0]! as [unknown, unknown, { email: Record<string, unknown>; password?: unknown }];
+    expect(body.email['isVerified']).toBe(false);
+    expect(body.email['sendCode']).toBeUndefined();
+    expect(body.password).toBeUndefined();
+  });
+
+  it('mode=invite_email → email.sendCode set, no password', async () => {
+    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-inv' }));
+    await createHumanUser({
+      email: 'inv@example.com',
+      firstName: 'I',
+      lastName: 'V',
+      orgId: ORG,
+      mode: 'invite_email',
+    });
+    const [, , body] = mockMgmtPost.mock.calls[0]! as [unknown, unknown, { email: Record<string, unknown>; password?: unknown }];
+    expect(body.email['sendCode']).toEqual({});
+    expect(body.password).toBeUndefined();
+  });
+
+  it('mode=set_password → email.isVerified=true, password.changeRequired=true', async () => {
+    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-pwd' }));
+    await createHumanUser({
+      email: 'pwd@example.com',
+      firstName: 'P',
+      lastName: 'W',
+      orgId: ORG,
+      mode: 'set_password',
+      password: 'S3cure!Passphrase',
+    });
+    const [, , body] = mockMgmtPost.mock.calls[0]! as [
+      unknown,
+      unknown,
+      { email: Record<string, unknown>; password: { password: string; changeRequired: boolean } },
+    ];
+    expect(body.email['isVerified']).toBe(true);
+    expect(body.password.password).toBe('S3cure!Passphrase');
+    expect(body.password.changeRequired).toBe(true);
+  });
+
+  it('mode=set_password without password → throws (guard, never reaches Zitadel)', async () => {
+    await expect(
+      createHumanUser({
+        email: 'nopw@example.com',
+        firstName: 'N',
+        lastName: 'P',
+        orgId: ORG,
+        mode: 'set_password',
+      }),
+    ).rejects.toThrow(/password required/);
+    expect(mockMgmtPost).not.toHaveBeenCalled();
+  });
+
+  it('mode=set_password respects passwordChangeRequired=false override', async () => {
+    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-noforce' }));
+    await createHumanUser({
+      email: 'noforce@example.com',
+      firstName: 'N',
+      lastName: 'F',
+      orgId: ORG,
+      mode: 'set_password',
+      password: 'AnotherStrong1!',
+      passwordChangeRequired: false,
+    });
+    const [, , body] = mockMgmtPost.mock.calls[0]! as [
+      unknown,
+      unknown,
+      { password: { changeRequired: boolean } },
+    ];
+    expect(body.password.changeRequired).toBe(false);
+  });
 });
 
 describe('deactivateUser', () => {

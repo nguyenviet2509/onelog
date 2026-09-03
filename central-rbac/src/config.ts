@@ -79,6 +79,14 @@ const envSchema = z.object({
     .string()
     .transform((v) => v.toLowerCase() === 'true')
     .default('false'),
+
+  // Phase 03 create-user flow gate. When false, invite_email mode is rejected
+  // with a clear error instead of silently dropping mail. Set to true once the
+  // Zitadel SMTP Provider is configured (Instance Settings → Notifications).
+  ZITADEL_SMTP_ENABLED: z
+    .string()
+    .transform((v) => v.toLowerCase() === 'true')
+    .default('false'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

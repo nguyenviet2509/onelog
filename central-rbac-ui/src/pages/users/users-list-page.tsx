@@ -13,6 +13,7 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { debounce } from '@/lib/utils';
 import { UserDetailDrawer } from './user-detail-drawer';
 import { BulkAssignDialog } from './bulk-assign-dialog';
+import { BulkDeleteUsersDialog } from './bulk-delete-users-dialog';
 import { CreateUserDialog } from './create-user-dialog';
 import type { ZitadelUser } from '@/lib/types';
 
@@ -24,6 +25,7 @@ export function UsersListPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const { data: users = [], isLoading, error, refetch } = useUsersQuery(debouncedQ);
@@ -128,9 +130,18 @@ export function UsersListPage() {
 
         <div className="flex items-center gap-2">
           {canWrite() && selectedRows.size > 0 && (
-            <Button onClick={() => setBulkOpen(true)} size="sm">
-              Cấp quyền hàng loạt ({selectedRows.size})
-            </Button>
+            <>
+              <Button onClick={() => setBulkOpen(true)} size="sm">
+                Cấp quyền hàng loạt ({selectedRows.size})
+              </Button>
+              <Button
+                onClick={() => setBulkDeleteOpen(true)}
+                size="sm"
+                variant="destructive"
+              >
+                Xoá ({selectedRows.size})
+              </Button>
+            </>
           )}
           {canWrite() && (
             <Button onClick={() => setCreateOpen(true)} size="sm" variant="outline">
@@ -177,6 +188,13 @@ export function UsersListPage() {
         open={bulkOpen}
         onOpenChange={setBulkOpen}
         selectedUsers={selectedUserObjects}
+      />
+
+      <BulkDeleteUsersDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        selectedUsers={selectedUserObjects}
+        onDone={() => setSelectedRows(new Set())}
       />
 
       <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />

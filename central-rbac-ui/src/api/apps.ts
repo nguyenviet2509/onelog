@@ -87,3 +87,7 @@ export async function applyManifestDiff(
 export async function updateManifestUrl(appId: string, manifestUrl: string): Promise<void> {
   await apiClient.patch(`/admin/apps/${appId}/manifest-url`, { manifest_url: manifestUrl });
 }
+
+export async function deleteApp(appId: string): Promise<void> {
+  await apiClient.delete(`/admin/apps/${appId}`);
+}

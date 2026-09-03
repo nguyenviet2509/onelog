@@ -10,7 +10,7 @@
  * layer handles headers). Callers must have `rbac.admin` — enforced at
  * the route boundary, not here.
  */
-import { mgmtPost } from './zitadel-http.js';
+import { mgmtPost, mgmtDelete } from './zitadel-http.js';
 import { ZitadelHttpError } from './zitadel-http-error.js';
 import { logger } from './logger.js';
 import { searchUsers } from './zitadel-user-search-client.js';
@@ -136,4 +136,21 @@ export async function reactivateUser(userId: string, orgId: string): Promise<voi
     throw new ZitadelHttpError(res.status, `Zitadel reactivateUser error: HTTP ${res.status} ${body.slice(0, 200)}`);
   }
   logger.info({ user_id: userId }, 'zitadel-user-provision: reactivated');
+}
+
+/**
+ * Hard delete user in Zitadel. Zitadel cascades: removes user's project grants
+ * + sessions + PATs. Idempotent on 404 (already gone).
+ */
+export async function deleteUser(userId: string, orgId: string): Promise<void> {
+  const res = await mgmtDelete(`/v2/users/${encodeURIComponent(userId)}`, orgId);
+  if (res.status === 404) {
+    logger.info({ user_id: userId }, 'zitadel-user-provision: delete 404 — already gone');
+    return;
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new ZitadelHttpError(res.status, `Zitadel deleteUser error: HTTP ${res.status} ${body.slice(0, 200)}`);
+  }
+  logger.info({ user_id: userId }, 'zitadel-user-provision: deleted');
 }

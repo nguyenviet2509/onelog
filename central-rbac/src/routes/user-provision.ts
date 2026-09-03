@@ -19,6 +19,7 @@ import {
   createHumanUser,
   deactivateUser,
   reactivateUser,
+  deleteUser,
 } from '../lib/zitadel-user-provision-client.js';
 import { createUserBodySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { config } from '../config.js';
@@ -107,6 +108,31 @@ export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, user_id: params.data.id }, 'user-provision: deactivate failed');
       return reply.status(502).send({ error: 'Failed to deactivate user', detail: msg });
+    }
+  });
+
+  // DELETE /v1/users/:id — hard delete user in Zitadel (cascades grants + sessions)
+  app.delete('/v1/users/:id', adminGate, async (request, reply) => {
+    const params = userIdParamSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'Invalid user id' });
+
+    const rawBody = (request.body ?? {}) as { org_id?: string };
+    const orgId = rawBody.org_id ?? config.ZITADEL_ORG_ID;
+    if (!orgId) return reply.status(400).send({ error: 'org_id required' });
+
+    try {
+      await deleteUser(params.data.id, orgId);
+      await writeAuditLog(request, {
+        action: 'user.delete',
+        target_type: 'user',
+        target_id: params.data.id,
+        before_state: { org_id: orgId },
+      });
+      return reply.send({ id: params.data.id, deleted: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, user_id: params.data.id }, 'user-provision: delete failed');
+      return reply.status(502).send({ error: 'Failed to delete user', detail: msg });
     }
   });
 

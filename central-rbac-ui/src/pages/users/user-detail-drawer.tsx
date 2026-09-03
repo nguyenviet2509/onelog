@@ -18,6 +18,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
   useDeactivateUserMutation,
   useReactivateUserMutation,
+  useDeleteUserMutation,
 } from '@/hooks/use-user-provision-mutation';
 import type { Grant } from '@/lib/types';
 
@@ -36,6 +37,7 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
   const [grantOpen, setGrantOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   // Per-grant checkbox state: grantId → Set<roleKey>
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
 
@@ -43,6 +45,7 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
   const { canWrite } = usePermissions();
   const deactivateMutation = useDeactivateUserMutation();
   const reactivateMutation = useReactivateUserMutation();
+  const deleteMutation = useDeleteUserMutation();
 
   function toggleRole(grantId: string, roleKey: string): void {
     setSelected((prev) => {
@@ -124,6 +127,13 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                           Vô hiệu hoá
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDeleteOpen(true)}
+                      >
+                        Xoá
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -240,6 +250,28 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
               deactivateMutation.mutate(
                 { userId: user.id },
                 { onSuccess: () => setDeactivateOpen(false) },
+              )
+            }
+          />
+          <ConfirmDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            title="Xoá vĩnh viễn người dùng"
+            description={`Người dùng ${user.email} sẽ bị xoá vĩnh viễn khỏi Zitadel: mọi quyền, phiên và token đều bị huỷ. Không thể hoàn tác.`}
+            typeVerify={user.email}
+            typeVerifyLabel={`Nhập email "${user.email}" để xác nhận:`}
+            confirmLabel="Xoá vĩnh viễn"
+            variant="destructive"
+            isLoading={deleteMutation.isPending}
+            onConfirm={() =>
+              deleteMutation.mutate(
+                { userId: user.id },
+                {
+                  onSuccess: () => {
+                    setDeleteOpen(false);
+                    onClose();
+                  },
+                },
               )
             }
           />

@@ -9,6 +9,7 @@ import {
   createUser,
   deactivateUser,
   reactivateUser,
+  deleteUser,
   type CreateUserPayload,
 } from '@/api/user-provision';
 import { toastSuccess, toastError } from '@/lib/toast-bus';
@@ -63,6 +64,22 @@ export function useReactivateUserMutation() {
     },
     onError: (err: AxiosError<ApiError>) => {
       toastError(extractErr(err, 'Không thể kích hoạt lại người dùng'));
+    },
+  });
+}
+
+export function useDeleteUserMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, orgId }: { userId: string; orgId?: string }) =>
+      deleteUser(userId, orgId),
+    onSuccess: (_data, vars) => {
+      toastSuccess('Đã xoá người dùng');
+      void qc.invalidateQueries({ queryKey: ['users'] });
+      void qc.invalidateQueries({ queryKey: ['user-detail', vars.userId] });
+    },
+    onError: (err: AxiosError<ApiError>) => {
+      toastError(extractErr(err, 'Không thể xoá người dùng'));
     },
   });
 }

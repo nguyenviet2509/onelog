@@ -22,6 +22,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { rateLimitAdmin } from '../middleware/rate-limit-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
@@ -298,6 +299,67 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
           ORDER BY created_at DESC`,
       );
       return reply.send({ apps: rows });
+    },
+  );
+
+  // DELETE /v1/admin/apps/:id — remove Zitadel project + rbac.apps row + linked roles
+  // Order: Zitadel remove (source of truth for grants) → DB cleanup → audit.
+  // If Zitadel remove fails: DB untouched, admin can retry. If DB fails after
+  // Zitadel success: orphan roles remain (harmless — roles.app_id ON DELETE SET NULL).
+  app.delete(
+    '/v1/admin/apps/:id',
+    { preHandler: [verifyJwt, requireAdmin] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ id: z.string().uuid() });
+      const parsed = paramsSchema.safeParse(request.params);
+      if (!parsed.success) return reply.status(400).send({ error: 'Invalid app id' });
+      const appId = parsed.data.id;
+
+      const { rows: existing } = await writerPool.query<DbApp>(
+        `SELECT id, slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_at, created_by
+           FROM rbac.apps WHERE id = $1`,
+        [appId],
+      );
+      const app = existing[0];
+      if (!app) return reply.status(404).send({ error: 'App not found' });
+
+      if (app.zitadel_project_id) {
+        try {
+          await removeProject(app.zitadel_project_id);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error({ err: msg, app_id: appId, project_id: app.zitadel_project_id }, 'admin-apps: RemoveProject failed');
+          return reply.status(502).send({ error: 'Zitadel RemoveProject failed', detail: msg });
+        }
+      }
+
+      const client = await writerPool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`DELETE FROM rbac.roles WHERE app_id = $1`, [appId]);
+        await client.query(`DELETE FROM rbac.apps  WHERE id = $1`, [appId]);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err: msg, app_id: appId }, 'admin-apps: DB delete failed');
+        return reply.status(500).send({ error: 'DB delete failed', detail: msg });
+      } finally {
+        client.release();
+      }
+
+      await writeAuditLog(request, {
+        action: 'app.delete',
+        target_type: 'app',
+        target_id: appId,
+        before_state: {
+          slug: app.slug,
+          name: app.name,
+          zitadel_project_id: app.zitadel_project_id,
+        },
+      });
+
+      return reply.send({ id: appId, deleted: true });
     },
   );
 }

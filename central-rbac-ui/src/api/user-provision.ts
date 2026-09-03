@@ -59,3 +59,7 @@ export async function deactivateUser(userId: string, orgId?: string): Promise<vo
 export async function reactivateUser(userId: string, orgId?: string): Promise<void> {
   await apiClient.post(`/users/${userId}/reactivate`, orgId ? { org_id: orgId } : {});
 }
+
+export async function deleteUser(userId: string, orgId?: string): Promise<void> {
+  await apiClient.delete(`/users/${userId}`, orgId ? { data: { org_id: orgId } } : undefined);
+}

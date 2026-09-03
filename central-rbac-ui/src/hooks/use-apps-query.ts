@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   applyManifestDiff,
   createApp,
+  deleteApp,
   listApps,
   syncManifest,
   updateManifestUrl,
@@ -50,6 +51,16 @@ export function useUpdateManifestUrlMutation() {
   return useMutation({
     mutationFn: (input: { appId: string; manifestUrl: string }) =>
       updateManifestUrl(input.appId, input.manifestUrl),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: APPS_KEY });
+    },
+  });
+}
+
+export function useDeleteAppMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (appId: string) => deleteApp(appId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: APPS_KEY });
     },

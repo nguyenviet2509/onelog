@@ -20,7 +20,9 @@ import { assignmentRoutes } from './routes/assignments.js';
 import { driftRoutes } from './routes/drift.js';
 import { permissionsLookupRoutes } from './routes/permissions-lookup.js';
 import { outboxAdminRoutes } from './routes/outbox-admin.js';
+import { adminOidcConfigRoutes } from './routes/admin-oidc-config.js';
 import { metricsRoutes } from './routes/metrics.js';
+import { ensureAssertionFlags } from './lib/zitadel-oidc-app-client.js';
 import { userRoutes } from './routes/users.js';
 import { projectRoutes } from './routes/projects.js';
 import { adminAppsRoutes } from './routes/admin-apps.js';
@@ -137,6 +139,9 @@ export async function buildApp() {
   await app.register(adminAppsSyncManifestRoutes);
   await app.register(wellKnownManifestSchemaRoutes);
 
+  // Retrofit endpoint for legacy OIDC apps missing assertion flags (bug 2026-08-27)
+  await app.register(adminOidcConfigRoutes);
+
   return app;
 }
 
@@ -169,6 +174,28 @@ async function main() {
     logger.fatal({ err }, 'failed to start server');
     process.exit(1);
   }
+
+  // Self-heal: ensure central-rbac's own OIDC client (bootstrapped by hand,
+  // before the wizard existed) has the 3 assertion flags set. Idempotent.
+  // Non-blocking — log-only on failure; the auth flow keeps working degraded.
+  ensureAssertionFlags(config.ZITADEL_PROJECT_ID)
+    .then((r) => {
+      if (r.updated.length > 0) {
+        logger.info(
+          { project_id: r.projectId, updated: r.updated, skipped: r.skipped.length },
+          'STARTUP: OIDC assertion flags patched on central-rbac project',
+        );
+      } else {
+        logger.info(
+          { project_id: r.projectId, skipped: r.skipped.length },
+          'STARTUP: OIDC assertion flags already conformant',
+        );
+      }
+    })
+    .catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: msg }, 'STARTUP: OIDC assertion flag self-heal skipped');
+    });
 
   // Start outbox worker after server is bound (OUTBOX_WORKER_ENABLED=true by default)
   startOutboxWorker();

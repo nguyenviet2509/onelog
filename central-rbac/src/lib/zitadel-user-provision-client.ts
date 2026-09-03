@@ -15,7 +15,7 @@ import { ZitadelHttpError } from './zitadel-http-error.js';
 import { logger } from './logger.js';
 import { searchUsers } from './zitadel-user-search-client.js';
 
-export type ProvisionMode = 'setup_later' | 'invite_email' | 'set_password';
+export type ProvisionMode = 'invite_email' | 'set_password';
 
 export interface CreateHumanUserInput {
   email: string;
@@ -24,8 +24,7 @@ export interface CreateHumanUserInput {
   displayName?: string;
   orgId: string;
   /**
-   * Phase 03: matches Zitadel Console 3-mode create-user form.
-   *   setup_later  — Zitadel state `initial`, no email, admin invites later
+   * Phase 03: matches Zitadel Console create-user form (2 modes).
    *   invite_email — Zitadel sends verify + set-password link (needs SMTP config)
    *   set_password — admin supplies initial password; changeRequired forces rotation
    */
@@ -33,8 +32,6 @@ export interface CreateHumanUserInput {
   /** Required when mode === 'set_password'. Zitadel enforces its complexity policy. */
   password?: string;
   passwordChangeRequired?: boolean;
-  /** Legacy Phase 02 flag — treated as mode='invite_email' when true, 'setup_later' when false. */
-  sendInviteEmail?: boolean;
   preferredLanguage?: string;
 }
 
@@ -54,20 +51,15 @@ export interface CreateHumanUserResult {
  * out of credential storage.
  */
 export async function createHumanUser(input: CreateHumanUserInput): Promise<CreateHumanUserResult> {
-  // Resolve effective mode: explicit `mode` wins, else derive from legacy sendInviteEmail flag.
-  const mode: ProvisionMode =
-    input.mode ?? (input.sendInviteEmail === false ? 'setup_later' : 'invite_email');
+  const mode: ProvisionMode = input.mode ?? 'invite_email';
 
   const emailBlock: Record<string, unknown> = { email: input.email };
   if (mode === 'invite_email') {
     emailBlock['sendCode'] = {};
-  } else if (mode === 'set_password') {
-    // With admin-supplied password we don't need Zitadel to send a verify link;
-    // treat the email as verified so the user can log in immediately.
-    emailBlock['isVerified'] = true;
   } else {
-    // setup_later: user sits in `initial` state, no email sent
-    emailBlock['isVerified'] = false;
+    // set_password — with admin-supplied password we don't need Zitadel to send
+    // a verify link; treat the email as verified so the user can log in immediately.
+    emailBlock['isVerified'] = true;
   }
 
   const body: Record<string, unknown> = {

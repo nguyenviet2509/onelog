@@ -17,13 +17,13 @@ export const userIdParamSchema = z.object({
 // ── Phase 02 / 03 — user provision ───────────────────────────────────────────
 
 /**
- * Provision mode — matches Zitadel Console's 3-radio create-user form.
- *   setup_later  — user in `initial` state, no email, admin invites manually
+ * Provision mode — matches Zitadel Console's create-user form (subset).
  *   invite_email — Zitadel sends verification + set-password link (needs SMTP)
  *   set_password — admin picks initial password; user forced to change on 1st login
  * Default is `set_password` because Zitadel SMTP is not yet configured for INET.
+ * `setup_later` was dropped 2026-09-03 — admin never used it in practice.
  */
-export const provisionModeSchema = z.enum(['setup_later', 'invite_email', 'set_password']);
+export const provisionModeSchema = z.enum(['invite_email', 'set_password']);
 export type ProvisionMode = z.infer<typeof provisionModeSchema>;
 
 export const createUserBodySchema = z
@@ -39,8 +39,6 @@ export const createUserBodySchema = z
     /** default true — user must rotate the admin-set password on first login */
     password_change_required: z.boolean().default(true),
     preferred_language: z.string().max(10).optional(),
-    /** Legacy Phase 02 field — kept for backwards compat, ignored when `mode` set. */
-    send_invite: z.boolean().optional(),
   })
   .refine((v) => v.mode !== 'set_password' || !!v.password, {
     message: 'password required when mode = set_password',

@@ -9,7 +9,7 @@
  */
 import { apiClient } from './client';
 
-export type ProvisionMode = 'setup_later' | 'invite_email' | 'set_password';
+export type ProvisionMode = 'invite_email' | 'set_password';
 
 export interface CreateUserPayload {
   email: string;

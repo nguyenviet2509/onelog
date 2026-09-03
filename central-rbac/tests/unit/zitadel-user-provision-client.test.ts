@@ -91,38 +91,7 @@ describe('createHumanUser', () => {
     ).rejects.toThrow(/HTTP 500/);
   });
 
-  it('sendInviteEmail=false omits sendCode block — admin supplies password out-of-band', async () => {
-    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'user-no-invite' }));
-
-    await createHumanUser({
-      email: 'silent@example.com',
-      firstName: 'S',
-      lastName: 'N',
-      orgId: ORG,
-      sendInviteEmail: false,
-    });
-
-    const [, , body] = mockMgmtPost.mock.calls[0]!;
-    expect((body as { email: Record<string, unknown> }).email.sendCode).toBeUndefined();
-    expect((body as { email: { isVerified?: boolean } }).email.isVerified).toBe(false);
-  });
-
-  // ── Phase 03: 3-mode provisioning ──────────────────────────────────────────
-
-  it('mode=setup_later → email.isVerified=false, no sendCode, no password', async () => {
-    mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-later' }));
-    await createHumanUser({
-      email: 'later@example.com',
-      firstName: 'L',
-      lastName: 'A',
-      orgId: ORG,
-      mode: 'setup_later',
-    });
-    const [, , body] = mockMgmtPost.mock.calls[0]! as [unknown, unknown, { email: Record<string, unknown>; password?: unknown }];
-    expect(body.email['isVerified']).toBe(false);
-    expect(body.email['sendCode']).toBeUndefined();
-    expect(body.password).toBeUndefined();
-  });
+  // ── Phase 03: 2-mode provisioning (setup_later dropped 2026-09-03) ─────────
 
   it('mode=invite_email → email.sendCode set, no password', async () => {
     mockMgmtPost.mockResolvedValueOnce(ok({ userId: 'u-inv' }));

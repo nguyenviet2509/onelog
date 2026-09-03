@@ -101,7 +101,6 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
   }
 
   const modeDescription = {
-    setup_later: 'User được tạo ở trạng thái chờ. Admin cấp mật khẩu hoặc gửi invite thủ công sau.',
     invite_email: smtpEnabled
       ? 'Zitadel gửi email chứa link xác thực + đặt mật khẩu tới user.'
       : 'Zitadel SMTP chưa được cấu hình cho INET — tạm thời không dùng được.',
@@ -151,21 +150,6 @@ export function CreateUserDialog({ open, onOpenChange }: CreateUserDialogProps) 
           {/* Provision mode radio group */}
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-gray-700 mb-1">Cách kích hoạt</legend>
-
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                value="setup_later"
-                checked={mode === 'setup_later'}
-                onChange={() => setMode('setup_later')}
-                className="mt-1"
-              />
-              <div>
-                <span className="font-medium text-gray-800">Chờ setup sau</span>
-                <p className="text-xs text-gray-500">{modeDescription.setup_later}</p>
-              </div>
-            </label>
 
             <label
               className={`flex items-start gap-2 text-sm ${smtpEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}

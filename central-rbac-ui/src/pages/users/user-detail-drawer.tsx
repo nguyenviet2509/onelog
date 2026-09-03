@@ -14,6 +14,11 @@ import { useUserDetailQuery } from '@/hooks/use-users-query';
 import { usePermissions } from '@/hooks/use-permissions';
 import { GrantDialog } from './grant-dialog';
 import { RevokeDialog } from './revoke-dialog';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import {
+  useDeactivateUserMutation,
+  useReactivateUserMutation,
+} from '@/hooks/use-user-provision-mutation';
 import type { Grant } from '@/lib/types';
 
 interface RevokeTarget {
@@ -30,11 +35,14 @@ interface UserDetailDrawerProps {
 export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
   const [grantOpen, setGrantOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
   // Per-grant checkbox state: grantId → Set<roleKey>
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
 
   const { data: user, isLoading, error } = useUserDetailQuery(userId);
   const { canWrite } = usePermissions();
+  const deactivateMutation = useDeactivateUserMutation();
+  const reactivateMutation = useReactivateUserMutation();
 
   function toggleRole(grantId: string, roleKey: string): void {
     setSelected((prev) => {
@@ -80,14 +88,43 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                 <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-lg shrink-0">
                   {user.display_name?.[0]?.toUpperCase() ?? '?'}
                 </div>
-                <div>
-                  <p className="font-medium text-gray-900">{user.display_name}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-gray-900">{user.display_name}</p>
+                    {user.state && user.state !== 'active' && (
+                      <Badge variant={user.state === 'inactive' ? 'destructive' : 'secondary'}>
+                        {user.state === 'inactive' ? 'Đã vô hiệu hoá' : user.state === 'initial' ? 'Chờ xác thực' : user.state}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500">{user.email}</p>
                   {user.organization?.name && (
                     <p className="text-xs text-gray-500 mt-1 inline-flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                       Tổ chức: <span className="font-medium">{user.organization.name}</span>
                     </p>
+                  )}
+                  {canWrite() && (
+                    <div className="mt-2 flex gap-2">
+                      {user.state === 'inactive' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={reactivateMutation.isPending}
+                          onClick={() => reactivateMutation.mutate({ userId: user.id })}
+                        >
+                          {reactivateMutation.isPending ? 'Đang xử lý...' : 'Kích hoạt lại'}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeactivateOpen(true)}
+                        >
+                          Vô hiệu hoá
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -188,6 +225,23 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
             onOpenChange={setGrantOpen}
             userId={user.id}
             userEmail={user.email}
+          />
+          <ConfirmDialog
+            open={deactivateOpen}
+            onOpenChange={setDeactivateOpen}
+            title="Vô hiệu hoá người dùng"
+            description={`Người dùng ${user.email} sẽ không thể đăng nhập lần tới. Các phiên đang hoạt động vẫn hợp lệ đến khi token hết hạn. Có thể kích hoạt lại bất kỳ lúc nào.`}
+            typeVerify={user.email}
+            typeVerifyLabel={`Nhập email "${user.email}" để xác nhận:`}
+            confirmLabel="Vô hiệu hoá"
+            variant="destructive"
+            isLoading={deactivateMutation.isPending}
+            onConfirm={() =>
+              deactivateMutation.mutate(
+                { userId: user.id },
+                { onSuccess: () => setDeactivateOpen(false) },
+              )
+            }
           />
           {revokeTarget && (
             <RevokeDialog

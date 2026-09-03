@@ -35,12 +35,17 @@ export interface Grant {
   role_keys: string[];
 }
 
+/** Normalised Zitadel USER_STATE_* — Phase 02 provision UI reads this. */
+export type UserState = 'active' | 'inactive' | 'initial' | 'locked' | 'deleted' | 'suspend' | 'unspecified';
+
 export interface ZitadelUser {
   id: string;
   email: string;
   display_name: string;
   /** Home org from Zitadel resourceOwner — Phase 01 backend enrichment. */
   organization?: Organization | null;
+  /** Lifecycle state — Phase 02. Missing on older API responses → treat as 'active'. */
+  state?: UserState;
   grant_count: number | null;
 }
 

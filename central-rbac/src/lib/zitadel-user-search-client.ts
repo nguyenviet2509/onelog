@@ -30,6 +30,9 @@ export interface ZitadelUserRaw {
   details?: { resourceOwner?: string };
 }
 
+/** Normalised lifecycle state — Phase 02 user-provision UI reads this. */
+export type UserState = 'active' | 'inactive' | 'initial' | 'locked' | 'deleted' | 'suspend' | 'unspecified';
+
 export interface UserSummary {
   id: string;
   email: string;
@@ -37,6 +40,8 @@ export interface UserSummary {
   username?: string;
   /** Home organization id from Zitadel details.resourceOwner (used for enrichment) */
   home_org_id?: string;
+  /** Zitadel USER_STATE_* normalised to lowercase suffix. `initial` = created but has not verified email. */
+  state?: UserState;
   /** Enriched from Central DB or Zitadel grants — 0 if unavailable */
   grant_count: number;
 }
@@ -57,6 +62,13 @@ interface SearchUsersResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function normalizeState(raw: string | undefined): UserState | undefined {
+  if (!raw) return undefined;
+  const suffix = raw.startsWith('USER_STATE_') ? raw.slice('USER_STATE_'.length).toLowerCase() : raw.toLowerCase();
+  const known: UserState[] = ['active', 'inactive', 'initial', 'locked', 'deleted', 'suspend', 'unspecified'];
+  return (known as string[]).includes(suffix) ? (suffix as UserState) : 'unspecified';
+}
 
 function normalizeUser(raw: ZitadelUserRaw): Omit<UserSummary, 'grant_count'> {
   const email =
@@ -79,6 +91,7 @@ function normalizeUser(raw: ZitadelUserRaw): Omit<UserSummary, 'grant_count'> {
     display_name: displayName,
     username: raw.username,
     home_org_id: raw.details?.resourceOwner,
+    state: normalizeState(raw.state),
   };
 }
 

@@ -42,7 +42,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     const { q, limit, offset } = parsed.data;
     const orgId = config.ZITADEL_ORG_ID || '';
 
-    let users: Array<{ id: string; email: string; display_name: string; username?: string; home_org_id?: string }>;
+    let users: Array<{ id: string; email: string; display_name: string; username?: string; home_org_id?: string; state?: string }>;
     let total: number;
 
     try {
@@ -76,6 +76,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       email: u.email,
       display_name: u.display_name,
       username: u.username,
+      state: u.state,
       organization: (u.home_org_id && orgs.get(u.home_org_id)) || null,
       grant_count: grantCounts[i],
     }));
@@ -116,7 +117,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Fetch user + grants in parallel
-    let user: { id: string; email: string; display_name: string; username?: string; home_org_id?: string } | null;
+    let user: { id: string; email: string; display_name: string; username?: string; home_org_id?: string; state?: string } | null;
     let rawGrants: Array<{ grantId: string; projectId: string; projectName?: string; orgId: string; orgName?: string; roleKeys: string[] }>;
 
     try {
@@ -156,6 +157,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       email: user.email,
       display_name: user.display_name,
       username: user.username,
+      state: user.state,
       organization,
       grant_count: grants.length,
       grants,

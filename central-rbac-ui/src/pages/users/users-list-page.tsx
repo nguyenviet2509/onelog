@@ -13,6 +13,7 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { debounce } from '@/lib/utils';
 import { UserDetailDrawer } from './user-detail-drawer';
 import { BulkAssignDialog } from './bulk-assign-dialog';
+import { CreateUserDialog } from './create-user-dialog';
 import type { ZitadelUser } from '@/lib/types';
 
 const col = createColumnHelper<ZitadelUser>();
@@ -23,6 +24,7 @@ export function UsersListPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { data: users = [], isLoading, error, refetch } = useUsersQuery(debouncedQ);
   const { canWrite } = usePermissions();
@@ -124,11 +126,18 @@ export function UsersListPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold text-gray-900">Người dùng</h1>
 
-        {canWrite() && selectedRows.size > 0 && (
-          <Button onClick={() => setBulkOpen(true)} size="sm">
-            Cấp quyền hàng loạt ({selectedRows.size})
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canWrite() && selectedRows.size > 0 && (
+            <Button onClick={() => setBulkOpen(true)} size="sm">
+              Cấp quyền hàng loạt ({selectedRows.size})
+            </Button>
+          )}
+          {canWrite() && (
+            <Button onClick={() => setCreateOpen(true)} size="sm" variant="outline">
+              + Tạo người dùng
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -169,6 +178,8 @@ export function UsersListPage() {
         onOpenChange={setBulkOpen}
         selectedUsers={selectedUserObjects}
       />
+
+      <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   );
 }

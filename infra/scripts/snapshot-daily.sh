@@ -113,8 +113,8 @@ if [[ -n "${COLLECTIONS:-}" ]]; then
   done <<< "$COLLECTIONS"
 fi
 
-# Prune helper: gọi sau khi archive tạo thành công. Rolling replace — giữ snapshot
-# mới nhất per collection (thứ vừa bundle vào archive), xóa mọi cái cũ hơn.
+# Prune helper: rolling replace — giữ snapshot mới nhất per collection (thứ
+# vừa download vào STAGE), xóa mọi cái cũ hơn qua Qdrant API.
 qdrant_prune_old_snapshots() {
   [[ -z "$QDRANT_FRESH_SNAPS" ]] && return 0
   echo "[snapshot] qdrant prune old snapshots (keep newest per collection)"
@@ -139,6 +139,13 @@ qdrant_prune_old_snapshots() {
     done <<< "$all_snaps"
   done <<< "$QDRANT_FRESH_SNAPS"
 }
+
+# Prune ngay sau section 2 (không đợi tới archive). Reason: snapshot mới đã
+# copy vào STAGE (safe redundancy) + còn ở /qdrant/snapshots local. Chạy sớm
+# đảm bảo prune xảy ra kể cả nếu các section sau (tar VL, tar VM, ...) fail
+# do staging disk full — pre-existing constraint khi disk >65%. Idempotent —
+# no-op nếu không có snapshot cũ.
+qdrant_prune_old_snapshots
 
 # --- 3. VictoriaLogs data dir (filesystem copy) ---
 # Single-node VL has no snapshot API; hot copy is best-effort. Nightly 02:00 is
@@ -224,11 +231,6 @@ if ! command -v age >/dev/null 2>&1; then
 fi
 tar -C "$STAGE" -czf - . | age -R "$AGE_PUB" -o "$ARCHIVE"
 echo "[snapshot] wrote $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
-
-# Archive tạo xong → snapshot cũ trong Qdrant an toàn để prune. S3 upload có
-# thể fail phía dưới, nhưng archive local đã capture snapshot mới. Fast-recovery
-# path (rolling 1 snapshot per collection) preserved regardless of S3 outcome.
-qdrant_prune_old_snapshots
 
 # --- S3 offsite push (optional) ---
 # Config via infra/.env:

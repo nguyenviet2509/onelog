@@ -29,6 +29,7 @@ export function EditManifestUrlDialog({
       return;
     }
     try {
+      if (!app.id) return;
       await mutation.mutateAsync({ appId: app.id, manifestUrl: url });
       onOpenChange(false);
     } catch (err) {

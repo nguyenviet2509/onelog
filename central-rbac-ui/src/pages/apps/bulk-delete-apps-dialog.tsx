@@ -47,7 +47,9 @@ export function BulkDeleteAppsDialog({ open, onOpenChange, selectedApps, onDone 
 
   async function handleSubmit() {
     if (confirmInput !== CONFIRM_TOKEN || selectedApps.length === 0) return;
-    const items = selectedApps.map((a) => ({ id: a.id, label: a.slug }));
+    const items = selectedApps
+      .filter((a): a is App & { id: string; slug: string } => !!a.id && !!a.slug)
+      .map((a) => ({ id: a.id, label: a.slug }));
     const results = await run(items);
     setFinalResults(results);
     setShowResults(true);

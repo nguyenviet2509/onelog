@@ -729,3 +729,48 @@ groups:
         annotations:
           summary: "NATS ingest rate {{ $value | printf \"%.0f\" }} msg/s — 3-5x expected baseline"
           description: "Ingest bùng bất thường. Kiểm tra: (a) Vector reclassify_severity transform còn active không (`docker exec ragstack-vector cat /etc/vector/vector.yaml | grep reclassify`), (b) client host flood via VL query `_time:5m | stats by (host) count() | sort by (count(*)) desc | limit 5`."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DISK HYGIENE BUDGET — per-volume soft caps + container log spam guard.
+  # Metrics emitted by infra/scripts/du-metrics.sh (systemd timer 5min) via
+  # node-exporter textfile collector. Fleet scale target 150 host, budget
+  # matrix aligns retention math (VL 45G/7d, NATS 5G cap, qdrant 5G/7d retention).
+  #
+  # Refs: plans/260904-1336-onelog-scale-hardening-v1/phase-01-disk-optimization.md
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: disk-hygiene-budget
+    interval: 5m
+    rules:
+      - alert: OnelogVolumeBudgetWarn
+        # Per-service soft budget breach 80%. Warns before hard fail so ops
+        # can trim retention or scale disk. Budget hardcoded matches phase 01
+        # matrix — change here if `.env` retention changes.
+        # NATS excluded — max_bytes=5GB cap makes 80% budget useless.
+        # Covered by NATSStreamSizeHighWarn (line ~706).
+        expr: |
+          (onelog_data_volume_bytes{volume="victorialogs"} > 45 * 1024*1024*1024 * 0.8)
+          or (onelog_data_volume_bytes{volume="qdrant"}       > 5  * 1024*1024*1024 * 0.8)
+          or (onelog_data_volume_bytes{volume="openwebui"}    > 2  * 1024*1024*1024 * 0.8)
+          or (onelog_data_volume_bytes{volume="grafana"}      > 1  * 1024*1024*1024 * 0.8)
+        for: 30m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Volume {{ $labels.volume }} > 80% budget ({{ $value | humanize1024 }}B)"
+          description: "Trim retention (VL 7d, qdrant prune timer) hoặc plan disk scale. Budget matrix trong plan 260904-1336 phase 01."
+
+      - alert: ContainerLogSpam
+        # Docker json-file driver hard cap 100M×3 = 300M/container. Warn ở 200M
+        # (67%) để catch spam sớm — usually access-log INFO from misconfigured
+        # service. Fix: hạ log level trong compose env.
+        expr: onelog_container_log_bytes > 200 * 1024 * 1024
+        for: 15m
+        labels:
+          severity: warning
+          category: capacity
+          component: host
+        annotations:
+          summary: "Container {{ $labels.container }} json log > 200MB ({{ $value | humanize1024 }}B)"
+          description: "Log spam approaches Docker 300MB cap. Check `docker logs {{ $labels.container }} --tail 100` → hạ LOG_LEVEL trong compose. Refs: plans/260904-1336 step 7."

@@ -37,6 +37,9 @@ services:
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
       QDRANT__SERVICE__HTTP_PORT: 6333
+      # Silence Actix access log — each indexer PUT logged INFO → ~200MB/day
+      # container log. WARN keeps errors/slow-op only. Plan 260904-1336 phase 01.
+      QDRANT__LOG_LEVEL: WARN
     ports:
       - "127.0.0.1:6333:6333"
     volumes:
@@ -66,6 +69,11 @@ services:
     image: timberio/vector:${VECTOR_IMAGE_TAG:-0.40.0-alpine}
     container_name: ragstack-vector
     restart: unless-stopped
+    environment:
+      # Silence "Started/Stopped watching container logs" INFO from docker_logs
+      # source (spam khi container restart) + rate-limited syslog parse ERROR
+      # từ public IP spray. WARN still emits real errors.
+      VECTOR_LOG: warn
     # Grace period ≥ reduce expire_after_ms (30s) so reduce_dupes flushes
     # in-memory buffer on SIGTERM (Red Team #4). Without this, restart drops
     # up to 30s of aggregated events on the NATS branch.
@@ -242,11 +250,15 @@ services:
       - /:/rootfs:ro,rslave
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      # Textfile collector: du-metrics.sh writes onelog_du.prom every 5min
+      # (systemd timer). node-exporter picks up + serves as regular metric.
+      - ./data/textfile_collector:/textfile-collector:ro
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--path.rootfs=/rootfs"
       - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.textfile.directory=/textfile-collector"
       - "--web.listen-address=:9101"
 
   # vmalert — evaluates LogsQL stats queries against VictoriaLogs, fires
@@ -427,7 +439,9 @@ services:
       BATCH_WINDOW_S: "30"
       DRAIN_STATE_DIR: /data/drain_state
       METRICS_PORT: "9100"
-      LOG_LEVEL: INFO
+      # WARNING silences batch.flushed + HTTP request per-PUT INFO logs
+      # (~15 lines/sec = 40MB/day). Errors + Drain3 anomalies still emitted.
+      LOG_LEVEL: WARNING
     ports:
       - "127.0.0.1:9100:9100"   # Prometheus /metrics + /health
     volumes:
@@ -458,6 +472,9 @@ services:
       # Disable heavyweight documentation tool — keeps the surface focused on
       # query/hits/facets/stats for IDE assistants.
       MCP_DISABLED_TOOLS: documentation
+      # Silence HTTP request started/completed INFO — mcpo health-check hits
+      # /mcp POST every 30s → 34MB/day json log spam.
+      MCP_LOG_LEVEL: warn
     ports:
       - "127.0.0.1:8001:8000"
     depends_on:
@@ -534,7 +551,7 @@ services:
       - -c
       - |
         sed "s|__MCP_TOKEN__|$$MCP_TOKEN_OPENWEBUI|g" /app/config.template.json > /tmp/config.json && \
-        exec mcpo --config /tmp/config.json --host 0.0.0.0 --port 8080 --api-key "$$MCPO_API_KEY"
+        exec mcpo --config /tmp/config.json --host 0.0.0.0 --port 8080 --api-key "$$MCPO_API_KEY" --log-level warning
     ports:
       - "127.0.0.1:8091:8080"
     depends_on:

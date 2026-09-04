@@ -7,7 +7,7 @@ Requires=docker.service
 Type=oneshot
 # RETENTION_DAYS default 30 trong script — override qua drop-in nếu cần.
 # Env RETENTION_DAYS / DRY_RUN pass qua Environment= line.
-Environment=RETENTION_DAYS=30
+Environment=RETENTION_DAYS=7
 ExecStart=/opt/onelog/infra/scripts/qdrant-log-templates-prune.sh
 StandardOutput=journal
 StandardError=journal

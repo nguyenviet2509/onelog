@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly disk hygiene report — Sunday 08:00 ICT (01:00 UTC)
+Requires=onelog-disk-hygiene-report.service
+
+[Timer]
+OnCalendar=Sun *-*-* 01:00:00
+Persistent=true
+AccuracySec=1min
+Unit=onelog-disk-hygiene-report.service
+
+[Install]
+WantedBy=timers.target

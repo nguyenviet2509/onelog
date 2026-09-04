@@ -1,0 +1,10 @@
+[Unit]
+Description=OneLog weekly disk hygiene report → Telegram
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/onelog/infra/scripts/disk-hygiene-report.sh
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run onelog-du-metrics every 5 minutes
+Requires=onelog-du-metrics.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=onelog-du-metrics.service
+
+[Install]
+WantedBy=timers.target

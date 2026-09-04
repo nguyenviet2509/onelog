@@ -1,0 +1,10 @@
+[Unit]
+Description=OneLog du-metrics textfile collector — emit data volume + container log sizes
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/onelog/infra/scripts/du-metrics.sh
+StandardOutput=journal
+StandardError=journal

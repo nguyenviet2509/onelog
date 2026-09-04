@@ -14,9 +14,11 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAppsQuery, useDeleteAppMutation } from '@/hooks/use-apps-query';
+import { usePagination } from '@/hooks/use-pagination';
 import { EditManifestUrlDialog } from './edit-manifest-url-dialog';
 import { BulkDeleteAppsDialog } from './bulk-delete-apps-dialog';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Pagination } from '@/components/pagination';
 import { toastSuccess, toastError } from '@/lib/toast-bus';
 import type { App } from '@/api/apps';
 
@@ -31,6 +33,13 @@ export function AppsListPage() {
 
   const registeredApps = useMemo(() => apps.filter((a) => a.registered && a.id), [apps]);
 
+  const { page, setPage, pageSize, setPageSize, totalPages, total, paged: pagedApps } =
+    usePagination(apps, 20);
+  const registeredOnPage = useMemo(
+    () => pagedApps.filter((a) => a.registered && a.id),
+    [pagedApps],
+  );
+
   function toggleRowSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -40,9 +49,14 @@ export function AppsListPage() {
     });
   }
 
+  // Select-all áp cho registered rows trên trang hiện tại.
   function toggleSelectAll(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.checked) setSelectedIds(new Set(registeredApps.map((a) => a.id!)));
-    else setSelectedIds(new Set());
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (e.target.checked) registeredOnPage.forEach((a) => next.add(a.id!));
+      else registeredOnPage.forEach((a) => next.delete(a.id!));
+      return next;
+    });
   }
 
   const selectedApps = useMemo(
@@ -106,7 +120,7 @@ export function AppsListPage() {
             Chưa có project nào trong Zitadel. Bấm <strong>+ App mới</strong> để tạo.
           </div>
         )}
-        {apps.map((app) => {
+        {pagedApps.map((app) => {
           const rowKey = app.zitadel_project_id ?? app.id ?? `${app.name}-${app.org_name ?? ''}`;
           const canSelect = app.registered && !!app.id;
           return (
@@ -173,11 +187,14 @@ export function AppsListPage() {
               <th className="px-4 py-3 w-8">
                 <input
                   type="checkbox"
-                  aria-label="Chọn tất cả app đã đăng ký"
-                  checked={registeredApps.length > 0 && selectedIds.size === registeredApps.length}
+                  aria-label="Chọn tất cả app đã đăng ký trên trang này"
+                  checked={
+                    registeredOnPage.length > 0 &&
+                    registeredOnPage.every((a) => selectedIds.has(a.id!))
+                  }
                   onChange={toggleSelectAll}
                   className="rounded"
-                  disabled={registeredApps.length === 0}
+                  disabled={registeredOnPage.length === 0}
                 />
               </th>
               <th className="px-4 py-3 font-medium">Trạng thái</th>
@@ -190,7 +207,7 @@ export function AppsListPage() {
             </tr>
           </thead>
           <tbody>
-            {apps.map((app) => {
+            {pagedApps.map((app) => {
               const rowKey = app.zitadel_project_id ?? app.id ?? `${app.name}-${app.org_name ?? ''}`;
               const canSelect = app.registered && !!app.id;
               return (
@@ -270,6 +287,15 @@ export function AppsListPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
 
       {editingApp && editingApp.id && (
         <EditManifestUrlDialog

@@ -2,13 +2,15 @@
  * pages/users/users-list-page.tsx — Users table with search (debounced 300ms),
  * row-click drawer, checkbox multi-select, and bulk assign trigger.
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/data-table';
+import { Pagination } from '@/components/pagination';
 import { useUsersQuery } from '@/hooks/use-users-query';
+import { usePagination } from '@/hooks/use-pagination';
 import { usePermissions } from '@/hooks/use-permissions';
 import { debounce } from '@/lib/utils';
 import { UserDetailDrawer } from './user-detail-drawer';
@@ -30,6 +32,10 @@ export function UsersListPage() {
 
   const { data: users = [], isLoading, error, refetch } = useUsersQuery(debouncedQ);
   const { canWrite } = usePermissions();
+  const { page, setPage, pageSize, setPageSize, totalPages, total, paged } = usePagination(users, 20);
+
+  // Reset về trang 1 khi search thay đổi (kể cả khi tổng số trang vẫn ≥ page hiện tại).
+  useEffect(() => { setPage(1); }, [debouncedQ, setPage]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedSearch = useCallback(
@@ -52,9 +58,14 @@ export function UsersListPage() {
     });
   }
 
+  // Select-all áp dụng cho trang hiện tại (thói quen chuẩn của bảng phân trang).
   function toggleSelectAll(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.checked) setSelectedRows(new Set(users.map((u) => u.id)));
-    else setSelectedRows(new Set());
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (e.target.checked) paged.forEach((u) => next.add(u.id));
+      else paged.forEach((u) => next.delete(u.id));
+      return next;
+    });
   }
 
   const selectedUserObjects = useMemo(
@@ -68,8 +79,8 @@ export function UsersListPage() {
       header: () => (
         <input
           type="checkbox"
-          aria-label="Chọn tất cả"
-          checked={users.length > 0 && selectedRows.size === users.length}
+          aria-label="Chọn tất cả trang này"
+          checked={paged.length > 0 && paged.every((u) => selectedRows.has(u.id))}
           onChange={toggleSelectAll}
           className="rounded"
         />
@@ -121,7 +132,7 @@ export function UsersListPage() {
       },
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [users, selectedRows]);
+  ], [paged, selectedRows]);
 
   return (
     <div className="space-y-4">
@@ -174,7 +185,7 @@ export function UsersListPage() {
       )}
 
       <DataTable
-        data={users}
+        data={paged}
         columns={columns}
         onRowClick={(user) => setSelectedUserId(user.id)}
         getRowId={(u) => u.id}
@@ -209,6 +220,15 @@ export function UsersListPage() {
             </div>
           </div>
         )}
+      />
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
 
       <UserDetailDrawer

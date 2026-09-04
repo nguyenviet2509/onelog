@@ -192,12 +192,15 @@ groups:
 
       # Sudo spike — anomalous frequency suggests compromise / insider threat.
       # facility:auth dropped (forwarding remap) → match service:sudo OR sudo msg.
-      # Exclude "zmmailboxdmgr" — Zimbra internal health check cronjob chạy chu
-      # kỳ ~5m trên mail hosts (COMMAND=/opt/zimbra/libexec/zmmailboxdmgr status),
-      # spam alert liên tục. Real sudo escalation (human/attacker) vẫn detect.
-      # Plan 260904-0815 phase 02.
+      # Exclude Zimbra health check cronjobs chạy chu kỳ trên mail hosts:
+      # - zmmailboxdmgr status (mailbox daemon health)
+      # - zmmtastatus (MTA health)
+      # - zimbra-service-status.sh (custom monitoring wrapper)
+      # Real sudo escalation (human/attacker with non-monitoring commands) vẫn
+      # detect vì Zimbra admin commands (zmprov, zmmailbox, ...) không bị exclude.
+      # Plan 260904-0815 phase 02 (+ tune iteration Phase 04).
       - alert: SudoEscalation
-        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" -_msg:"zmmailboxdmgr" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
+        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" -_msg:"zmmailboxdmgr" -_msg:"zmmtastatus" -_msg:"zimbra-service-status" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 5m
         labels:
           severity: warning

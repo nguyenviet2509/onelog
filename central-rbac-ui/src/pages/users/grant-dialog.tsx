@@ -40,10 +40,13 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
 
   const grant = useGrantMutation(userId, userEmail);
 
-  const selectedProjectApp = useMemo(
-    () => projects.find((p) => p.id === selectedProject)?.app_id ?? '',
+  const selectedProjectObj = useMemo(
+    () => projects.find((p) => p.id === selectedProject),
     [projects, selectedProject],
   );
+  const selectedProjectApp = selectedProjectObj?.app_id ?? '';
+  const selectedIsUnregistered =
+    !!selectedProjectObj && !selectedProjectObj.app_id && selectedProject !== 'legacy';
 
   // Filter roles by selected project's app_id. Roles without app_id (legacy)
   // stay visible only when the "Legacy / global" project option is selected.
@@ -86,13 +89,21 @@ export function GrantDialog({ open, onOpenChange, userId, userEmail }: GrantDial
               <option value="">-- Chọn dự án --</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}{p.org?.name ? ` · ${p.org.name}` : ''}
+                  {p.name}
+                  {p.org?.name ? ` · ${p.org.name}` : ''}
+                  {p.app_id ? '' : ' (chưa đăng ký)'}
                 </option>
               ))}
               {legacyRolesCount > 0 && (
                 <option value="legacy">Legacy / global ({legacyRolesCount} vai trò)</option>
               )}
             </Select>
+            {selectedIsUnregistered && (
+              <p className="text-xs text-orange-600 mt-1">
+                Dự án này chưa được đăng ký với Central RBAC — chưa có role nội bộ để cấp.
+                Vào <strong>Ứng dụng → + App mới</strong> để đăng ký (hoặc dùng Zitadel Console để cấp trực tiếp).
+              </p>
+            )}
           </div>
 
           <div>

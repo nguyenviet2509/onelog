@@ -20,8 +20,10 @@ export interface Role {
 export interface Project {
   id: string;
   name: string;
-  slug?: string;
-  app_id?: string;
+  /** null when the Zitadel project is not registered in rbac.apps yet */
+  slug?: string | null;
+  /** null when unregistered — grant dialog uses this to gate role filtering */
+  app_id?: string | null;
   /** Owner org — Phase 01 backend enrichment. */
   org?: Organization | null;
 }

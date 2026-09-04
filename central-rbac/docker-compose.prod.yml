@@ -128,6 +128,12 @@ services:
       - "traefik.http.routers.central-rbac-api.entrypoints=rbac-review"
       - "traefik.http.routers.central-rbac-api.priority=200"
       - "traefik.http.services.central-rbac-api.loadbalancer.server.port=8083"
+      # Public domain via upstream TLS-terminating proxy → authway-vps :80 (Traefik `web`).
+      # API router: match Host + /v1 or /.well-known/rbac-permissions-schema. Priority > UI.
+      - "traefik.http.routers.central-rbac-api-domain.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api-domain.entrypoints=web"
+      - "traefik.http.routers.central-rbac-api-domain.priority=200"
+      - "traefik.http.routers.central-rbac-api-domain.service=central-rbac-api"
     # Internal only — no host port published
     # Zitadel container reaches us via container name: http://central-rbac:8083
     healthcheck:
@@ -149,9 +155,11 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /v1
-        VITE_ZITADEL_ISSUER: http://10.200.0.125
+        # Default = private VPN IP. Swap to https://zitadel.000nethost.com in .env
+        # when DNS + upstream TLS proxy ready. Rebuild required after change.
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-http://10.200.0.125}
         VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-PLACEHOLDER}
-        VITE_REVIEW_MODE: "true"
+        VITE_REVIEW_MODE: ${VITE_REVIEW_MODE:-true}
     image: central-rbac-ui:phase04
     container_name: central-rbac-ui
     restart: unless-stopped
@@ -164,6 +172,12 @@ services:
       - "traefik.http.routers.central-rbac-ui.entrypoints=rbac-review"
       - "traefik.http.routers.central-rbac-ui.priority=100"
       - "traefik.http.services.central-rbac-ui.loadbalancer.server.port=80"
+      # Public domain via upstream TLS-terminating proxy → authway-vps :80 (Traefik `web`).
+      # UI catch-all — priority 100, API router @200 wins for /v1 paths.
+      - "traefik.http.routers.central-rbac-ui-domain.rule=Host(`rbacnb.000nethost.com`)"
+      - "traefik.http.routers.central-rbac-ui-domain.entrypoints=web"
+      - "traefik.http.routers.central-rbac-ui-domain.priority=100"
+      - "traefik.http.routers.central-rbac-ui-domain.service=central-rbac-ui"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
       interval: 15s

@@ -1,0 +1,353 @@
+=== BLOCK 0 (1444 chars) ===
+echo "=== [1] rsyslog version (verify v8.24) ==="
+rsyslogd -v | head -1
+# Expect: rsyslogd 8.24.x — nếu >= 8.2102 → dùng Loại b (freshStartTail work)
+
+echo "=== [2] Zimbra + mail_center pipeline ==="
+su - zimbra -c "zmcontrol status" 2>&1 | grep -E "Running|Stopped" | head -8
+ls -la /etc/rsyslog.d/50-mailcenter.conf   # MUST exist
+grep -c '^input' /etc/rsyslog.d/50-mailcenter.conf   # expect 4
+
+echo "=== [3] Log files exist ==="
+for f in \
+  /opt/zimbra/log/mailbox.log /opt/zimbra/log/audit.log \
+  /opt/zimbra/log/nginx.access.log /opt/zimbra/log/nginx.log \
+  /opt/zimbra/log/clamd.log /var/log/zimbra.log /var/log/secure
+do [ -f "$f" ] && echo "OK   $f" || echo "MISS $f"; done
+for f in /opt/zimbra/log/imapd-audit.log /opt/zimbra/log/milter.log \
+         /opt/zimbra/log/zmconfigd-audit.log
+do [ -f "$f" ] && echo "OK   $f (optional)" || echo "MISS $f (optional)"; done
+
+echo "=== [4] MagicSpam msauthlog activity ==="
+if [ -f /var/log/magicspam/msauthlog ]; then
+  MT_UNIX=$(stat -c %Y /var/log/magicspam/msauthlog)
+  NOW=$(date +%s)
+  AGE_DAYS=$(( (NOW - MT_UNIX) / 86400 ))
+  echo "mtime age: $AGE_DAYS days"
+  [ $AGE_DAYS -lt 7 ] && echo "ACTIVE — thêm magicspam-auth input" || echo "STALE — SKIP magicspam-auth input"
+fi
+
+echo "=== [5] Disk space ==="
+df -h /var/spool/rsyslog 2>/dev/null || df -h /var
+
+echo "=== [6] Reachability ==="
+timeout 3 bash -c 'cat < /dev/tcp/202.92.5.112/6514' 2>&1 | head -1 || echo "port reachable"
+
+
+=== BLOCK 1 (6073 chars) ===
+set -e
+BACKUP_DATE=$(date +%Y%m%d-%H%M)
+
+# ═══ Sub-step 1: Backup 90-forward-onelog.conf (nếu đã tồn tại) ═══
+[ -f /etc/rsyslog.d/90-forward-onelog.conf ] && \
+  cp -a /etc/rsyslog.d/90-forward-onelog.conf \
+        /etc/rsyslog.d/90-forward-onelog.conf.bak-$BACKUP_DATE
+
+# ═══ Sub-step 2: Write hoặc bump 90-forward-onelog.conf (queue 2g) ═══
+# Nếu file chưa tồn tại → tạo mới (nội dung xem KB Hosting Bước chung).
+# Nếu đã tồn tại → bump maxDiskSpace 500m → 2g.
+if [ -f /etc/rsyslog.d/90-forward-onelog.conf ]; then
+  sed -i 's/queue.maxDiskSpace="500m"/queue.maxDiskSpace="2g"/' \
+      /etc/rsyslog.d/90-forward-onelog.conf
+else
+  # (Xem KB Hosting để có full 90-forward-onelog.conf template — noise filter + omfwd)
+  echo "!! Tạo 90-forward-onelog.conf từ template KB Hosting, sau đó bump queue lên 2g"
+  exit 1
+fi
+
+# ═══ Sub-step 3: Symlink dir + 3 symlinks ═══
+mkdir -p /var/log/onelog-ship
+ln -sfn /opt/zimbra/log/mailbox.log /var/log/onelog-ship/mailbox.log
+ln -sfn /opt/zimbra/log/audit.log   /var/log/onelog-ship/audit.log
+ln -sfn /var/log/zimbra.log         /var/log/onelog-ship/zimbra.log
+
+# ═══ Sub-step 4: Pre-populate imfile state files với offset=EOF ═══
+# BẮT BUỘC cho Loại a — rsyslog v8.24 không có freshStartTail. Nếu bỏ qua,
+# imfile burst đọc 4-8 GB → CPU 78%+ và queue overflow.
+for src in mailbox.log audit.log zimbra.log; do
+  SL=/var/log/onelog-ship/$src
+  INODE=$(stat -Lc %i "$SL")
+  SIZE=$(stat -Lc %s "$SL")
+  # Xóa state hash-suffix cũ liên quan symlink path
+  grep -l "\"filename\": \"$SL\"" /var/lib/rsyslog/imfile-state:* 2>/dev/null | xargs -r rm -f
+  printf '{ "filename": "%s", "prev_was_nl": 0, "curr_offs": %d, "strt_offs": %d }' \
+    "$SL" "$SIZE" "$SIZE" > "/var/lib/rsyslog/imfile-state:$INODE"
+done
+
+# ═══ Sub-step 5: 85-imfile-onelog.conf (file KHÔNG bị mcship claim) ═══
+cat > /etc/rsyslog.d/85-imfile-onelog.conf <<'EOF'
+# Zimbra imfile fanout → default ruleset → *.* omfwd → OneLog.
+# ⚠ mode="polling" ĐÃ load bởi 50-mailcenter.conf — KHÔNG load lại (error 2221 duplicate).
+# ⚠ 3 file mailbox.log/audit.log/zimbra.log bị 50-mailcenter claim → ship qua 55-onelog-ship.conf.
+# ⚠ freshStartTail bị rsyslog v8.24 ignore — state file pre-populated compensate.
+
+input(type="imfile" File="/opt/zimbra/log/nginx.access.log"
+      Tag="zimbra-nginx-access" Severity="info" Facility="local1"
+      PersistStateInterval="500" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/nginx.log"
+      Tag="zimbra-nginx-err" Severity="warning" Facility="local1"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/clamd.log"
+      Tag="zimbra-clamd" Severity="info" Facility="local3"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/imapd-audit.log"
+      Tag="zimbra-imapd-audit" Severity="info" Facility="authpriv"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/milter.log"
+      Tag="zimbra-milter" Severity="info" Facility="local1"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/zmconfigd-audit.log"
+      Tag="zimbra-config-audit" Severity="notice" Facility="authpriv"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+# CHÚ Ý: KHÔNG thêm magicspam-auth vào Loại a mặc định — msauthlog STALE 2025-08-06.
+# Nếu preflight cho thấy msauthlog active → uncomment block dưới:
+#input(type="imfile" File="/var/log/magicspam/msauthlog"
+#      Tag="magicspam-auth" Severity="notice" Facility="local2"
+#      PersistStateInterval="500" freshStartTail="on" reopenOnTruncate="on")
+EOF
+
+# ═══ Sub-step 6: 55-onelog-ship.conf (dedicated ruleset, ship 3 file qua symlink) ═══
+cat > /etc/rsyslog.d/55-onelog-ship.conf <<'EOF'
+# Symlink-based fanout tới OneLog cho 3 file bị 50-mailcenter claim (mcship ruleset).
+# Dedicated ruleset "onelog_ship" với queue riêng → KHÔNG đụng main pipeline.
+# rsyslog v8.24 KHÔNG có freshStartTail → state file pre-populated ngoài (Sub-step 4).
+
+template(name="onelog_rfc5424" type="string"
+  string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% %HOSTNAME% %APP-NAME% %PROCID% %MSGID% - %msg%\n")
+
+ruleset(name="onelog_ship"
+        queue.type="linkedList"
+        queue.size="50000"
+        queue.dequeueBatchSize="200"
+        queue.filename="onelog_ship"
+        queue.maxDiskSpace="2g"
+        queue.saveOnShutdown="on"
+        queue.timeoutEnqueue="10000") {
+    action(type="omfwd"
+           target="202.92.5.112" port="6514" protocol="tcp"
+           template="onelog_rfc5424"
+           action.resumeRetryCount="-1")
+}
+
+input(type="imfile" File="/var/log/onelog-ship/mailbox.log"
+      Tag="zimbra-mailbox" Severity="info" Facility="local4"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" reopenOnTruncate="on")
+
+input(type="imfile" File="/var/log/onelog-ship/audit.log"
+      Tag="zimbra-audit" Severity="info" Facility="authpriv"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" reopenOnTruncate="on")
+
+input(type="imfile" File="/var/log/onelog-ship/zimbra.log"
+      Tag="zimbra-log" Severity="info" Facility="mail"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" reopenOnTruncate="on")
+EOF
+
+# ═══ Sub-step 7: Cron 07:30 daily refresh symlink + rebuild state ═══
+cat > /etc/cron.d/onelog-ship-symlink-refresh <<'EOF'
+30 7 * * * root bash -c 'for f in mailbox.log audit.log zimbra.log; do case $f in mailbox.log|audit.log) T=/opt/zimbra/log/$f;; zimbra.log) T=/var/log/zimbra.log;; esac; ln -sfn "$T" "/var/log/onelog-ship/$f"; INO=$(stat -Lc %i "/var/log/onelog-ship/$f" 2>/dev/null); SZ=$(stat -Lc %s "/var/log/onelog-ship/$f" 2>/dev/null); [ -n "$INO" ] && printf "{ \"filename\": \"/var/log/onelog-ship/%s\", \"prev_was_nl\": 0, \"curr_offs\": %d, \"strt_offs\": %d }" "$f" "$SZ" "$SZ" > "/var/lib/rsyslog/imfile-state:$INO"; done; /usr/bin/systemctl restart rsyslog'
+EOF
+
+# ═══ Sub-step 8: Syntax check ═══
+rsyslogd -N1 2>&1 | tail -5
+
+
+=== BLOCK 2 (786 chars) ===
+set -e
+systemctl restart rsyslog
+sleep 5
+systemctl is-active rsyslog
+
+# Loại a threshold=50% (burst overhead nếu state re-init)
+for i in 1 2 3 4 5 6; do
+  sleep 15
+  CPU=$(ps -o pcpu= -p $(pgrep -x rsyslogd) 2>/dev/null | tr -d ' ' | cut -d. -f1)
+  echo "T+$((i*15))s CPU=${CPU:-?}%"
+  if [ "${CPU:-0}" -gt 50 ]; then
+    echo "!!! ROLLBACK triggered"
+    # (chạy Rollback block a.4)
+    exit 2
+  fi
+done
+
+echo "=== stable ==="
+ps -o pid,pcpu,pmem,rss,cmd -p $(pgrep -x rsyslogd)
+
+echo "=== Zimbra + mail_center health ==="
+su - zimbra -c "zmcontrol status" | grep -E "Running|Stopped" | head -5
+ls -la /var/spool/rsyslog/mcship* 2>/dev/null | head -2 || echo "mcship spool trống (OK)"
+ls -la /var/spool/rsyslog/onelog_ship* 2>/dev/null | head -2 || echo "onelog_ship spool trống (OK)"
+
+
+=== BLOCK 3 (443 chars) ===
+rm -f /etc/rsyslog.d/55-onelog-ship.conf /etc/rsyslog.d/85-imfile-onelog.conf
+rm -f /etc/cron.d/onelog-ship-symlink-refresh
+rm -rf /var/log/onelog-ship /var/spool/rsyslog/onelog_ship*
+cp -a /etc/rsyslog.d/90-forward-onelog.conf.bak-* /etc/rsyslog.d/90-forward-onelog.conf 2>/dev/null || true
+grep -l '"/var/log/onelog-ship/' /var/lib/rsyslog/imfile-state:* 2>/dev/null | xargs -r rm -f
+systemctl restart rsyslog && systemctl is-active rsyslog
+
+
+=== BLOCK 4 (284 chars) ===
+echo "=== [7] Verify rsyslog >= 8.2102 (Loại b assumption) ==="
+rsyslogd -v | awk 'NR==1 {
+  split($2, v, ".")
+  ver = v[1] "." v[2]
+  if (ver ~ /^8\.2/ && v[2]+0 >= 2102) print "OK — v" $2 " supports freshStartTail"
+  else print "!!! v" $2 " — dùng Loại a với pre-populate state"
+}'
+
+
+=== BLOCK 5 (4378 chars) ===
+set -e
+BACKUP_DATE=$(date +%Y%m%d-%H%M)
+
+# Sub-step 1: Backup (nếu có)
+[ -f /etc/rsyslog.d/90-forward-onelog.conf ] && \
+  cp -a /etc/rsyslog.d/90-forward-onelog.conf \
+        /etc/rsyslog.d/90-forward-onelog.conf.bak-$BACKUP_DATE
+
+# Sub-step 2: 90-forward-onelog.conf với queue 4g (nginx volume cao)
+# Nếu chưa có → tạo từ template KB Hosting, đổi queue.maxDiskSpace="4g"
+sed -i 's/queue.maxDiskSpace="500m"/queue.maxDiskSpace="4g"/;
+        s/queue.maxDiskSpace="2g"/queue.maxDiskSpace="4g"/' \
+    /etc/rsyslog.d/90-forward-onelog.conf 2>/dev/null || true
+
+# Sub-step 3: Symlink dir + 3 symlinks
+mkdir -p /var/log/onelog-ship
+ln -sfn /opt/zimbra/log/mailbox.log /var/log/onelog-ship/mailbox.log
+ln -sfn /opt/zimbra/log/audit.log   /var/log/onelog-ship/audit.log
+ln -sfn /var/log/zimbra.log         /var/log/onelog-ship/zimbra.log
+
+# Sub-step 4 (BỎ) — không pre-populate state, dùng freshStartTail
+
+# Sub-step 5: 85-imfile-onelog.conf (có magicspam-auth active)
+cat > /etc/rsyslog.d/85-imfile-onelog.conf <<'EOF'
+# rsyslog 8.2102 (Rocky 8) — freshStartTail hoạt động, không cần pre-populate state.
+
+input(type="imfile" File="/opt/zimbra/log/nginx.access.log"
+      Tag="zimbra-nginx-access" Severity="info" Facility="local1"
+      PersistStateInterval="500" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/nginx.log"
+      Tag="zimbra-nginx-err" Severity="warning" Facility="local1"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/clamd.log"
+      Tag="zimbra-clamd" Severity="info" Facility="local3"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/imapd-audit.log"
+      Tag="zimbra-imapd-audit" Severity="info" Facility="authpriv"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/milter.log"
+      Tag="zimbra-milter" Severity="info" Facility="local1"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/opt/zimbra/log/zmconfigd-audit.log"
+      Tag="zimbra-config-audit" Severity="notice" Facility="authpriv"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+# MagicSpam auth log — ACTIVE trên zmhn (khác mailer stale)
+input(type="imfile" File="/var/log/magicspam/msauthlog"
+      Tag="magicspam-auth" Severity="notice" Facility="local2"
+      PersistStateInterval="500" freshStartTail="on" reopenOnTruncate="on")
+EOF
+
+# Sub-step 6: 55-onelog-ship.conf — có freshStartTail, queue 4g
+cat > /etc/rsyslog.d/55-onelog-ship.conf <<'EOF'
+template(name="onelog_rfc5424" type="string"
+  string="<%PRI%>1 %TIMESTAMP:::date-rfc3339% %HOSTNAME% %APP-NAME% %PROCID% %MSGID% - %msg%\n")
+
+ruleset(name="onelog_ship"
+        queue.type="linkedList"
+        queue.size="50000"
+        queue.dequeueBatchSize="200"
+        queue.filename="onelog_ship"
+        queue.maxDiskSpace="4g"
+        queue.saveOnShutdown="on"
+        queue.timeoutEnqueue="10000") {
+    action(type="omfwd"
+           target="202.92.5.112" port="6514" protocol="tcp"
+           template="onelog_rfc5424"
+           action.resumeRetryCount="-1")
+}
+
+input(type="imfile" File="/var/log/onelog-ship/mailbox.log"
+      Tag="zimbra-mailbox" Severity="info" Facility="local4"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/var/log/onelog-ship/audit.log"
+      Tag="zimbra-audit" Severity="info" Facility="authpriv"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+
+input(type="imfile" File="/var/log/onelog-ship/zimbra.log"
+      Tag="zimbra-log" Severity="info" Facility="mail"
+      ruleset="onelog_ship"
+      PersistStateInterval="200" freshStartTail="on" reopenOnTruncate="on")
+EOF
+
+# Sub-step 7: Cron refresh symlink (chỉ symlink, KHÔNG rebuild state — freshStartTail work)
+cat > /etc/cron.d/onelog-ship-symlink-refresh <<'EOF'
+30 7 * * * root ln -sfn /opt/zimbra/log/mailbox.log /var/log/onelog-ship/mailbox.log && ln -sfn /opt/zimbra/log/audit.log /var/log/onelog-ship/audit.log && ln -sfn /var/log/zimbra.log /var/log/onelog-ship/zimbra.log && /usr/bin/systemctl kill -s HUP rsyslog
+EOF
+
+# Sub-step 8: Syntax check
+rsyslogd -N1 2>&1 | tail -5
+
+
+=== BLOCK 6 (218 chars) ===
+for i in 1 2 3 4 5; do
+  sleep 15
+  CPU=$(ps -o pcpu= -p $(pgrep -x rsyslogd) | tr -d ' ' | cut -d. -f1)
+  echo "T+$((i*15))s CPU=${CPU:-?}%"
+  if [ "${CPU:-0}" -gt 30 ]; then
+    echo "!!! ROLLBACK"; exit 2
+  fi
+done
+
+
+=== BLOCK 7 (721 chars) ===
+ansible-onelog-forward-mail/
+├── inventory.ini
+├── playbook.yml
+└── files/
+    ├── 55-onelog-ship-a.conf              # Loại a: state pre-populated ngoài, không freshStartTail
+    ├── 55-onelog-ship-b.conf              # Loại b: freshStartTail="on", queue 4g
+    ├── 85-imfile-onelog-a.conf            # Loại a: KHÔNG có magicspam-auth (msauthlog stale)
+    ├── 85-imfile-onelog-b.conf            # Loại b: có magicspam-auth
+    ├── 90-forward-onelog-a.conf           # queue.maxDiskSpace=2g
+    ├── 90-forward-onelog-b.conf           # queue.maxDiskSpace=4g
+    ├── onelog-ship-symlink-refresh-a      # cron: refresh symlink + rebuild state (a)
+    └── onelog-ship-symlink-refresh-b      # cron: chỉ refresh symlink (b)
+
+
+=== BLOCK 8 (33 chars) ===
+
+#### Playbook (`playbook.yml`)
+
+
+
+=== BLOCK 9 (21 chars) ===
+
+#### Chạy playbook
+
+
+
+=== BLOCK 10 (35 chars) ===
+
+#### Rollback qua ansible ad-hoc
+
+
+

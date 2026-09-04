@@ -176,8 +176,11 @@ groups:
 
       # Kernel-level errs (non-OOM) — need burst pattern, single err có thể benign.
       # facility:kern dropped (forwarding remap) → match by service:kernel tag.
+      # Exclude "Memory cgroup out of memory" — CloudLinux LVE cgroup OOM cho
+      # customer lsphp process, đã bắt bởi OomKillEvent → duplicate alert. Plan
+      # 260904-0815 phase 02 exclude to dedup.
       - alert: KernelErrorBurst
-        expr: 'service:kernel severity:err | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>7'
+        expr: 'service:kernel severity:err -_msg:"Memory cgroup out of memory" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>7'
         for: 5m
         labels:
           severity: critical
@@ -189,8 +192,12 @@ groups:
 
       # Sudo spike — anomalous frequency suggests compromise / insider threat.
       # facility:auth dropped (forwarding remap) → match service:sudo OR sudo msg.
+      # Exclude "zmmailboxdmgr" — Zimbra internal health check cronjob chạy chu
+      # kỳ ~5m trên mail hosts (COMMAND=/opt/zimbra/libexec/zmmailboxdmgr status),
+      # spam alert liên tục. Real sudo escalation (human/attacker) vẫn detect.
+      # Plan 260904-0815 phase 02.
       - alert: SudoEscalation
-        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
+        expr: '(service:sudo OR _msg:"sudo:") _msg:"COMMAND=" -_msg:"zmmailboxdmgr" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>10'
         for: 5m
         labels:
           severity: warning
@@ -201,8 +208,11 @@ groups:
           description: "{{ $value }} sudo commands executed in 5m on {{ $labels.host }}"
 
       # Systemd reports service failed repeatedly = crashloop.
+      # Exclude "db_governor" — CloudLinux MySQL query throttler service, có
+      # expected restart cycle với exit-code non-zero, không phải real crashloop.
+      # Real service crashes vẫn fire. Plan 260904-0815 phase 02.
       - alert: SystemdServiceFailed
-        expr: '_msg:"Failed with result" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>3'
+        expr: '_msg:"Failed with result" -_msg:"db_governor" | stats by (host, host_ip) count() as value, row_any(_msg) as sample_msg | filter value:>3'
         for: 5m
         labels:
           severity: warning

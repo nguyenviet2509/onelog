@@ -1,5 +1,9 @@
 /**
  * components/ui/dialog.tsx — Modal dialog using Radix UI Dialog primitive.
+ *
+ * @responsive Width is `calc(100vw-1rem)` capped at `max-w-lg` so phones get an
+ * 8px margin each side. Padding + max-height shrink on mobile; body scrolls
+ * when content overflows viewport.
  */
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
@@ -23,7 +27,8 @@ export function DialogContent({ children, className, title, description }: Dialo
       <RadixDialog.Content
         className={cn(
           'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
-          'w-full max-w-lg bg-white rounded-lg shadow-xl p-6',
+          'w-[calc(100vw-1rem)] max-w-lg bg-white rounded-lg shadow-xl p-4 sm:p-6',
+          'max-h-[calc(100vh-2rem)] overflow-y-auto',
           'focus:outline-none',
           className,
         )}

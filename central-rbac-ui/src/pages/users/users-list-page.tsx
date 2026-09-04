@@ -125,14 +125,14 @@ export function UsersListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-semibold text-gray-900">Người dùng</h1>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {canWrite() && selectedRows.size > 0 && (
             <>
               <Button onClick={() => setBulkOpen(true)} size="sm">
-                Cấp quyền hàng loạt ({selectedRows.size})
+                Cấp quyền ({selectedRows.size})
               </Button>
               <Button
                 onClick={() => setBulkDeleteOpen(true)}
@@ -156,16 +156,16 @@ export function UsersListPage() {
           value={searchInput}
           onChange={handleSearchChange}
           placeholder="Tìm kiếm theo email, tên..."
-          className="max-w-sm"
+          className="w-full sm:max-w-sm"
           aria-label="Tìm kiếm người dùng"
         />
         {isLoading && (
-          <span className="text-sm text-gray-400">Đang tải...</span>
+          <span className="text-sm text-gray-400 shrink-0">Đang tải...</span>
         )}
       </div>
 
       {error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center gap-3">
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center gap-3 flex-wrap">
           <span>Không thể tải danh sách người dùng.</span>
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
             Thử lại
@@ -177,6 +177,38 @@ export function UsersListPage() {
         data={users}
         columns={columns}
         onRowClick={(user) => setSelectedUserId(user.id)}
+        getRowId={(u) => u.id}
+        emptyText="Không có người dùng"
+        mobileCard={(user) => (
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              aria-label={`Chọn ${user.email}`}
+              checked={selectedRows.has(user.id)}
+              readOnly
+              onClick={(e) => toggleRowSelect(user.id, e)}
+              className="mt-1 rounded shrink-0"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-gray-900 truncate">{user.email}</div>
+              {user.display_name && (
+                <div className="text-xs text-gray-500 truncate">{user.display_name}</div>
+              )}
+              <div className="mt-1 flex items-center gap-2 flex-wrap text-xs">
+                {user.organization?.name && (
+                  <span className="text-gray-600 truncate max-w-[60%]">
+                    {user.organization.name}
+                  </span>
+                )}
+                {user.grant_count !== null && user.grant_count !== undefined && (
+                  <Badge variant={user.grant_count > 0 ? 'default' : 'secondary'}>
+                    {user.grant_count} quyền
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       />
 
       <UserDetailDrawer

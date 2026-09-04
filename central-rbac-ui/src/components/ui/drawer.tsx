@@ -1,6 +1,9 @@
 /**
  * components/ui/drawer.tsx — Right-side slide-in drawer using Radix Dialog.
  * Used for User Detail — no external drawer library needed.
+ *
+ * @responsive `w-full` fills viewport < sm (max-w-2xl caps at ≥ sm). Header +
+ * body padding tighten on mobile.
  */
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
@@ -31,16 +34,19 @@ export function DrawerContent({ children, className, title }: DrawerContentProps
         )}
       >
         {title && (
-          <div className="flex items-center justify-between border-b px-6 py-4">
-            <RadixDialog.Title className="text-lg font-semibold text-gray-900">
+          <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 sm:py-4 shrink-0">
+            <RadixDialog.Title className="text-base sm:text-lg font-semibold text-gray-900 truncate pr-3">
               {title}
             </RadixDialog.Title>
-            <RadixDialog.Close className="text-gray-400 hover:text-gray-600 text-xl leading-none">
+            <RadixDialog.Close
+              className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1 -m-1 shrink-0"
+              aria-label="Đóng"
+            >
               ×
             </RadixDialog.Close>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </RadixDialog.Content>
     </RadixDialog.Portal>
   );

@@ -68,14 +68,14 @@ export function AppsListPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Ứng dụng</h1>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Ứng dụng</h1>
           <p className="text-sm text-gray-500 mt-1">
             Toàn bộ Zitadel project across các tổ chức. App đã đăng ký có thể cấp quyền + đồng bộ manifest.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {selectedIds.size > 0 && (
             <Button
               variant="destructive"
@@ -86,7 +86,7 @@ export function AppsListPage() {
             </Button>
           )}
           <Link to="/apps/new">
-            <Button>+ App mới</Button>
+            <Button size="sm">+ App mới</Button>
           </Link>
         </div>
       </div>
@@ -99,7 +99,74 @@ export function AppsListPage() {
         </div>
       )}
 
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      {/* Mobile card list — < md */}
+      <div className="md:hidden space-y-2">
+        {!isLoading && apps.length === 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-gray-500 text-sm">
+            Chưa có project nào trong Zitadel. Bấm <strong>+ App mới</strong> để tạo.
+          </div>
+        )}
+        {apps.map((app) => {
+          const rowKey = app.zitadel_project_id ?? app.id ?? `${app.name}-${app.org_name ?? ''}`;
+          const canSelect = app.registered && !!app.id;
+          return (
+            <div
+              key={rowKey}
+              className={`rounded-lg border border-gray-200 p-3 ${app.registered ? 'bg-white' : 'bg-gray-50/60'}`}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  aria-label={`Chọn ${app.slug ?? app.name}`}
+                  checked={canSelect && selectedIds.has(app.id!)}
+                  onChange={() => canSelect && toggleRowSelect(app.id!)}
+                  disabled={!canSelect}
+                  className="mt-1 rounded shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {app.registered ? (
+                      <Badge variant="default">đã đăng ký</Badge>
+                    ) : (
+                      <Badge variant="secondary">chưa đăng ký</Badge>
+                    )}
+                    <span className="font-medium text-gray-900 truncate">{app.name}</span>
+                  </div>
+                  {app.org_name && (
+                    <div className="mt-1 text-xs text-gray-600 truncate">Tổ chức: {app.org_name}</div>
+                  )}
+                  {app.slug && (
+                    <div className="mt-0.5 text-xs font-mono text-gray-500 truncate">{app.slug}</div>
+                  )}
+                  {app.manifest_url && (
+                    <div className="mt-0.5 text-xs font-mono text-gray-400 truncate">
+                      {app.manifest_url.replace(/^https?:\/\//, '')}
+                    </div>
+                  )}
+                  {app.registered && app.id ? (
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      <Link to={`/apps/${app.id}/manifest`}>
+                        <Button size="sm" variant="outline">Sync</Button>
+                      </Link>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingApp(app)}>
+                        Sửa URL
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => setDeletingApp(app)}>
+                        Xoá
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs text-gray-400">chỉ hiển thị</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table — ≥ md */}
+      <div className="hidden md:block bg-white border border-gray-200 rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-left text-gray-600 uppercase text-xs">
@@ -117,8 +184,8 @@ export function AppsListPage() {
               <th className="px-4 py-3 font-medium">Tên</th>
               <th className="px-4 py-3 font-medium">Tổ chức</th>
               <th className="px-4 py-3 font-medium">Slug</th>
-              <th className="px-4 py-3 font-medium">Zitadel project</th>
-              <th className="px-4 py-3 font-medium">Manifest</th>
+              <th className="px-4 py-3 font-medium hidden lg:table-cell">Zitadel project</th>
+              <th className="px-4 py-3 font-medium hidden lg:table-cell">Manifest</th>
               <th className="px-4 py-3 font-medium">Hành động</th>
             </tr>
           </thead>
@@ -155,10 +222,10 @@ export function AppsListPage() {
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">
                     {app.slug ?? <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500 hidden lg:table-cell">
                     {app.zitadel_project_id ?? <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 hidden lg:table-cell">
                     {app.manifest_url ? (
                       <Badge variant="secondary" className="font-mono text-xs">
                         {app.manifest_url.replace(/^https?:\/\//, '').slice(0, 30)}…
@@ -169,7 +236,7 @@ export function AppsListPage() {
                   </td>
                   <td className="px-4 py-3">
                     {app.registered && app.id ? (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <Link to={`/apps/${app.id}/manifest`}>
                           <Button size="sm" variant="outline">
                             Sync

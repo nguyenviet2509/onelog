@@ -1,9 +1,12 @@
 /**
- * components/layout/header.tsx — Top bar: page title + admin profile menu.
+ * components/layout/header.tsx — Top bar: hamburger + page title + admin profile menu.
  *
  * Reads displayName via useMe (OIDC claim fallback chain: name → preferred_username
  * → email → sub-short). Avatar = first letter of displayName. Dropdown holds
  * Đăng xuất only for now (YAGNI: no profile page, no copy-id — add when needed).
+ *
+ * @responsive Hamburger button visible < lg (opens Sidebar drawer). displayName +
+ * chevron collapse to avatar-only < sm. Padding tightens on mobile.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
@@ -12,9 +15,10 @@ import { useMe } from '@/hooks/use-me';
 
 interface HeaderProps {
   title?: string;
+  onOpenSidebar?: () => void;
 }
 
-export function Header({ title = 'Quản trị RBAC' }: HeaderProps) {
+export function Header({ title = 'Quản trị RBAC', onOpenSidebar }: HeaderProps) {
   const auth = useAuth();
   const { isDegraded } = usePermissions();
   const { data: me } = useMe();
@@ -38,30 +42,45 @@ export function Header({ title = 'Quản trị RBAC' }: HeaderProps) {
   }
 
   return (
-    <header className="h-14 bg-white border-b flex items-center px-6 gap-4 shrink-0">
+    <header className="h-14 bg-white border-b flex items-center px-4 md:px-6 gap-2 md:gap-4 shrink-0">
+      {onOpenSidebar && (
+        <button
+          type="button"
+          onClick={onOpenSidebar}
+          className="lg:hidden text-gray-600 hover:text-gray-900 p-2 -ml-2 rounded-md"
+          aria-label="Mở menu điều hướng"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+
       {isDegraded && (
-        <span className="bg-red-100 text-red-700 text-xs font-medium px-2.5 py-1 rounded-full">
-          Hệ thống đang xuống cấp — thao tác bị giới hạn
+        <span className="bg-red-100 text-red-700 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap">
+          <span className="hidden sm:inline">Hệ thống đang xuống cấp — thao tác bị giới hạn</span>
+          <span className="sm:hidden">Xuống cấp</span>
         </span>
       )}
 
-      <span className="font-medium text-gray-800 text-sm">{title}</span>
+      <span className="font-medium text-gray-800 text-sm truncate">{title}</span>
 
-      <div className="ml-auto relative" ref={menuRef}>
+      <div className="ml-auto relative shrink-0" ref={menuRef}>
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-gray-100 transition-colors"
+          className="flex items-center gap-2 rounded-md px-1 sm:px-2 py-1 hover:bg-gray-100 transition-colors"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
+          aria-label="Menu tài khoản"
         >
-          <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-semibold flex items-center justify-center text-xs">
+          <span className="w-8 h-8 sm:w-7 sm:h-7 rounded-full bg-blue-100 text-blue-700 font-semibold flex items-center justify-center text-xs">
             {me?.initial ?? '?'}
           </span>
-          <span className="text-sm text-gray-700 max-w-[160px] truncate">
+          <span className="hidden sm:inline text-sm text-gray-700 max-w-[160px] truncate">
             {me?.displayName ?? '...'}
           </span>
-          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <svg className="hidden sm:block w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>

@@ -40,6 +40,10 @@ const createBodySchema = z.object({
   name: z.string().min(1).max(200),
   slug: z.string().regex(SLUG_REGEX, 'slug must match ^[a-z][a-z0-9-]{2,31}$'),
   callback_urls: z.array(z.string().url().startsWith('https://')).min(1).max(10),
+  post_logout_urls: z
+    .array(z.string().url().startsWith('https://'))
+    .max(10)
+    .optional(),
   manifest_url: z
     .string()
     .url()
@@ -187,7 +191,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
       }
-      const { name, slug, callback_urls, manifest_url } = parsed.data;
+      const { name, slug, callback_urls, post_logout_urls, manifest_url } = parsed.data;
       const adminSub = request.jwtClaims!.sub!;
 
       // (2) Slug + prefix-collision guard
@@ -234,6 +238,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
           projectId,
           name,
           redirectUris: callback_urls,
+          postLogoutRedirectUris: post_logout_urls,
         });
         clientId = oidcResult.clientId;
         clientSecret = oidcResult.clientSecret;

@@ -23,6 +23,7 @@ export interface CreateAppInput {
   name: string;
   slug: string;
   callback_urls: string[];
+  post_logout_urls?: string[];
   manifest_url?: string;
 }
 

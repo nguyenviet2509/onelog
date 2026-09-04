@@ -18,7 +18,8 @@ const SLUG_REGEX = /^[a-z][a-z0-9-]{2,31}$/;
 interface FormState {
   name: string;
   slug: string;
-  callback_urls: string;   // newline-separated in form; split on submit
+  callback_urls: string;      // newline-separated in form; split on submit
+  post_logout_urls: string;   // optional, newline-separated
   manifest_url: string;
 }
 
@@ -39,6 +40,7 @@ export function NewAppWizardPage() {
     name: '',
     slug: '',
     callback_urls: '',
+    post_logout_urls: '',
     manifest_url: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -62,6 +64,19 @@ export function NewAppWizardPage() {
         break;
       }
     }
+    const logoutUrls = form.post_logout_urls.split(/\n+/).map((u) => u.trim()).filter(Boolean);
+    for (const u of logoutUrls) {
+      if (!u.startsWith('https://')) {
+        errs['post_logout_urls'] = `Post Logout URI phải HTTPS: ${u}`;
+        break;
+      }
+      try {
+        new URL(u);
+      } catch {
+        errs['post_logout_urls'] = `Post Logout URI không hợp lệ: ${u}`;
+        break;
+      }
+    }
     if (form.manifest_url && !form.manifest_url.startsWith('https://')) {
       errs['manifest_url'] = 'Manifest URL phải HTTPS';
     }
@@ -75,11 +90,16 @@ export function NewAppWizardPage() {
 
   async function handleConfirm() {
     const callback_urls = form.callback_urls.split(/\n+/).map((u) => u.trim()).filter(Boolean);
+    const post_logout_urls = form.post_logout_urls
+      .split(/\n+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
     try {
       const result = await createApp.mutateAsync({
         name: form.name.trim(),
         slug: form.slug,
         callback_urls,
+        ...(post_logout_urls.length > 0 ? { post_logout_urls } : {}),
         ...(form.manifest_url ? { manifest_url: form.manifest_url } : {}),
       });
       setReveal(result);
@@ -145,6 +165,22 @@ export function NewAppWizardPage() {
             />
           </FormField>
 
+          <FormField
+            label="Post Logout URIs (tùy chọn, mỗi dòng 1 URL, HTTPS)"
+            error={errors['post_logout_urls']}
+          >
+            <textarea
+              value={form.post_logout_urls}
+              onChange={(e) => setForm((f) => ({ ...f, post_logout_urls: e.target.value }))}
+              placeholder="https://portal.example.com/logout-complete"
+              rows={2}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              URI Zitadel redirect về sau khi user đăng xuất. Bỏ trống nếu app xử lý logout không cần redirect.
+            </p>
+          </FormField>
+
           <FormField label="Manifest URL (tùy chọn, HTTPS)" error={errors['manifest_url']}>
             <Input
               value={form.manifest_url}
@@ -172,6 +208,12 @@ export function NewAppWizardPage() {
           <ReviewRow label="Tên" value={form.name} />
           <ReviewRow label="Slug" value={form.slug} mono />
           <ReviewRow label="Callback URLs" value={form.callback_urls} mono multiline />
+          <ReviewRow
+            label="Post Logout URIs"
+            value={form.post_logout_urls || '(để trống)'}
+            mono
+            multiline
+          />
           <ReviewRow label="Manifest URL" value={form.manifest_url || '(để trống)'} mono />
           <ReviewRow
             label="Default roles (auto-tạo)"

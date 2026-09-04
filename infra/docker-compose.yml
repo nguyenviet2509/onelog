@@ -735,6 +735,10 @@ services:
   # Grafana OSS — LLM Cost + Observability Dashboard. Opt-in via profile [dashboard/monitoring].
   # Bring up: docker compose --profile monitoring up -d grafana
   # Access: http://10.200.0.30/grafana/ (Caddy sub-path + Zitadel IAP + optional OIDC)
+  # ─── IAP app template ref: docs/authway-iap-onboarding.md ───
+  # OIDC URLs hardcode http://10.200.0.125/* — future onboard app mới NÊN dùng
+  # ${ZITADEL_ISSUER}/oauth/v2/... để tránh drift. Refactor Grafana defer:
+  # yêu cầu add ZITADEL_ISSUER vào VPS .env trước (host-sync-policy).
   grafana:
     image: grafana/grafana-oss:${GRAFANA_IMAGE_TAG:-11.4.0}
     container_name: ragstack-grafana

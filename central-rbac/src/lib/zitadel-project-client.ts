@@ -77,3 +77,55 @@ export async function removeProject(projectId: string): Promise<boolean> {
   const errBody = await res.text().catch(() => '');
   throw new Error(`Zitadel RemoveProject ${projectId} failed ${res.status}: ${errBody}`);
 }
+
+export interface ProjectAcrossOrg {
+  id: string;
+  name: string;
+  orgId: string;
+  orgName: string;
+  state?: string;
+}
+
+/**
+ * List all owned Zitadel projects across every org the SA has access to.
+ *
+ * Zitadel's project search is org-scoped (via x-zitadel-orgid header), so we
+ * fan out: listAllOrgs → parallel per-org project search. Result includes
+ * both `id` (Zitadel project id) and `orgId/orgName` so the UI can group by org.
+ *
+ * Not cached at this layer — callers (project route, apps route) short-lived
+ * request-scoped. If org list stays hot, per-org project searches still hit
+ * Zitadel each request; acceptable while org count is small (<20).
+ */
+export async function listAllProjectsAcrossOrgs(): Promise<ProjectAcrossOrg[]> {
+  const { listAllOrgs } = await import('./zitadel-org-client.js');
+  const anyOrg = orgId();
+  const orgs = await listAllOrgs(anyOrg);
+  if (orgs.length === 0) return [];
+
+  const perOrg = await Promise.all(
+    orgs.map(async (org) => {
+      try {
+        const res = await mgmtPost('/management/v1/projects/_search', org.id, {
+          query: { offset: '0', limit: 100 },
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          logger.warn({ orgId: org.id, status: res.status, body: body.slice(0, 200) }, 'zitadel-project: search failed for org');
+          return [] as ProjectAcrossOrg[];
+        }
+        const parsed = (await res.json()) as {
+          result?: Array<{ id: string; name: string; state?: string }>;
+        };
+        return (parsed.result ?? [])
+          .filter((p) => p.state !== 'PROJECT_STATE_REMOVED')
+          .map((p) => ({ id: p.id, name: p.name, orgId: org.id, orgName: org.name, state: p.state }));
+      } catch (err) {
+        logger.warn({ orgId: org.id, err }, 'zitadel-project: search threw for org');
+        return [] as ProjectAcrossOrg[];
+      }
+    }),
+  );
+
+  return perOrg.flat();
+}

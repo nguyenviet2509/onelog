@@ -26,7 +26,8 @@ import { requireAdmin } from '../middleware/require-admin.js';
 import { rateLimitAdmin } from '../middleware/rate-limit-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
-import { addProject, findProjectByName, removeProject } from '../lib/zitadel-project-client.js';
+import { addProject, findProjectByName, removeProject, listAllProjectsAcrossOrgs } from '../lib/zitadel-project-client.js';
+import { getOrgsBatch } from '../lib/zitadel-org-client.js';
 import { addOidcApp } from '../lib/zitadel-oidc-app-client.js';
 import { createRoleWithSync } from '../services/role-sync.js';
 import { logger } from '../lib/logger.js';
@@ -288,17 +289,115 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // GET /v1/admin/apps — list all apps (no secrets)
+  // GET /v1/admin/apps — list all registered apps + all Zitadel projects across
+  // orgs. Unregistered Zitadel projects appear with `registered: false` and
+  // null slug/id so the UI can visually distinguish. This makes the apps page
+  // a single-pane view of every project regardless of which org owns it.
+  //
+  // Fallback: if Zitadel is unreachable (e.g. SA lacks IAM_OWNER), the
+  // response degrades to rbac.apps only — same behaviour as pre-multi-org.
   app.get(
     '/v1/admin/apps',
     { preHandler: [verifyJwt] },
     async (_request, reply) => {
-      const { rows } = await writerPool.query<DbApp>(
-        `SELECT id, slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_at, created_by
+      interface AppOut {
+        id: string | null;
+        slug: string | null;
+        name: string;
+        zitadel_project_id: string | null;
+        zitadel_client_id: string | null;
+        zitadel_org_id: string | null;
+        org_name: string | null;
+        manifest_url: string | null;
+        created_at: string | null;
+        created_by: string | null;
+        registered: boolean;
+      }
+
+      const { rows: dbApps } = await writerPool.query<DbApp & { zitadel_org_id: string | null }>(
+        `SELECT id, slug, name, zitadel_project_id, zitadel_org_id, zitadel_client_id,
+                manifest_url, created_at, created_by
            FROM rbac.apps
           ORDER BY created_at DESC`,
       );
-      return reply.send({ apps: rows });
+      const appByProject = new Map(
+        dbApps.filter((a) => !!a.zitadel_project_id).map((a) => [a.zitadel_project_id!, a]),
+      );
+
+      let zitadelProjects: Awaited<ReturnType<typeof listAllProjectsAcrossOrgs>> = [];
+      try {
+        zitadelProjects = await listAllProjectsAcrossOrgs();
+      } catch (err) {
+        logger.warn({ err }, '/v1/admin/apps: Zitadel cross-org fetch failed → falling back to rbac.apps');
+      }
+
+      let apps: AppOut[];
+
+      if (zitadelProjects.length > 0) {
+        const seenProjects = new Set<string>();
+        apps = zitadelProjects.map((p) => {
+          seenProjects.add(p.id);
+          const db = appByProject.get(p.id) ?? null;
+          return {
+            id: db?.id ?? null,
+            slug: db?.slug ?? null,
+            name: db?.name ?? p.name,
+            zitadel_project_id: p.id,
+            zitadel_client_id: db?.zitadel_client_id ?? null,
+            zitadel_org_id: p.orgId,
+            org_name: p.orgName,
+            manifest_url: db?.manifest_url ?? null,
+            created_at: db?.created_at ?? null,
+            created_by: db?.created_by ?? null,
+            registered: !!db,
+          };
+        });
+        // Registered rbac.apps rows without a matching Zitadel project (e.g.
+        // project was manually deleted in Zitadel Console) — surface as
+        // registered but flag missing project via null zitadel_project_id.
+        for (const a of dbApps) {
+          if (a.zitadel_project_id && !seenProjects.has(a.zitadel_project_id)) {
+            apps.push({
+              id: a.id,
+              slug: a.slug,
+              name: a.name,
+              zitadel_project_id: a.zitadel_project_id,
+              zitadel_client_id: a.zitadel_client_id,
+              zitadel_org_id: a.zitadel_org_id,
+              org_name: null,
+              manifest_url: a.manifest_url,
+              created_at: a.created_at,
+              created_by: a.created_by,
+              registered: true,
+            });
+          }
+        }
+        // Sort: registered first, then by org name, then project name
+        apps.sort((a, b) => {
+          if (a.registered !== b.registered) return a.registered ? -1 : 1;
+          const orgCmp = (a.org_name ?? '').localeCompare(b.org_name ?? '');
+          if (orgCmp !== 0) return orgCmp;
+          return a.name.localeCompare(b.name);
+        });
+      } else {
+        // Fallback: rbac.apps only (with org name enrichment)
+        const orgMap = await getOrgsBatch(dbApps.map((a) => a.zitadel_org_id));
+        apps = dbApps.map((a) => ({
+          id: a.id,
+          slug: a.slug,
+          name: a.name,
+          zitadel_project_id: a.zitadel_project_id,
+          zitadel_client_id: a.zitadel_client_id,
+          zitadel_org_id: a.zitadel_org_id,
+          org_name: (a.zitadel_org_id && orgMap.get(a.zitadel_org_id)?.name) || null,
+          manifest_url: a.manifest_url,
+          created_at: a.created_at,
+          created_by: a.created_by,
+          registered: true,
+        }));
+      }
+
+      return reply.send({ apps });
     },
   );
 

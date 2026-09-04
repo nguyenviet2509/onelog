@@ -4,14 +4,19 @@
 import { apiClient } from './client';
 
 export interface App {
-  id: string;
-  slug: string;
+  /** null when the Zitadel project is not registered in rbac.apps yet */
+  id: string | null;
+  slug: string | null;
   name: string;
   zitadel_project_id: string | null;
   zitadel_client_id: string | null;
+  zitadel_org_id: string | null;
+  org_name: string | null;
   manifest_url: string | null;
-  created_at: string;
-  created_by: string;
+  created_at: string | null;
+  created_by: string | null;
+  /** false when the row is an unregistered Zitadel project surfaced for visibility */
+  registered: boolean;
 }
 
 export interface CreateAppInput {

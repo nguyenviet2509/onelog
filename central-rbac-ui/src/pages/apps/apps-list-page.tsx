@@ -1,7 +1,13 @@
 /**
- * pages/apps/apps-list-page.tsx — Phase 07 app registry list view.
- * Displays all registered apps with quick actions: New App, Sync Manifest, Edit Manifest URL, Delete.
- * Supports multi-select for bulk delete.
+ * pages/apps/apps-list-page.tsx — Central RBAC app registry list.
+ *
+ * Post multi-org rewrite (2026-09-04): lists every Zitadel project across
+ * every org (registered + unregistered) with an Org column. Registered rows
+ * expose Sync/Sửa URL/Xoá; unregistered rows are read-only ("chưa đăng ký")
+ * with no destructive actions.
+ *
+ * Multi-select + bulk delete only applies to registered rows (checkbox
+ * disabled for unregistered).
  */
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -23,6 +29,8 @@ export function AppsListPage() {
 
   const deleteMutation = useDeleteAppMutation();
 
+  const registeredApps = useMemo(() => apps.filter((a) => a.registered && a.id), [apps]);
+
   function toggleRowSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -33,20 +41,22 @@ export function AppsListPage() {
   }
 
   function toggleSelectAll(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.checked) setSelectedIds(new Set(apps.map((a) => a.id)));
+    if (e.target.checked) setSelectedIds(new Set(registeredApps.map((a) => a.id!)));
     else setSelectedIds(new Set());
   }
 
   const selectedApps = useMemo(
-    () => apps.filter((a) => selectedIds.has(a.id)),
-    [apps, selectedIds],
+    () => registeredApps.filter((a) => selectedIds.has(a.id!)),
+    [registeredApps, selectedIds],
   );
 
   function handleSingleDelete() {
-    if (!deletingApp) return;
-    deleteMutation.mutate(deletingApp.id, {
+    if (!deletingApp?.id) return;
+    const id = deletingApp.id;
+    const label = deletingApp.slug ?? deletingApp.name;
+    deleteMutation.mutate(id, {
       onSuccess: () => {
-        toastSuccess(`Đã xoá ứng dụng ${deletingApp.slug}`);
+        toastSuccess(`Đã xoá ứng dụng ${label}`);
         setDeletingApp(null);
       },
       onError: (err: unknown) => {
@@ -62,7 +72,7 @@ export function AppsListPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Ứng dụng</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Đăng ký app OIDC + phân quyền qua Central RBAC.
+            Toàn bộ Zitadel project across các tổ chức. App đã đăng ký có thể cấp quyền + đồng bộ manifest.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -96,74 +106,97 @@ export function AppsListPage() {
               <th className="px-4 py-3 w-8">
                 <input
                   type="checkbox"
-                  aria-label="Chọn tất cả"
-                  checked={apps.length > 0 && selectedIds.size === apps.length}
+                  aria-label="Chọn tất cả app đã đăng ký"
+                  checked={registeredApps.length > 0 && selectedIds.size === registeredApps.length}
                   onChange={toggleSelectAll}
                   className="rounded"
+                  disabled={registeredApps.length === 0}
                 />
               </th>
-              <th className="px-4 py-3 font-medium">Slug</th>
+              <th className="px-4 py-3 font-medium">Trạng thái</th>
               <th className="px-4 py-3 font-medium">Tên</th>
+              <th className="px-4 py-3 font-medium">Tổ chức</th>
+              <th className="px-4 py-3 font-medium">Slug</th>
               <th className="px-4 py-3 font-medium">Zitadel project</th>
               <th className="px-4 py-3 font-medium">Manifest</th>
-              <th className="px-4 py-3 font-medium">Tạo lúc</th>
               <th className="px-4 py-3 font-medium">Hành động</th>
             </tr>
           </thead>
           <tbody>
-            {apps.map((app) => (
-              <tr key={app.id} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    aria-label={`Chọn ${app.slug}`}
-                    checked={selectedIds.has(app.id)}
-                    onChange={() => toggleRowSelect(app.id)}
-                    className="rounded"
-                  />
-                </td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-700">{app.slug}</td>
-                <td className="px-4 py-3 text-gray-900">{app.name}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                  {app.zitadel_project_id ?? <span className="text-gray-400">—</span>}
-                </td>
-                <td className="px-4 py-3">
-                  {app.manifest_url ? (
-                    <Badge variant="secondary" className="font-mono text-xs">
-                      {app.manifest_url.replace(/^https?:\/\//, '').slice(0, 30)}…
-                    </Badge>
-                  ) : (
-                    <span className="text-gray-400">chưa cấu hình</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">
-                  {new Date(app.created_at).toLocaleString('vi-VN')}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <Link to={`/apps/${app.id}/manifest`}>
-                      <Button size="sm" variant="outline">
-                        Sync
-                      </Button>
-                    </Link>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingApp(app)}>
-                      Sửa URL
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => setDeletingApp(app)}
-                    >
-                      Xoá
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {apps.map((app) => {
+              const rowKey = app.zitadel_project_id ?? app.id ?? `${app.name}-${app.org_name ?? ''}`;
+              const canSelect = app.registered && !!app.id;
+              return (
+                <tr
+                  key={rowKey}
+                  className={`border-b border-gray-100 hover:bg-gray-50 ${app.registered ? '' : 'bg-gray-50/40'}`}
+                >
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Chọn ${app.slug ?? app.name}`}
+                      checked={canSelect && selectedIds.has(app.id!)}
+                      onChange={() => canSelect && toggleRowSelect(app.id!)}
+                      disabled={!canSelect}
+                      className="rounded"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {app.registered ? (
+                      <Badge variant="default">đã đăng ký</Badge>
+                    ) : (
+                      <Badge variant="secondary">chưa đăng ký</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-900">{app.name}</td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {app.org_name ?? <span className="text-gray-400 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-700">
+                    {app.slug ?? <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                    {app.zitadel_project_id ?? <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {app.manifest_url ? (
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {app.manifest_url.replace(/^https?:\/\//, '').slice(0, 30)}…
+                      </Badge>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {app.registered && app.id ? (
+                      <div className="flex gap-2">
+                        <Link to={`/apps/${app.id}/manifest`}>
+                          <Button size="sm" variant="outline">
+                            Sync
+                          </Button>
+                        </Link>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingApp(app)}>
+                          Sửa URL
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setDeletingApp(app)}
+                        >
+                          Xoá
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">chỉ hiển thị</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {!isLoading && apps.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500 text-sm">
-                  Chưa có app nào. Bấm <strong>+ App mới</strong> để bắt đầu.
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-500 text-sm">
+                  Chưa có project nào trong Zitadel. Bấm <strong>+ App mới</strong> để tạo.
                 </td>
               </tr>
             )}
@@ -171,7 +204,7 @@ export function AppsListPage() {
         </table>
       </div>
 
-      {editingApp && (
+      {editingApp && editingApp.id && (
         <EditManifestUrlDialog
           app={editingApp}
           open={!!editingApp}
@@ -179,7 +212,7 @@ export function AppsListPage() {
         />
       )}
 
-      {deletingApp && (
+      {deletingApp && deletingApp.slug && (
         <ConfirmDialog
           open={!!deletingApp}
           onOpenChange={(open) => !open && setDeletingApp(null)}

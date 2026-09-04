@@ -44,6 +44,11 @@ export function useGrantMutation(userId: string, userEmail: string) {
     onSuccess: () => {
       toastSuccess(`Đã cấp quyền cho ${userEmail} (đang đồng bộ...)`);
       scheduleUserDetailRefetch(qc, userId);
+      // Fire delayed users-list invalidations so the grant_count column reflects
+      // the new number after Zitadel outbox commit (~1-2s). Immediate invalidate
+      // would refetch stale count; wait until the drawer refetch pass completes.
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['users'] }), 2000);
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['users'] }), 5500);
     },
     onError: (err: AxiosError<ApiError>) => {
       const msg = err.response?.data?.error ?? 'Lỗi khi cấp quyền';
@@ -60,7 +65,9 @@ export function useRevokeMutation(userId: string, userEmail: string) {
     onSuccess: () => {
       toastSuccess(`Đã thu hồi quyền của ${userEmail} (đang đồng bộ...)`);
       scheduleUserDetailRefetch(qc, userId);
-      void qc.invalidateQueries({ queryKey: ['users'] });
+      // Same delayed invalidations as grant — count only updates after outbox commit.
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['users'] }), 2000);
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['users'] }), 5500);
     },
     onError: (err: AxiosError<ApiError>) => {
       const msg = err.response?.data?.error ?? 'Lỗi khi thu hồi quyền';

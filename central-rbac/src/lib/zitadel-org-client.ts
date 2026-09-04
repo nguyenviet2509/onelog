@@ -5,11 +5,13 @@
  * Zero-effort org visibility: no local rbac.orgs table, no cron. Cache miss →
  * one Zitadel Management GET, populate Redis. Rename lag = up to 5 min.
  */
-import { mgmtGet } from './zitadel-http.js';
+import { mgmtGet, mgmtPost } from './zitadel-http.js';
 import { redis } from './redis-client.js';
 import { logger } from './logger.js';
 
 const CACHE_TTL_SEC = 300;
+const LIST_CACHE_TTL_SEC = 60;
+const LIST_CACHE_KEY = 'org:list:v1';
 const cacheKey = (id: string): string => `org:v1:${id}`;
 
 export interface OrgSummary {
@@ -79,4 +81,49 @@ export async function getOrgsBatch(orgIds: Array<string | undefined | null>): Pr
     if (org) map.set(id, org);
   }
   return map;
+}
+
+/**
+ * List ALL orgs the Zitadel instance exposes. Requires SA to have IAM_OWNER
+ * (or IAM_ORG_MANAGER). Cached 60s in Redis to keep the apps/projects list
+ * page responsive while still picking up new orgs within a minute.
+ *
+ * Zitadel Admin API: POST /admin/v1/orgs/_search. The x-zitadel-orgid header
+ * is ignored by admin endpoints — caller passes any non-empty value.
+ */
+export async function listAllOrgs(headerOrgId: string): Promise<OrgSummary[]> {
+  try {
+    const cached = await redis.get(LIST_CACHE_KEY);
+    if (cached) return JSON.parse(cached) as OrgSummary[];
+  } catch {
+    // Redis unavailable → live fetch
+  }
+
+  let res: Response;
+  try {
+    res = await mgmtPost('/admin/v1/orgs/_search', headerOrgId, {});
+  } catch (err) {
+    logger.warn({ err }, 'zitadel-org: listAllOrgs fetch failed');
+    return [];
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    logger.warn({ status: res.status, body: body.slice(0, 200) }, 'zitadel-org: listAllOrgs non-2xx');
+    return [];
+  }
+
+  const parsed = (await res.json()) as {
+    result?: Array<{ id: string; name: string; primaryDomain?: string; state?: string }>;
+  };
+  const orgs: OrgSummary[] = (parsed.result ?? [])
+    .filter((o) => o.state !== 'ORG_STATE_REMOVED')
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      primaryDomain: o.primaryDomain ?? '',
+    }));
+
+  redis.setex(LIST_CACHE_KEY, LIST_CACHE_TTL_SEC, JSON.stringify(orgs)).catch(() => {});
+  return orgs;
 }

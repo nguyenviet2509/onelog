@@ -732,9 +732,9 @@ services:
       - --read-only
       - /data/webui.db
 
-  # Grafana OSS — LLM Cost Dashboard. Opt-in via profile [dashboard].
-  # Bring up: docker compose --profile dashboard up -d grafana
-  # Access: http://admin.webui.local/ (strict CIDR + Bearer + Grafana login)
+  # Grafana OSS — LLM Cost + Observability Dashboard. Opt-in via profile [dashboard/monitoring].
+  # Bring up: docker compose --profile monitoring up -d grafana
+  # Access: http://10.200.0.30/grafana/ (Caddy sub-path + Zitadel IAP + optional OIDC)
   grafana:
     image: grafana/grafana-oss:${GRAFANA_IMAGE_TAG:-11.4.0}
     container_name: ragstack-grafana
@@ -756,6 +756,12 @@ services:
     environment:
       GF_INSTALL_PLUGINS: victoriametrics-logs-datasource
       GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # === Server sub-path (Caddy serve qua /grafana*) ===
+      # BẮT BUỘC cho OIDC redirect_uri emit chính xác + assets load qua sub-path.
+      # Prod runtime verified 2026-09-04: emit redirect_uri=http://10.200.0.30/grafana/login/generic_oauth
+      # HTTPS migration future: đổi sang https://grafana.inet.vn/ + SUB_PATH=false.
+      GF_SERVER_ROOT_URL: "http://10.200.0.30/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       # Auth proxy via oauth2-proxy IAP (plan 260810-1021-sso).
       # Caddy forward_auth injects X-Auth-Request-Email after Zitadel validates session.
       # Grafana auto-provisions user on first request; basic auth / login form disabled.

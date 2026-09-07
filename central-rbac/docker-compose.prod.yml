@@ -72,6 +72,10 @@ services:
     networks:
       - authway-prod_internal
       - authway-prod_edge
+    # Container-side DNS override — trỏ zitadel.000nethost.com về Traefik trên authway-vps host
+    # để Mgmt API call giữ Host header đúng (Node fetch không cho override Host header custom).
+    extra_hosts:
+      - "zitadel.000nethost.com:10.200.0.125"
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,9 +95,10 @@ services:
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
-      # Zitadel JWT verification
-      ZITADEL_ISSUER: http://10.200.0.125
-      ZITADEL_JWKS_URL: http://10.200.0.125/oauth/v2/keys
+      # Zitadel JWT verification — issuer/JWKS trỏ public domain HTTPS (khớp `iss` claim JWT).
+      # Container resolve `zitadel.000nethost.com` → 10.200.0.125 qua extra_hosts (bypass OpenResty).
+      ZITADEL_ISSUER: https://zitadel.000nethost.com
+      ZITADEL_JWKS_URL: https://zitadel.000nethost.com/oauth/v2/keys
       ZITADEL_AUD_CLIENT_ID: ${ZITADEL_AUD_CLIENT_ID}
       ZITADEL_AZP_ADMIN_CLIENT_ID: ${ZITADEL_AZP_ADMIN_CLIENT_ID}
 
@@ -101,8 +106,9 @@ services:
       CENTRAL_RBAC_RESOLVE_TOKEN: ${CENTRAL_RBAC_RESOLVE_TOKEN}
       ZITADEL_ACTION_SIGNING_KEY: ${ZITADEL_ACTION_SIGNING_KEY}
 
-      # Zitadel Mgmt API
-      ZITADEL_MGMT_URL: http://10.200.0.125
+      # Zitadel Mgmt API — HTTP OK vì extra_hosts resolve domain về internal IP.
+      # Fetch tự set Host header từ URL → Traefik route đúng theo router `zitadel.000nethost.com`.
+      ZITADEL_MGMT_URL: http://zitadel.000nethost.com
       ZITADEL_SA_PAT: ${ZITADEL_SA_PAT}
       ZITADEL_ORG_ID: ${ZITADEL_ORG_ID}
       ZITADEL_EXTERNAL_HOST: ${ZITADEL_EXTERNAL_HOST}
@@ -164,7 +170,7 @@ services:
         VITE_API_BASE_URL: /v1
         # Default = private VPN IP. Swap to https://zitadel.000nethost.com in .env
         # when DNS + upstream TLS proxy ready. Rebuild required after change.
-        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-http://10.200.0.125}
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-https://zitadel.000nethost.com}
         VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-PLACEHOLDER}
         VITE_REVIEW_MODE: ${VITE_REVIEW_MODE:-true}
     image: central-rbac-ui:phase04

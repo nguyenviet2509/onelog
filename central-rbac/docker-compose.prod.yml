@@ -128,14 +128,19 @@ services:
       - "traefik.http.routers.central-rbac-api.entrypoints=rbac-review"
       - "traefik.http.routers.central-rbac-api.priority=200"
       - "traefik.http.services.central-rbac-api.loadbalancer.server.port=8083"
-      # Public domain — Traefik `websecure` :443 terminates TLS with Sectigo wildcard cert.
-      # HTTP router (`web`) kept as fallback in case upstream proxy strips TLS.
-      # API router: match Host + /v1 or /.well-known/rbac-permissions-schema. Priority > UI.
-      - "traefik.http.routers.central-rbac-api-domain.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
-      - "traefik.http.routers.central-rbac-api-domain.entrypoints=web,websecure"
-      - "traefik.http.routers.central-rbac-api-domain.tls=true"
-      - "traefik.http.routers.central-rbac-api-domain.priority=200"
-      - "traefik.http.routers.central-rbac-api-domain.service=central-rbac-api"
+      # Public domain — 2 routers cùng backend, tách theo entrypoint:
+      #   - HTTP (web :80) cho traffic từ OpenResty proxy 000nethost forward xuống (TLS đã terminate ở proxy)
+      #   - HTTPS (websecure :443) cho direct-connect nếu proxy dùng SNI passthrough
+      # tls=true trên cùng 1 router sẽ chặn traffic HTTP → phải tách.
+      - "traefik.http.routers.central-rbac-api-domain-http.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api-domain-http.entrypoints=web"
+      - "traefik.http.routers.central-rbac-api-domain-http.priority=200"
+      - "traefik.http.routers.central-rbac-api-domain-http.service=central-rbac-api"
+      - "traefik.http.routers.central-rbac-api-domain-https.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api-domain-https.entrypoints=websecure"
+      - "traefik.http.routers.central-rbac-api-domain-https.tls=true"
+      - "traefik.http.routers.central-rbac-api-domain-https.priority=200"
+      - "traefik.http.routers.central-rbac-api-domain-https.service=central-rbac-api"
     # Internal only — no host port published
     # Zitadel container reaches us via container name: http://central-rbac:8083
     healthcheck:
@@ -174,13 +179,17 @@ services:
       - "traefik.http.routers.central-rbac-ui.entrypoints=rbac-review"
       - "traefik.http.routers.central-rbac-ui.priority=100"
       - "traefik.http.services.central-rbac-ui.loadbalancer.server.port=80"
-      # Public domain — Traefik `websecure` :443 with Sectigo wildcard cert.
-      # UI catch-all — priority 100, API router @200 wins for /v1 paths.
-      - "traefik.http.routers.central-rbac-ui-domain.rule=Host(`rbacnb.000nethost.com`)"
-      - "traefik.http.routers.central-rbac-ui-domain.entrypoints=web,websecure"
-      - "traefik.http.routers.central-rbac-ui-domain.tls=true"
-      - "traefik.http.routers.central-rbac-ui-domain.priority=100"
-      - "traefik.http.routers.central-rbac-ui-domain.service=central-rbac-ui"
+      # Public domain — 2 routers tách theo entrypoint (giống pattern api-domain ở trên).
+      # UI catch-all — priority 100, API router @200 wins cho /v1.
+      - "traefik.http.routers.central-rbac-ui-domain-http.rule=Host(`rbacnb.000nethost.com`)"
+      - "traefik.http.routers.central-rbac-ui-domain-http.entrypoints=web"
+      - "traefik.http.routers.central-rbac-ui-domain-http.priority=100"
+      - "traefik.http.routers.central-rbac-ui-domain-http.service=central-rbac-ui"
+      - "traefik.http.routers.central-rbac-ui-domain-https.rule=Host(`rbacnb.000nethost.com`)"
+      - "traefik.http.routers.central-rbac-ui-domain-https.entrypoints=websecure"
+      - "traefik.http.routers.central-rbac-ui-domain-https.tls=true"
+      - "traefik.http.routers.central-rbac-ui-domain-https.priority=100"
+      - "traefik.http.routers.central-rbac-ui-domain-https.service=central-rbac-ui"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
       interval: 15s

@@ -81,6 +81,8 @@ export function NewAppWizardPage() {
     manifest_url: '',
     client_type: 'web',
   });
+  // Track if user manually edited slug — once true, name changes no longer overwrite it.
+  const [slugTouched, setSlugTouched] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [reveal, setReveal] = useState<CreateAppResult | null>(null);
 
@@ -204,7 +206,12 @@ export function NewAppWizardPage() {
               value={form.name}
               onChange={(e) => {
                 const name = e.target.value;
-                setForm((f) => ({ ...f, name, slug: f.slug || slugify(name) }));
+                setForm((f) => ({
+                  ...f,
+                  name,
+                  // Keep syncing slug as user types name until they manually edit slug.
+                  slug: slugTouched ? f.slug : slugify(name),
+                }));
               }}
               placeholder="Ví dụ: Portal Đơn Hàng"
             />
@@ -213,7 +220,10 @@ export function NewAppWizardPage() {
           <FormField label="Slug (kebab-case, immutable)" error={errors['slug']}>
             <Input
               value={form.slug}
-              onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }))}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setForm((f) => ({ ...f, slug: e.target.value.toLowerCase() }));
+              }}
               placeholder="portal-donhang"
               className="font-mono"
             />

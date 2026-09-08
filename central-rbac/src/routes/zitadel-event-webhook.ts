@@ -69,6 +69,16 @@ const EVENT_ACTION_MAP: Record<string, string> = {
 // Redis cache. Newly-registered apps (Central RBAC wizard writes
 // zitadel_client_id) tự động available sau cache TTL 10 phút. Zero hardcode.
 
+function extractZitadelIp(payload: Record<string, unknown> | null | undefined): string | undefined {
+  if (!payload) return undefined;
+  // Zitadel v4 nests IP in userAgent.ip (oidc_session events verified 2026-09-08).
+  const ua = payload['userAgent'] as Record<string, unknown> | undefined;
+  if (ua && typeof ua['ip'] === 'string') return ua['ip'];
+  // Fallback shallow paths
+  if (typeof payload['ip'] === 'string') return payload['ip'];
+  return undefined;
+}
+
 function extractClientId(payload: Record<string, unknown> | null | undefined): string | undefined {
   if (!payload) return undefined;
   // oidc_session events: client_id at top of payload
@@ -161,10 +171,12 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
             app_slug: appSlug,
             event_payload: body.event_payload,
           }),
-          // ip: Zitadel calls us server-to-server — request.ip is Docker
-          // internal (Traefik/Zitadel container). Real user IP is not in the
-          // event body reliably. Store null (UI shows '—') — honest > misleading.
-          ip: undefined,
+          // ip: Zitadel event_payload.userAgent.ip khi có (verified 2026-09-08).
+          // Warning: cho OIDC OAuth flow (VD OneMCP), giá trị này là IP hop cuối
+          // gọi Zitadel (thường là backend server-to-server), KHÔNG phải browser
+          // IP. Cho flow login trực tiếp qua Zitadel Console → là browser IP.
+          // UI drawer có thể hiển thị note.
+          ip: extractZitadelIp(body.event_payload),
           session_id:
             (body.event_payload?.['sessionID'] as string | undefined) ??
             (body.event_payload?.['session_id'] as string | undefined) ??

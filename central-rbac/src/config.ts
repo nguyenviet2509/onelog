@@ -80,6 +80,11 @@ const envSchema = z.object({
   // Token min length enforced per pair at ingest-token module load (≥32 chars).
   AUDIT_INGEST_TOKENS: z.string().default(''),
 
+  // Zitadel Actions v2 Target signing key — HMAC-SHA256 secret shared with
+  // Zitadel when creating the Target. Displayed once in Zitadel Console —
+  // paste here. Empty disables /v1/webhooks/zitadel-event (503).
+  ZITADEL_EVENT_SIGNING_KEY: z.string().default(''),
+
   // Feature flags
   WEBHOOK_ECHO_ENABLED: z
     .string()

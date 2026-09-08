@@ -15,6 +15,7 @@ import { roleRoutes } from './routes/roles.js';
 import { resolveRoutes } from './routes/resolve.js';
 import { auditRoutes } from './routes/audit.js';
 import { auditIngestRoutes } from './routes/audit-ingest.js';
+import { zitadelEventWebhookRoutes } from './routes/zitadel-event-webhook.js';
 import { webhookEchoRoutes } from './routes/webhook-echo.js';
 import { webhookPreTokenRoutes } from './routes/webhook-pre-token.js';
 import { assignmentRoutes } from './routes/assignments.js';
@@ -123,6 +124,7 @@ export async function buildApp() {
   await app.register(resolveRoutes);
   await app.register(auditRoutes);
   await app.register(auditIngestRoutes);
+  await app.register(zitadelEventWebhookRoutes);
   await app.register(webhookEchoRoutes);
   await app.register(webhookPreTokenRoutes);
 

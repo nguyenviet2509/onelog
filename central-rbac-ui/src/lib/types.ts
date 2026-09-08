@@ -15,6 +15,9 @@ export interface Role {
   parent_key?: string | null;
   /** Migration 011: link back to rbac.apps.id for grant dialog project→role filter. */
   app_id?: string | null;
+  /** Migration 016: manual = editable via UI; manifest = read-only (managed by app manifest). */
+  source?: 'manual' | 'manifest';
+  created_at?: string;
 }
 
 export interface Project {

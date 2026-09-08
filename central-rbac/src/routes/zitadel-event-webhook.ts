@@ -49,11 +49,17 @@ interface ZitadelEventBody {
 
 // Whitelist: Zitadel event_type → central audit action name.
 // Non-listed events return 200 without DB insert (drop-silently, keep UI clean).
+//
+// Note on login/logout duplicates:
+//   Zitadel fires BOTH `session.added` (generic session, no client_id) AND
+//   `oidc_session.added` (OIDC session bound to app, has client_id) per login.
+//   We map only the oidc_session.* pair because:
+//     - client_id is required to resolve app_slug for app_id tagging
+//     - session.* events produce untagged rows that pollute audit UI (app_id='zitadel' fallback)
+//   Same reasoning for logout.
 const EVENT_ACTION_MAP: Record<string, string> = {
   'oidc_session.added': 'user.login',
-  'session.added': 'user.login',
   'oidc_session.terminated': 'user.logout',
-  'session.terminated': 'user.logout',
   'oidc_session.access_token.revoked': 'user.token.revoked',
   'user.human.password.check.succeeded': 'user.password.verified',
   'user.human.password.check.failed': 'user.password.failed',

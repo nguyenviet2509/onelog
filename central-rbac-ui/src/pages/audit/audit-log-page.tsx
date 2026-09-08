@@ -21,8 +21,12 @@ const PAGE_SIZE = 100;
 // legacy trước fix). Hiển thị '—' thay vì noise chuỗi 'unknown/unknown'.
 const NULLISH_TARGETS = new Set(['unknown', 'n/a', '', null, undefined]);
 function formatTarget(type: string | null, id: string | null): string {
-  const t = type && !NULLISH_TARGETS.has(type) ? type : '';
-  const i = id && !NULLISH_TARGETS.has(id) ? id : '';
+  const rawT = type && !NULLISH_TARGETS.has(type) ? type : '';
+  const rawI = id && !NULLISH_TARGETS.has(id) ? id : '';
+  // Strip trailing slash on type + leading slash on id so external actors that
+  // ingress paths like "/api/mcp/" don't render as "endpoint//api/mcp/".
+  const t = rawT.replace(/\/+$/, '');
+  const i = rawI.replace(/^\/+/, '');
   if (!t && !i) return '—';
   if (t && !i) return t;
   if (!t && i) return i;
@@ -209,7 +213,7 @@ function AuditDetailDrawer({ row, onClose }: { row: AuditLogRow; onClose: () => 
           <dt className="text-gray-500">App</dt><dd className="col-span-2">{row.app_id ?? 'rbac (nội bộ)'}</dd>
           <dt className="text-gray-500">Action</dt><dd className="col-span-2 font-mono">{row.action}</dd>
           <dt className="text-gray-500">Actor</dt><dd className="col-span-2">{row.actor_email || row.actor_id} <span className="text-xs text-gray-500">({row.actor_type})</span></dd>
-          <dt className="text-gray-500">Target</dt><dd className="col-span-2">{row.target_type}/{row.target_id}</dd>
+          <dt className="text-gray-500">Target</dt><dd className="col-span-2">{formatTarget(row.target_type, row.target_id)}</dd>
           <dt className="text-gray-500">IP</dt><dd className="col-span-2">{row.ip ?? '—'}</dd>
           <dt className="text-gray-500">Correlation ID</dt><dd className="col-span-2 font-mono text-xs">{row.correlation_id ?? '—'}</dd>
         </dl>

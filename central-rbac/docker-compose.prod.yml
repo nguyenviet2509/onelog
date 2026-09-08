@@ -104,7 +104,11 @@ services:
 
       # Webhook auth
       CENTRAL_RBAC_RESOLVE_TOKEN: ${CENTRAL_RBAC_RESOLVE_TOKEN}
+      # pre-token webhook (Actions v2 Target 'central-rbac-pre-token')
       ZITADEL_ACTION_SIGNING_KEY: ${ZITADEL_ACTION_SIGNING_KEY}
+      # event webhook — Actions v2 Target 'central-rbac-audit-ingress' (session.added/terminated etc.)
+      # Without this, /v1/webhooks/zitadel-event returns 503 → cross-app login audit lost.
+      ZITADEL_EVENT_SIGNING_KEY: ${ZITADEL_EVENT_SIGNING_KEY}
 
       # Zitadel Mgmt API — HTTP OK vì extra_hosts resolve domain về internal IP.
       # Fetch tự set Host header từ URL → Traefik route đúng theo router `zitadel.000nethost.com`.

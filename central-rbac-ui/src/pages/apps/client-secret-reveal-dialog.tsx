@@ -15,6 +15,8 @@ export function ClientSecretRevealDialog({
   result: CreateAppResult;
   onClose: () => void;
 }) {
+  // Guarded by wizard: this dialog only renders for client_type='web' where secret is present.
+  const clientSecret = result.client_secret ?? '';
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<'id' | 'secret' | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -44,7 +46,7 @@ export function ClientSecretRevealDialog({
             <label className="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
             <div className="flex gap-2">
               <div className="flex-1 border border-gray-300 rounded-md px-3 py-2 font-mono text-xs bg-gray-50 min-h-[38px] flex items-center overflow-x-auto">
-                {revealed ? result.client_secret : '••••••••••••••••••••••••••••••••••••••••'}
+                {revealed ? clientSecret : '••••••••••••••••••••••••••••••••••••••••'}
               </div>
               <Button size="sm" variant="outline" onClick={() => setRevealed((v) => !v)}>
                 {revealed ? 'Ẩn' : 'Hiện'}
@@ -52,7 +54,7 @@ export function ClientSecretRevealDialog({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => copyToClipboard(result.client_secret, 'secret')}
+                onClick={() => copyToClipboard(clientSecret, 'secret')}
               >
                 {copied === 'secret' ? '✓' : 'Copy'}
               </Button>

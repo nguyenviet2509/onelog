@@ -11,9 +11,45 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCreateAppMutation } from '@/hooks/use-apps-query';
 import { ClientSecretRevealDialog } from './client-secret-reveal-dialog';
-import type { CreateAppResult } from '@/api/apps';
+import { PublicClientSuccessPanel } from './public-client-success-panel';
+import type { CreateAppResult, ClientType } from '@/api/apps';
 
 const SLUG_REGEX = /^[a-z][a-z0-9-]{2,31}$/;
+
+const CLIENT_TYPE_OPTIONS: Array<{
+  value: ClientType;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'web',
+    label: 'Web (confidential)',
+    description: 'App backend server-side, có client_secret. VD: portal Node/Go/Python.',
+  },
+  {
+    value: 'spa',
+    label: 'SPA (public + PKCE)',
+    description: 'App chạy trên trình duyệt (React/Vue/Angular). Không có client_secret.',
+  },
+  {
+    value: 'native',
+    label: 'Native (public + PKCE)',
+    description: 'App mobile/desktop (iOS/Android/Electron). Không có client_secret.',
+  },
+];
+
+/** Extract origin (scheme://host[:port]) from callback URLs — mirrors backend deriveAdditionalOrigins. */
+function deriveOrigins(urls: string[]): string[] {
+  const origins = new Set<string>();
+  for (const u of urls) {
+    try {
+      origins.add(new URL(u).origin);
+    } catch {
+      // skip invalid — validation catches it
+    }
+  }
+  return [...origins];
+}
 
 interface FormState {
   name: string;
@@ -21,6 +57,7 @@ interface FormState {
   callback_urls: string;      // newline-separated in form; split on submit
   post_logout_urls: string;   // optional, newline-separated
   manifest_url: string;
+  client_type: ClientType;
 }
 
 function slugify(name: string): string {
@@ -42,6 +79,7 @@ export function NewAppWizardPage() {
     callback_urls: '',
     post_logout_urls: '',
     manifest_url: '',
+    client_type: 'web',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [reveal, setReveal] = useState<CreateAppResult | null>(null);
@@ -99,6 +137,7 @@ export function NewAppWizardPage() {
         name: form.name.trim(),
         slug: form.slug,
         callback_urls,
+        client_type: form.client_type,
         ...(post_logout_urls.length > 0 ? { post_logout_urls } : {}),
         ...(form.manifest_url ? { manifest_url: form.manifest_url } : {}),
       });
@@ -132,6 +171,34 @@ export function NewAppWizardPage() {
 
       {step === 1 && (
         <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+          <FormField label="Loại client" error={errors['client_type']}>
+            <div className="space-y-2">
+              {CLIENT_TYPE_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-3 border rounded-md p-3 cursor-pointer transition ${
+                    form.client_type === opt.value
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="client_type"
+                    value={opt.value}
+                    checked={form.client_type === opt.value}
+                    onChange={() => setForm((f) => ({ ...f, client_type: opt.value }))}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900">{opt.label}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{opt.description}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </FormField>
+
           <FormField label="Tên hiển thị" error={errors['name']}>
             <Input
               value={form.name}
@@ -202,12 +269,24 @@ export function NewAppWizardPage() {
         </div>
       )}
 
-      {step === 2 && (
+      {step === 2 && (() => {
+        const callbackList = form.callback_urls.split(/\n+/).map((u) => u.trim()).filter(Boolean);
+        const originsPreview = deriveOrigins(callbackList);
+        const clientTypeLabel = CLIENT_TYPE_OPTIONS.find((o) => o.value === form.client_type)?.label ?? form.client_type;
+        const isPublic = form.client_type === 'spa' || form.client_type === 'native';
+        return (
         <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">Xem lại</h2>
+          <ReviewRow label="Loại client" value={clientTypeLabel} />
           <ReviewRow label="Tên" value={form.name} />
           <ReviewRow label="Slug" value={form.slug} mono />
           <ReviewRow label="Callback URLs" value={form.callback_urls} mono multiline />
+          <ReviewRow
+            label="Additional Origins (auto)"
+            value={originsPreview.length > 0 ? originsPreview.join('\n') : '(không có)'}
+            mono
+            multiline
+          />
           <ReviewRow
             label="Post Logout URIs"
             value={form.post_logout_urls || '(để trống)'}
@@ -221,10 +300,17 @@ export function NewAppWizardPage() {
             mono
           />
 
-          <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-md p-3">
-            <strong>Cảnh báo:</strong> Zitadel sẽ tạo project + OIDC client. Client secret chỉ hiển thị 1 lần.
-            Lưu ngay khi thấy — không thể lấy lại.
-          </div>
+          {isPublic ? (
+            <div className="bg-blue-50 border border-blue-200 text-blue-900 text-xs rounded-md p-3">
+              <strong>Public client (PKCE):</strong> Zitadel sẽ tạo project + OIDC app KHÔNG có
+              client_secret. App dùng PKCE flow. Additional Origins tự động = origin của callback URLs.
+            </div>
+          ) : (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-md p-3">
+              <strong>Confidential client:</strong> Zitadel sẽ tạo project + OIDC client với
+              client_secret. Secret chỉ hiển thị 1 lần — lưu ngay khi thấy, không thể lấy lại.
+            </div>
+          )}
 
           <div className="flex justify-between pt-4">
             <Button variant="ghost" onClick={() => setStep(1)}>
@@ -235,10 +321,13 @@ export function NewAppWizardPage() {
             </Button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {reveal && (
-        <ClientSecretRevealDialog result={reveal} onClose={handleRevealClose} />
+        reveal.client_type === 'web'
+          ? <ClientSecretRevealDialog result={reveal} onClose={handleRevealClose} />
+          : <PublicClientSuccessPanel result={reveal} onClose={handleRevealClose} />
       )}
     </div>
   );

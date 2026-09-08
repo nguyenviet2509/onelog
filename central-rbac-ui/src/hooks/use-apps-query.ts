@@ -6,14 +6,18 @@ import {
   applyManifestDiff,
   createApp,
   deleteApp,
+  getAppOidcConfig,
   listApps,
+  patchApp,
   syncManifest,
   updateManifestUrl,
   type CreateAppInput,
   type DiffAction,
+  type PatchAppInput,
 } from '@/api/apps';
 
 const APPS_KEY = ['apps'] as const;
+const APP_OIDC_KEY = (slug: string) => ['apps', slug, 'oidc-config'] as const;
 
 export function useAppsQuery() {
   return useQuery({
@@ -63,6 +67,29 @@ export function useDeleteAppMutation() {
     mutationFn: (appId: string) => deleteApp(appId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: APPS_KEY });
+    },
+  });
+}
+
+// ── Phase 09: Edit App page ─────────────────────────────────────────────────
+
+export function useAppOidcConfigQuery(slug: string | undefined) {
+  return useQuery({
+    queryKey: APP_OIDC_KEY(slug ?? ''),
+    queryFn: () => getAppOidcConfig(slug!),
+    enabled: !!slug,
+    // No stale time — always refetch on mount so Edit page sees fresh Zitadel state
+    staleTime: 0,
+  });
+}
+
+export function usePatchAppMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; body: PatchAppInput }) => patchApp(input.slug, input.body),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: APPS_KEY });
+      void qc.invalidateQueries({ queryKey: APP_OIDC_KEY(vars.slug) });
     },
   });
 }

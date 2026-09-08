@@ -18,17 +18,55 @@ import { mgmtPost, mgmtGet, mgmtPut } from './zitadel-http.js';
 import { ZitadelHttpError } from './zitadel-http-error.js';
 import { logger } from './logger.js';
 
+/**
+ * OIDC client type — user-facing category, resolved to Zitadel enums via CLIENT_TYPE_MAP.
+ *   web    → confidential server-side app, client_secret issued
+ *   spa    → browser SPA, PKCE required, no client_secret
+ *   native → mobile/desktop app, PKCE required, no client_secret
+ */
+export type ClientType = 'web' | 'spa' | 'native';
+
+/**
+ * Mapping single source of truth: user-facing client_type → Zitadel enums.
+ * Keeps route/handler code free of Zitadel-specific constants.
+ */
+export const CLIENT_TYPE_MAP: Record<ClientType, { appType: string; authMethodType: string }> = {
+  web:    { appType: 'OIDC_APP_TYPE_WEB',        authMethodType: 'OIDC_AUTH_METHOD_TYPE_BASIC' },
+  spa:    { appType: 'OIDC_APP_TYPE_USER_AGENT', authMethodType: 'OIDC_AUTH_METHOD_TYPE_NONE'  },
+  native: { appType: 'OIDC_APP_TYPE_NATIVE',     authMethodType: 'OIDC_AUTH_METHOD_TYPE_NONE'  },
+};
+
+/** Public client types (PKCE, no client_secret meaningfully returned). */
+export function isPublicClient(t: ClientType): boolean {
+  return t === 'spa' || t === 'native';
+}
+
+/**
+ * Extract origin (scheme://host[:port]) from each callback URL, dedupe.
+ * Zitadel requires additionalOrigins whitelist for SPA/PKCE CORS to work.
+ * Auto-deriving covers 95% of cases (SPA hosted at same origin as callback).
+ */
+export function deriveAdditionalOrigins(callbackUrls: string[]): string[] {
+  const origins = new Set<string>();
+  for (const url of callbackUrls) {
+    try { origins.add(new URL(url).origin); } catch { /* skip invalid — validation already ran */ }
+  }
+  return [...origins];
+}
+
 export interface OidcAppCreateInput {
   projectId: string;
   name: string;
   redirectUris: string[];
   postLogoutRedirectUris?: string[];
+  clientType?: ClientType;   // default 'web' for backward compat
 }
 
 export interface OidcAppCreateResult {
   appId: string;
   clientId: string;
-  clientSecret: string;   // shown ONCE — never persisted server-side
+  clientSecret: string;   // shown ONCE — empty string for public clients (Zitadel returns none)
+  clientType: ClientType;
 }
 
 function orgId(): string {
@@ -38,17 +76,21 @@ function orgId(): string {
 }
 
 /**
- * Add OIDC app to a project. Returns clientId + clientSecret (shown ONCE per Fix UX).
+ * Add OIDC app to a project. Returns clientId (+ clientSecret for confidential clients).
  * Throws on any non-2xx from Zitadel; caller responsible for rollback (RemoveProject).
  */
 export async function addOidcApp(input: OidcAppCreateInput): Promise<OidcAppCreateResult> {
+  const clientType = input.clientType ?? 'web';
+  const { appType, authMethodType } = CLIENT_TYPE_MAP[clientType];
+  const additionalOrigins = deriveAdditionalOrigins(input.redirectUris);
+
   const body = {
     name: input.name,
     redirectUris: input.redirectUris,
     responseTypes: ['OIDC_RESPONSE_TYPE_CODE'],
     grantTypes: ['OIDC_GRANT_TYPE_AUTHORIZATION_CODE', 'OIDC_GRANT_TYPE_REFRESH_TOKEN'],
-    appType: 'OIDC_APP_TYPE_WEB',
-    authMethodType: 'OIDC_AUTH_METHOD_TYPE_BASIC',
+    appType,
+    authMethodType,
     postLogoutRedirectUris: input.postLogoutRedirectUris ?? [],
     version: 'OIDC_VERSION_1_0',
     devMode: false,
@@ -56,6 +98,7 @@ export async function addOidcApp(input: OidcAppCreateInput): Promise<OidcAppCrea
     accessTokenRoleAssertion: true,
     idTokenRoleAssertion: true,
     idTokenUserinfoAssertion: true,
+    additionalOrigins,
     // Lifetimes — Zitadel accepts protobuf Duration strings
     clockSkew: '1s',
   };
@@ -74,18 +117,19 @@ export async function addOidcApp(input: OidcAppCreateInput): Promise<OidcAppCrea
   const parsed = (await res.json()) as {
     appId: string;
     clientId: string;
-    clientSecret: string;
+    clientSecret?: string;
   };
 
   logger.info(
-    { project_id: input.projectId, app_id: parsed.appId, client_id: parsed.clientId },
+    { project_id: input.projectId, app_id: parsed.appId, client_id: parsed.clientId, client_type: clientType },
     'zitadel-oidc-app: created',
   );
 
   return {
     appId: parsed.appId,
     clientId: parsed.clientId,
-    clientSecret: parsed.clientSecret,
+    clientSecret: parsed.clientSecret ?? '',
+    clientType,
   };
 }
 
@@ -104,7 +148,7 @@ interface OidcAppSummary {
   oidcConfig?: OidcConfig;
 }
 
-interface OidcConfig {
+export interface OidcConfig {
   redirectUris?: string[];
   responseTypes?: string[];
   grantTypes?: string[];
@@ -184,6 +228,104 @@ export async function putOidcAppConfig(
     const body = await res.text().catch(() => '');
     throw new ZitadelHttpError(res.status, `Zitadel putOidcAppConfig error: HTTP ${res.status} ${body.slice(0, 200)}`);
   }
+}
+
+/**
+ * Find the (single) OIDC app in a project. Wizard creates 1 OIDC app per project,
+ * so callers can rely on the first match. Returns null if project has zero OIDC apps.
+ */
+export async function findOidcAppByProject(
+  projectId: string,
+  targetOrgId: string,
+): Promise<OidcAppSummary | null> {
+  const apps = await listOidcApps(projectId, targetOrgId);
+  return apps[0] ?? null;
+}
+
+/**
+ * Reverse-map Zitadel enums back to user-facing client_type. Used when reading
+ * OIDC config from Zitadel (e.g., GET /oidc-config endpoint) so UI can prefill
+ * the client_type radio without querying rbac.apps.client_type separately.
+ * Returns 'web' as fallback for unknown enum combinations.
+ */
+export function classifyClientType(cfg: OidcConfig): ClientType {
+  const app = cfg.appType;
+  const auth = cfg.authMethodType;
+  if (app === 'OIDC_APP_TYPE_USER_AGENT' && auth === 'OIDC_AUTH_METHOD_TYPE_NONE') return 'spa';
+  if (app === 'OIDC_APP_TYPE_NATIVE' && auth === 'OIDC_AUTH_METHOD_TYPE_NONE') return 'native';
+  return 'web';
+}
+
+export interface PatchOidcAppInput {
+  projectId: string;
+  appId: string;
+  targetOrgId?: string;
+  clientType?: ClientType;
+  redirectUris?: string[];
+  postLogoutRedirectUris?: string[];
+}
+
+/**
+ * Merge-then-PUT patch: fetch current OIDC config, overlay caller's patch, PUT full body.
+ * Preserves all fields the caller didn't specify (Zitadel PUT semantics = full replace).
+ * Auto-derives additionalOrigins from final redirectUris.
+ *
+ * Guards public→confidential transition (throws) because Zitadel doesn't regenerate
+ * client_secret on auth-method swap — separate regenerate endpoint required (out of scope).
+ */
+export async function patchOidcAppConfig(input: PatchOidcAppInput): Promise<{
+  clientType: ClientType;
+  redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  additionalOrigins: string[];
+}> {
+  const orgIdRes = input.targetOrgId ?? config.ZITADEL_ORG_ID;
+  if (!orgIdRes) throw new Error('patchOidcAppConfig: ZITADEL_ORG_ID not configured');
+
+  const current = await getOidcAppConfig(input.projectId, input.appId, orgIdRes);
+  if (!current) {
+    throw new ZitadelHttpError(404, `OIDC app ${input.appId} not found in project ${input.projectId}`);
+  }
+
+  const currentType = classifyClientType(current);
+  const nextType = input.clientType ?? currentType;
+
+  // Guard: public → confidential requires secret regeneration (separate flow)
+  if ((currentType === 'spa' || currentType === 'native') && nextType === 'web') {
+    throw new ZitadelHttpError(
+      400,
+      'Cannot switch public client (spa/native) back to confidential (web) — client_secret regeneration not supported yet',
+    );
+  }
+
+  const { appType, authMethodType } = CLIENT_TYPE_MAP[nextType];
+  const redirectUris = input.redirectUris ?? current.redirectUris ?? [];
+  const postLogoutRedirectUris = input.postLogoutRedirectUris ?? current.postLogoutRedirectUris ?? [];
+  const additionalOrigins = deriveAdditionalOrigins(redirectUris);
+
+  const merged: OidcConfig = {
+    ...current,
+    redirectUris,
+    postLogoutRedirectUris,
+    appType,
+    authMethodType,
+    additionalOrigins,
+  };
+
+  await putOidcAppConfig(input.projectId, input.appId, orgIdRes, merged);
+  logger.info(
+    {
+      project_id: input.projectId,
+      app_id: input.appId,
+      old_client_type: currentType,
+      new_client_type: nextType,
+      redirect_count: redirectUris.length,
+      origin_count: additionalOrigins.length,
+    },
+    'zitadel-oidc-app: patched',
+  );
+
+  return { clientType: nextType, redirectUris, postLogoutRedirectUris, additionalOrigins };
 }
 
 export interface EnsureAssertionResult {

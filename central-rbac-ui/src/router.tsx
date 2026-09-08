@@ -14,6 +14,7 @@ import { SilentRenewPage } from '@/pages/login/silent-renew-page';
 import { UsersListPage } from '@/pages/users/users-list-page';
 import { AppsListPage } from '@/pages/apps/apps-list-page';
 import { NewAppWizardPage } from '@/pages/apps/new-app-wizard-page';
+import { EditAppPage } from '@/pages/apps/edit-app-page';
 import { ManifestSyncPage } from '@/pages/apps/manifest-sync-page';
 import { AuditLogPage } from '@/pages/audit/audit-log-page';
 
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
           // Phase 07-08: apps registry
           { path: 'apps', element: <AppsListPage /> },
           { path: 'apps/new', element: <NewAppWizardPage /> },
+          { path: 'apps/:slug/edit', element: <EditAppPage /> },
           { path: 'apps/:id/manifest', element: <ManifestSyncPage /> },
           { path: 'audit', element: <AuditLogPage /> },
         ],

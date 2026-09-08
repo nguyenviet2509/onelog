@@ -3,11 +3,15 @@
  */
 import { apiClient } from './client';
 
+/** OIDC client type — mirrors backend enum. */
+export type ClientType = 'web' | 'spa' | 'native';
+
 export interface App {
   /** null when the Zitadel project is not registered in rbac.apps yet */
   id: string | null;
   slug: string | null;
   name: string;
+  client_type: ClientType | null;
   zitadel_project_id: string | null;
   zitadel_client_id: string | null;
   zitadel_org_id: string | null;
@@ -25,16 +29,20 @@ export interface CreateAppInput {
   callback_urls: string[];
   post_logout_urls?: string[];
   manifest_url?: string;
+  client_type: ClientType;
 }
 
 export interface CreateAppResult {
   id: string;
   slug: string;
   name: string;
+  client_type: ClientType;
   zitadel_project_id: string;
   client_id: string;
-  client_secret: string;   // ONE-TIME reveal
-  warning: string;
+  /** Only present for confidential clients (client_type='web'). Absent for spa/native (public+PKCE). */
+  client_secret?: string;
+  warning?: string;
+  note?: string;
 }
 
 export type DiffAction = 'add' | 'update-desc' | 'explicit-deprecate' | 'implicit-deprecate';
@@ -96,4 +104,46 @@ export async function updateManifestUrl(appId: string, manifestUrl: string): Pro
 
 export async function deleteApp(appId: string): Promise<void> {
   await apiClient.delete(`/admin/apps/${appId}`);
+}
+
+// ── Phase 09: Edit App page ─────────────────────────────────────────────────
+
+export interface AppOidcConfig {
+  slug: string;
+  name: string;
+  zitadel_project_id: string;
+  zitadel_org_id: string | null;
+  zitadel_client_id: string | null;
+  oidc_app_id: string;
+  /** Live client_type derived from Zitadel config (source of truth). */
+  client_type: ClientType;
+  /** DB-cached client_type — may lag if admin edited via Zitadel Console directly. */
+  client_type_db: ClientType;
+  callback_urls: string[];
+  post_logout_urls: string[];
+  additional_origins: string[];
+}
+
+export interface PatchAppInput {
+  client_type?: ClientType;
+  callback_urls?: string[];
+  post_logout_urls?: string[];
+}
+
+export interface PatchAppResult {
+  slug: string;
+  client_type: ClientType;
+  callback_urls: string[];
+  post_logout_urls: string[];
+  additional_origins: string[];
+}
+
+export async function getAppOidcConfig(slug: string): Promise<AppOidcConfig> {
+  const res = await apiClient.get<AppOidcConfig>(`/admin/apps/${slug}/oidc-config`);
+  return res.data;
+}
+
+export async function patchApp(slug: string, input: PatchAppInput): Promise<PatchAppResult> {
+  const res = await apiClient.patch<PatchAppResult>(`/admin/apps/${slug}`, input);
+  return res.data;
 }

@@ -159,6 +159,11 @@ export function AppsListPage() {
                   )}
                   {app.registered && app.id ? (
                     <div className="mt-2 flex gap-2 flex-wrap">
+                      {app.slug && (
+                        <Link to={`/apps/${app.slug}/edit`}>
+                          <Button size="sm" variant="outline">Sửa OIDC</Button>
+                        </Link>
+                      )}
                       <Link to={`/apps/${app.id}/manifest`}>
                         <Button size="sm" variant="outline">Sync</Button>
                       </Link>
@@ -254,6 +259,13 @@ export function AppsListPage() {
                   <td className="px-4 py-3">
                     {app.registered && app.id ? (
                       <div className="flex gap-2 flex-wrap">
+                        {app.slug && (
+                          <Link to={`/apps/${app.slug}/edit`}>
+                            <Button size="sm" variant="outline">
+                              Sửa OIDC
+                            </Button>
+                          </Link>
+                        )}
                         <Link to={`/apps/${app.id}/manifest`}>
                           <Button size="sm" variant="outline">
                             Sync

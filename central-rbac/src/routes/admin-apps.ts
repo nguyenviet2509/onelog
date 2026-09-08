@@ -28,13 +28,23 @@ import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { addProject, findProjectByName, removeProject, listAllProjectsAcrossOrgs } from '../lib/zitadel-project-client.js';
 import { getOrgsBatch } from '../lib/zitadel-org-client.js';
-import { addOidcApp } from '../lib/zitadel-oidc-app-client.js';
+import {
+  addOidcApp,
+  findOidcAppByProject,
+  patchOidcAppConfig,
+  classifyClientType,
+  isPublicClient,
+  type ClientType,
+} from '../lib/zitadel-oidc-app-client.js';
+import { ZitadelHttpError } from '../lib/zitadel-http-error.js';
 import { createRoleWithSync } from '../services/role-sync.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
 
 // Slug: kebab-case, 3-32 chars, must start with letter (Fix #13)
 const SLUG_REGEX = /^[a-z][a-z0-9-]{2,31}$/;
+
+const CLIENT_TYPE_ENUM = z.enum(['web', 'spa', 'native']);
 
 const createBodySchema = z.object({
   name: z.string().min(1).max(200),
@@ -49,7 +59,19 @@ const createBodySchema = z.object({
     .url()
     .startsWith('https://', 'manifest_url must be HTTPS')
     .optional(),
+  client_type: CLIENT_TYPE_ENUM.optional().default('web'),
 });
+
+const patchBodySchema = z
+  .object({
+    client_type: CLIENT_TYPE_ENUM.optional(),
+    callback_urls: z.array(z.string().url().startsWith('https://')).min(1).max(10).optional(),
+    post_logout_urls: z.array(z.string().url().startsWith('https://')).max(10).optional(),
+  })
+  .refine(
+    (v) => v.client_type !== undefined || v.callback_urls !== undefined || v.post_logout_urls !== undefined,
+    { message: 'at least one of client_type, callback_urls, post_logout_urls required' },
+  );
 
 interface DbApp {
   id: string;
@@ -60,6 +82,8 @@ interface DbApp {
   manifest_url: string | null;
   created_at: string;
   created_by: string;
+  client_type?: ClientType;
+  zitadel_org_id?: string | null;
 }
 
 /**
@@ -121,13 +145,14 @@ async function insertApp(
   manifestUrl: string | null,
   adminSub: string,
   zitadelOrgId: string,
+  clientType: ClientType,
 ): Promise<DbApp> {
   const { rows } = await writerPool.query<DbApp>(
     `INSERT INTO rbac.apps
-       (slug, name, zitadel_project_id, zitadel_org_id, zitadel_client_id, manifest_url, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_at, created_by`,
-    [slug, name, projectId, zitadelOrgId, clientId, manifestUrl, adminSub],
+       (slug, name, zitadel_project_id, zitadel_org_id, zitadel_client_id, manifest_url, created_by, client_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, slug, name, zitadel_project_id, zitadel_client_id, manifest_url, created_at, created_by, client_type`,
+    [slug, name, projectId, zitadelOrgId, clientId, manifestUrl, adminSub, clientType],
   );
   if (!rows[0]) throw new Error('INSERT rbac.apps returned no rows');
   return rows[0];
@@ -184,14 +209,14 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/v1/admin/apps',
     {
-      preHandler: [verifyJwt, rateLimitAdmin({ scope: 'admin_app_create' })],
+      preHandler: [verifyJwt, requireAdmin, rateLimitAdmin({ scope: 'admin_app_create' })],
     },
     async (request, reply) => {
       const parsed = createBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
       }
-      const { name, slug, callback_urls, post_logout_urls, manifest_url } = parsed.data;
+      const { name, slug, callback_urls, post_logout_urls, manifest_url, client_type } = parsed.data;
       const adminSub = request.jwtClaims!.sub!;
 
       // (2) Slug + prefix-collision guard
@@ -239,6 +264,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
           name,
           redirectUris: callback_urls,
           postLogoutRedirectUris: post_logout_urls,
+          clientType: client_type,
         });
         clientId = oidcResult.clientId;
         clientSecret = oidcResult.clientSecret;
@@ -266,7 +292,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       // Wizard always creates project under SA's default org (env ZITADEL_ORG_ID).
       // If future multi-org needed, extract from addProject response details.resourceOwner.
       const projectOrgId = config.ZITADEL_ORG_ID ?? '';
-      const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub, projectOrgId);
+      const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub, projectOrgId, client_type);
       await createDefaultRoles(slug, newApp.id, projectId, adminSub);
       await writeAuditLog(request, {
         action: 'app.create',
@@ -275,21 +301,30 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         after_state: {
           slug,
           name,
+          client_type,
           zitadel_project_id: projectId,
           zitadel_client_id: clientId,
           manifest_url: manifest_url ?? null,
         },
       });
 
-      // (8) One-time reveal
+      // (8) One-time reveal — public clients (spa/native) receive no meaningful secret
+      const publicClient = isPublicClient(client_type);
       return reply.status(201).send({
         id: newApp.id,
         slug,
         name,
+        client_type,
         zitadel_project_id: projectId,
         client_id: clientId,
-        client_secret: clientSecret,
-        warning: 'client_secret shown once — store it now; cannot be retrieved again',
+        ...(publicClient
+          ? {
+              note: 'Public client (PKCE) — no client_secret. Configure your app to use PKCE flow.',
+            }
+          : {
+              client_secret: clientSecret,
+              warning: 'client_secret shown once — store it now; cannot be retrieved again',
+            }),
       });
     },
   );
@@ -303,12 +338,13 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // response degrades to rbac.apps only — same behaviour as pre-multi-org.
   app.get(
     '/v1/admin/apps',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdmin] },
     async (_request, reply) => {
       interface AppOut {
         id: string | null;
         slug: string | null;
         name: string;
+        client_type: ClientType | null;
         zitadel_project_id: string | null;
         zitadel_client_id: string | null;
         zitadel_org_id: string | null;
@@ -319,8 +355,8 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         registered: boolean;
       }
 
-      const { rows: dbApps } = await writerPool.query<DbApp & { zitadel_org_id: string | null }>(
-        `SELECT id, slug, name, zitadel_project_id, zitadel_org_id, zitadel_client_id,
+      const { rows: dbApps } = await writerPool.query<DbApp & { zitadel_org_id: string | null; client_type: ClientType }>(
+        `SELECT id, slug, name, client_type, zitadel_project_id, zitadel_org_id, zitadel_client_id,
                 manifest_url, created_at, created_by
            FROM rbac.apps
           ORDER BY created_at DESC`,
@@ -347,6 +383,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
             id: db?.id ?? null,
             slug: db?.slug ?? null,
             name: db?.name ?? p.name,
+            client_type: db?.client_type ?? null,
             zitadel_project_id: p.id,
             zitadel_client_id: db?.zitadel_client_id ?? null,
             zitadel_org_id: p.orgId,
@@ -366,6 +403,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
               id: a.id,
               slug: a.slug,
               name: a.name,
+              client_type: a.client_type,
               zitadel_project_id: a.zitadel_project_id,
               zitadel_client_id: a.zitadel_client_id,
               zitadel_org_id: a.zitadel_org_id,
@@ -391,6 +429,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
           id: a.id,
           slug: a.slug,
           name: a.name,
+          client_type: a.client_type,
           zitadel_project_id: a.zitadel_project_id,
           zitadel_client_id: a.zitadel_client_id,
           zitadel_org_id: a.zitadel_org_id,
@@ -403,6 +442,191 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.send({ apps });
+    },
+  );
+
+  // GET /v1/admin/apps/:slug/oidc-config — fetch live OIDC config from Zitadel
+  // for the Edit App page. rbac.apps is metadata-only (client_type cached); URLs
+  // live in Zitadel as source of truth so we don't drift on manual edits.
+  app.get(
+    '/v1/admin/apps/:slug/oidc-config',
+    { preHandler: [verifyJwt, requireAdmin] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ slug: z.string().regex(SLUG_REGEX) });
+      const parsedParams = paramsSchema.safeParse(request.params);
+      if (!parsedParams.success) return reply.status(400).send({ error: 'Invalid slug' });
+      const { slug } = parsedParams.data;
+
+      const { rows } = await writerPool.query<{
+        id: string;
+        slug: string;
+        name: string;
+        client_type: ClientType;
+        zitadel_project_id: string | null;
+        zitadel_org_id: string | null;
+        zitadel_client_id: string | null;
+      }>(
+        `SELECT id, slug, name, client_type, zitadel_project_id, zitadel_org_id, zitadel_client_id
+           FROM rbac.apps WHERE slug = $1`,
+        [slug],
+      );
+      const dbApp = rows[0];
+      if (!dbApp) return reply.status(404).send({ error: 'App not found' });
+      if (!dbApp.zitadel_project_id) {
+        return reply.status(409).send({ error: 'App has no Zitadel project (orphan row)' });
+      }
+
+      const targetOrg = dbApp.zitadel_org_id || config.ZITADEL_ORG_ID || '';
+      let oidcApp: Awaited<ReturnType<typeof findOidcAppByProject>>;
+      try {
+        oidcApp = await findOidcAppByProject(dbApp.zitadel_project_id, targetOrg);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err: msg, slug, project_id: dbApp.zitadel_project_id }, 'admin-apps: fetch OIDC app failed');
+        return reply.status(502).send({ error: 'Zitadel fetch failed', detail: msg });
+      }
+      if (!oidcApp || !oidcApp.oidcConfig) {
+        return reply.status(404).send({ error: 'OIDC app not found in Zitadel project' });
+      }
+
+      const cfg = oidcApp.oidcConfig;
+      // Prefer live Zitadel-derived type — DB value may lag if admin edited via Zitadel Console
+      const liveType = classifyClientType(cfg);
+      return reply.send({
+        slug: dbApp.slug,
+        name: dbApp.name,
+        zitadel_project_id: dbApp.zitadel_project_id,
+        zitadel_org_id: dbApp.zitadel_org_id,
+        zitadel_client_id: dbApp.zitadel_client_id,
+        oidc_app_id: oidcApp.id,
+        client_type: liveType,
+        client_type_db: dbApp.client_type,
+        callback_urls: cfg.redirectUris ?? [],
+        post_logout_urls: cfg.postLogoutRedirectUris ?? [],
+        additional_origins: cfg.additionalOrigins ?? [],
+      });
+    },
+  );
+
+  // PATCH /v1/admin/apps/:slug — sửa client_type + callback URLs + post-logout URLs
+  // Merge-then-PUT against Zitadel (preserve accessTokenType, assertions, etc.)
+  // Auto-derives additionalOrigins from final redirectUris.
+  app.patch(
+    '/v1/admin/apps/:slug',
+    { preHandler: [verifyJwt, requireAdmin] },
+    async (request, reply) => {
+      const paramsSchema = z.object({ slug: z.string().regex(SLUG_REGEX) });
+      const parsedParams = paramsSchema.safeParse(request.params);
+      if (!parsedParams.success) return reply.status(400).send({ error: 'Invalid slug' });
+      const parsedBody = patchBodySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: 'Validation error', details: parsedBody.error.issues });
+      }
+      const { slug } = parsedParams.data;
+      const { client_type: nextType, callback_urls, post_logout_urls } = parsedBody.data;
+
+      const { rows } = await writerPool.query<{
+        id: string;
+        client_type: ClientType;
+        zitadel_project_id: string | null;
+        zitadel_org_id: string | null;
+      }>(
+        `SELECT id, client_type, zitadel_project_id, zitadel_org_id
+           FROM rbac.apps WHERE slug = $1`,
+        [slug],
+      );
+      const dbApp = rows[0];
+      if (!dbApp) return reply.status(404).send({ error: 'App not found' });
+      if (!dbApp.zitadel_project_id) {
+        return reply.status(409).send({ error: 'App has no Zitadel project (orphan row)' });
+      }
+
+      const targetOrg = dbApp.zitadel_org_id || config.ZITADEL_ORG_ID || '';
+
+      // Serialize concurrent PATCH on same app via Postgres advisory lock (same
+      // pattern as outbox-processor.ts). Zitadel Mgmt API lacks ETag/If-Match, so
+      // merge-then-PUT races silently overwrite. Lock held for duration of
+      // fetch→PUT→DB update to guarantee atomic semantics per app.
+      const lockClient = await writerPool.connect();
+      let patched: Awaited<ReturnType<typeof patchOidcAppConfig>>;
+      try {
+        await lockClient.query('BEGIN');
+        await lockClient.query(
+          `SELECT pg_advisory_xact_lock(hashtext($1))`,
+          [`app-patch:${dbApp.id}`],
+        );
+
+        let oidcApp: Awaited<ReturnType<typeof findOidcAppByProject>>;
+        try {
+          oidcApp = await findOidcAppByProject(dbApp.zitadel_project_id, targetOrg);
+        } catch (err) {
+          await lockClient.query('ROLLBACK').catch(() => {});
+          const msg = err instanceof Error ? err.message : String(err);
+          return reply.status(502).send({ error: 'Zitadel fetch failed', detail: msg });
+        }
+        if (!oidcApp) {
+          await lockClient.query('ROLLBACK').catch(() => {});
+          return reply.status(404).send({ error: 'OIDC app not found in Zitadel project' });
+        }
+
+        try {
+          patched = await patchOidcAppConfig({
+            projectId: dbApp.zitadel_project_id,
+            appId: oidcApp.id,
+            targetOrgId: targetOrg,
+            clientType: nextType,
+            redirectUris: callback_urls,
+            postLogoutRedirectUris: post_logout_urls,
+          });
+        } catch (err) {
+          await lockClient.query('ROLLBACK').catch(() => {});
+          if (err instanceof ZitadelHttpError && err.status === 400) {
+            return reply.status(400).send({ error: err.message });
+          }
+          if (err instanceof ZitadelHttpError && err.status === 404) {
+            return reply.status(404).send({ error: err.message });
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error({ err: msg, slug }, 'admin-apps: patch OIDC config failed');
+          return reply.status(502).send({ error: 'Zitadel patch failed', detail: msg });
+        }
+
+        // Sync DB.client_type only if it changed (avoid pointless UPDATE + audit noise)
+        if (patched.clientType !== dbApp.client_type) {
+          await lockClient.query(
+            `UPDATE rbac.apps SET client_type = $1 WHERE id = $2`,
+            [patched.clientType, dbApp.id],
+          );
+        }
+
+        await lockClient.query('COMMIT');
+      } catch (err) {
+        await lockClient.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        lockClient.release();
+      }
+
+      await writeAuditLog(request, {
+        action: 'app.patch',
+        target_type: 'app',
+        target_id: dbApp.id,
+        before_state: { client_type: dbApp.client_type },
+        after_state: {
+          client_type: patched.clientType,
+          callback_urls: patched.redirectUris,
+          post_logout_urls: patched.postLogoutRedirectUris,
+          additional_origins: patched.additionalOrigins,
+        },
+      });
+
+      return reply.send({
+        slug,
+        client_type: patched.clientType,
+        callback_urls: patched.redirectUris,
+        post_logout_urls: patched.postLogoutRedirectUris,
+        additional_origins: patched.additionalOrigins,
+      });
     },
   );
 

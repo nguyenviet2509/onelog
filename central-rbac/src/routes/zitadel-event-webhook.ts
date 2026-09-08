@@ -23,6 +23,7 @@ import { sendToVictoriaLogs } from '../middleware/vl-audit-sync.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { verifyZitadelEventSignature } from '../lib/zitadel-event-signature.js';
+import { resolveAppSlug, resolveUserEmail } from '../lib/zitadel-event-enrichment.js';
 import { incrementAuditWriteFailures } from '../lib/audit-metrics.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -64,12 +65,9 @@ const EVENT_ACTION_MAP: Record<string, string> = {
   'user.removed': 'user.deleted',
 };
 
-// Registry: Zitadel OIDC application client_id → app slug (đọc được).
-// Update khi register app mới trong Zitadel Console. Source: event_payload.client_id.
-const CLIENT_ID_TO_APP: Record<string, string> = {
-  '387060281072746499': 'onemcp',
-  '387780002415968260': 'central-rbac-ui',
-};
+// App slug resolution is dynamic via resolveAppSlug() → rbac.apps table with
+// Redis cache. Newly-registered apps (Central RBAC wizard writes
+// zitadel_client_id) tự động available sau cache TTL 10 phút. Zero hardcode.
 
 function extractClientId(payload: Record<string, unknown> | null | undefined): string | undefined {
   if (!payload) return undefined;
@@ -132,16 +130,23 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
       const aggregateType = body.aggregateType ?? 'unknown';
       const userID = extractUserID(body);
       const clientId = extractClientId(body.event_payload);
-      const appSlug = clientId ? CLIENT_ID_TO_APP[clientId] : undefined;
 
-      // Encode app slug into action if known: user.login.onemcp / user.logout.central-rbac-ui
+      // Enrich (both cached — first-hit adds ~50ms Zitadel API, subsequent 0ms):
+      //   appSlug   ← rbac.apps table by client_id (10 min TTL)
+      //   userEmail ← Zitadel /v2/users/:id (24h TTL)
+      const [appSlug, userEmail] = await Promise.all([
+        resolveAppSlug(clientId),
+        resolveUserEmail(userID, body.resourceOwner),
+      ]);
+
+      // Encode app slug into action if resolved: user.login.onemcp
       const action = appSlug ? `${baseAction}.${appSlug}` : baseAction;
 
       try {
         const entry = await insertAuditEntry(writerPool, {
           actor_id: userID,
           actor_type: userID === 'SYSTEM' || userID === 'unknown' ? 'service' : 'user',
-          actor_email: '', // Zitadel event doesn't carry email; enrich via Mgmt API in phase 2
+          actor_email: userEmail ?? '',
           action,
           target_type: aggregateType,
           target_id: aggregateID,
@@ -156,7 +161,10 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
             app_slug: appSlug,
             event_payload: body.event_payload,
           }),
-          ip: request.ip,
+          // ip: Zitadel calls us server-to-server — request.ip is Docker
+          // internal (Traefik/Zitadel container). Real user IP is not in the
+          // event body reliably. Store null (UI shows '—') — honest > misleading.
+          ip: undefined,
           session_id:
             (body.event_payload?.['sessionID'] as string | undefined) ??
             (body.event_payload?.['session_id'] as string | undefined) ??

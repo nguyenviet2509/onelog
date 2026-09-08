@@ -1,11 +1,15 @@
 /**
- * pages/roles/roles-list-page.tsx — List all RBAC roles with filter + create dialog.
+ * pages/roles/roles-list-page.tsx — List all RBAC roles with filter + create/edit/delete dialogs.
  *
  * Columns: Key | Mô tả | Ứng dụng | Nguồn | Ngày tạo | Thao tác
  * Filter: app dropdown (từ listApps) + search input (client-side, debounced 300ms)
  * Badge: source='manifest' → gray + tooltip; source='manual' → blue
- * Actions: "Sửa permissions" (Phase 03 TODO), "Sửa vai trò" (Phase 04 TODO), "Xoá" (Phase 04 TODO)
- *          — Edit + Delete disabled for source='manifest' roles
+ * Actions:
+ *   - "Sửa permissions" (Phase 03): opens RolePermissionsDrawer for ALL roles (read-only for manifest)
+ *   - "Sửa vai trò" (Phase 04): opens EditRoleDialog (manual only)
+ *   - "Xoá" (Phase 04): opens DeleteRoleConfirmDialog (manual only)
+ *
+ * Polling: refetchInterval 30s keeps table fresh after outbox events.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -21,6 +25,9 @@ import { usePagination } from '@/hooks/use-pagination';
 import { usePermissions } from '@/hooks/use-permissions';
 import { debounce } from '@/lib/utils';
 import { CreateRoleDialog } from './create-role-dialog';
+import { RolePermissionsDrawer } from './role-permissions-drawer';
+import { EditRoleDialog } from './edit-role-dialog';
+import { DeleteRoleConfirmDialog } from './delete-role-confirm-dialog';
 import type { Role } from '@/lib/types';
 
 const col = createColumnHelper<Role>();
@@ -44,11 +51,19 @@ export function RolesListPage() {
   const [selectedAppId, setSelectedAppId] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
 
-  const { data: allRoles = [], isLoading, error, refetch } = useRolesQuery();
+  // Phase 03: permissions drawer state
+  const [drawerRoleKey, setDrawerRoleKey] = useState<string | null>(null);
+
+  // Phase 04: edit + delete state
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [deletingRole, setDeletingRole] = useState<Role | null>(null);
+
+  // refetchInterval 30s for polling outbox-driven sync state changes
+  const { data: allRoles = [], isLoading, error, refetch } = useRolesQuery({ refetchInterval: 30_000 });
   const { data: apps = [] } = useAppsQuery();
   const { canWrite } = usePermissions();
 
-  // Build app lookup map: id → slug/name for display
+  // Build app lookup map: id → app for display
   const appMap = useMemo(
     () => new Map(apps.map((a) => [a.id ?? '', a])),
     [apps],
@@ -153,18 +168,16 @@ export function RolesListPage() {
         cell: ({ row }) => {
           const role = row.original;
           const isManifest = (role.source ?? 'manual') === 'manifest';
-          const manifestTooltip = isManifest ? 'Do manifest quản lý — không thể sửa' : undefined;
 
           return (
             <div className="flex items-center gap-1">
-              {/* Sửa permissions — Phase 03: wire RolePermissionsDrawer */}
-              {/* TODO(phase-03): remove disabled + wire onClick to open drawer */}
+              {/* Sửa permissions — all roles: drawer opens in read-only mode for manifest */}
               <button
                 type="button"
-                disabled
-                title="Sửa permissions — sẽ có ở Phase 03"
+                onClick={() => setDrawerRoleKey(role.key)}
+                title={isManifest ? 'Xem permissions (read-only — manifest)' : 'Sửa permissions'}
                 aria-label="Sửa permissions"
-                className="rounded p-1.5 text-gray-400 cursor-not-allowed"
+                className="rounded p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
               >
                 {/* Key/lock icon */}
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -173,14 +186,18 @@ export function RolesListPage() {
                 </svg>
               </button>
 
-              {/* Sửa vai trò — Phase 04 */}
-              {/* TODO(phase-04): wire EditRoleDialog */}
+              {/* Sửa vai trò — manual only */}
               <button
                 type="button"
-                disabled
-                title={manifestTooltip ?? 'Sửa vai trò — sẽ có ở Phase 04'}
+                disabled={isManifest || !canWrite()}
+                onClick={() => !isManifest && canWrite() && setEditingRole(role)}
+                title={isManifest ? 'Do manifest quản lý — không thể sửa' : 'Sửa vai trò'}
                 aria-label="Sửa vai trò"
-                className="rounded p-1.5 text-gray-400 cursor-not-allowed"
+                className={`rounded p-1.5 transition-colors ${
+                  isManifest || !canWrite()
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-500 hover:text-amber-600 hover:bg-amber-50'
+                }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -188,14 +205,18 @@ export function RolesListPage() {
                 </svg>
               </button>
 
-              {/* Xoá — Phase 04 */}
-              {/* TODO(phase-04): wire delete confirm dialog */}
+              {/* Xoá — manual only */}
               <button
                 type="button"
-                disabled
-                title={manifestTooltip ?? 'Xoá vai trò — sẽ có ở Phase 04'}
+                disabled={isManifest || !canWrite()}
+                onClick={() => !isManifest && canWrite() && setDeletingRole(role)}
+                title={isManifest ? 'Do manifest quản lý — không thể xoá' : 'Xoá vai trò'}
                 aria-label="Xoá vai trò"
-                className="rounded p-1.5 text-gray-400 cursor-not-allowed"
+                className={`rounded p-1.5 transition-colors ${
+                  isManifest || !canWrite()
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-500 hover:text-red-600 hover:bg-red-50'
+                }`}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -208,7 +229,7 @@ export function RolesListPage() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [appMap],
+    [appMap, canWrite],
   );
 
   return (
@@ -297,6 +318,34 @@ export function RolesListPage() {
                 {app && <span>{app.name}</span>}
                 {role.created_at && <span>{formatDate(role.created_at)}</span>}
               </div>
+              {/* Mobile action buttons */}
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDrawerRoleKey(role.key)}
+                  className="text-xs text-blue-600 underline"
+                >
+                  Permissions
+                </button>
+                {!isManifest && canWrite() && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditingRole(role)}
+                      className="text-xs text-amber-600 underline"
+                    >
+                      Sửa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingRole(role)}
+                      className="text-xs text-red-600 underline"
+                    >
+                      Xoá
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           );
         }}
@@ -314,6 +363,24 @@ export function RolesListPage() {
 
       {/* Create dialog */}
       <CreateRoleDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      {/* Phase 03: Permissions drawer — all roles (read-only for manifest) */}
+      <RolePermissionsDrawer
+        roleKey={drawerRoleKey}
+        onClose={() => setDrawerRoleKey(null)}
+      />
+
+      {/* Phase 04: Edit role dialog — manual roles only */}
+      <EditRoleDialog
+        role={editingRole}
+        onClose={() => setEditingRole(null)}
+      />
+
+      {/* Phase 04: Delete confirm — manual roles only */}
+      <DeleteRoleConfirmDialog
+        role={deletingRole}
+        onClose={() => setDeletingRole(null)}
+      />
     </div>
   );
 }

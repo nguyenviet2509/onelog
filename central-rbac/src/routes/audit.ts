@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { auditorPool } from '../db/auditor-pool.js';
-import { queryAuditLog } from '../db/queries/audit.js';
+import { queryAuditLog, countAuditLog } from '../db/queries/audit.js';
 
 const auditQuerySchema = z.object({
   actor_id: z.string().optional(),
@@ -29,8 +29,12 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
       }
 
-      const rows = await queryAuditLog(auditorPool, parsed.data);
-      return reply.send({ data: rows, count: rows.length });
+      // Parallel: page rows + total count (same WHERE clause) for pagination UI.
+      const [rows, total] = await Promise.all([
+        queryAuditLog(auditorPool, parsed.data),
+        countAuditLog(auditorPool, parsed.data),
+      ]);
+      return reply.send({ data: rows, count: rows.length, total });
     },
   );
 }

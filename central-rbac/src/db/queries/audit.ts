@@ -46,39 +46,32 @@ export interface AuditQueryFilters {
   offset?: number;
 }
 
-export async function queryAuditLog(
-  pool: Pool,
-  filters: AuditQueryFilters,
-): Promise<AuditLogRow[]> {
+/**
+ * Build the shared WHERE clause + params for audit filters.
+ * Returned params start at index 1; callers append LIMIT/OFFSET (or nothing for count).
+ */
+function buildAuditFilterSql(filters: AuditQueryFilters): { where: string; params: unknown[]; nextIdx: number } {
   const conditions: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
 
-  if (filters.actor_id) {
-    conditions.push(`actor_id = $${idx++}`);
-    params.push(filters.actor_id);
-  }
-  if (filters.action) {
-    conditions.push(`action = $${idx++}`);
-    params.push(filters.action);
-  }
-  if (filters.app_id) {
-    conditions.push(`app_id = $${idx++}`);
-    params.push(filters.app_id);
-  }
-  if (filters.from) {
-    conditions.push(`ts >= $${idx++}`);
-    params.push(filters.from);
-  }
-  if (filters.to) {
-    conditions.push(`ts <= $${idx++}`);
-    params.push(filters.to);
-  }
+  if (filters.actor_id) { conditions.push(`actor_id = $${idx++}`); params.push(filters.actor_id); }
+  if (filters.action)   { conditions.push(`action = $${idx++}`);   params.push(filters.action); }
+  if (filters.app_id)   { conditions.push(`app_id = $${idx++}`);   params.push(filters.app_id); }
+  if (filters.from)     { conditions.push(`ts >= $${idx++}`);      params.push(filters.from); }
+  if (filters.to)       { conditions.push(`ts <= $${idx++}`);      params.push(filters.to); }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { where, params, nextIdx: idx };
+}
+
+export async function queryAuditLog(
+  pool: Pool,
+  filters: AuditQueryFilters,
+): Promise<AuditLogRow[]> {
+  const { where, params, nextIdx } = buildAuditFilterSql(filters);
   const limit = Math.min(filters.limit ?? 100, 1000);
   const offset = filters.offset ?? 0;
-
   params.push(limit, offset);
 
   // H5 fix: ORDER BY ts DESC, seq DESC — deterministic even when ts ties
@@ -90,10 +83,20 @@ export async function queryAuditLog(
      FROM rbac.audit_log
      ${where}
      ORDER BY ts DESC, seq DESC
-     LIMIT $${idx++} OFFSET $${idx}`,
+     LIMIT $${nextIdx} OFFSET $${nextIdx + 1}`,
     params,
   );
   return res.rows;
+}
+
+/** Total rows matching the same filter — used by UI to compute totalPages. */
+export async function countAuditLog(pool: Pool, filters: AuditQueryFilters): Promise<number> {
+  const { where, params } = buildAuditFilterSql(filters);
+  const res = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::bigint AS count FROM rbac.audit_log ${where}`,
+    params,
+  );
+  return Number(res.rows[0]?.count ?? 0);
 }
 
 export interface AuditInsertInput {

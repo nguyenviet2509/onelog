@@ -12,10 +12,10 @@ import { useQuery } from '@tanstack/react-query';
 import { listAudit, type AuditLogRow, type AuditListParams } from '@/api/audit';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Pagination } from '@/components/pagination';
 
-const PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE = 20;
 
 // Placeholder tokens ingress-side khi target không có meaning (VD interceptor
 // legacy trước fix). Hiển thị '—' thay vì noise chuỗi 'unknown/unknown'.
@@ -43,17 +43,19 @@ const APP_OPTIONS = [
 
 export function AuditLogPage() {
   const [filters, setFilters] = useState<AuditListParams>({});
-  const [page, setPage] = useState(0);
+  // 1-based page + configurable pageSize — mirrors users/apps pagination UX.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selected, setSelected] = useState<AuditLogRow | null>(null);
 
   const query = useQuery({
-    queryKey: ['audit', filters, page],
-    queryFn: () => listAudit({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+    queryKey: ['audit', filters, page, pageSize],
+    queryFn: () => listAudit({ ...filters, limit: pageSize, offset: (page - 1) * pageSize }),
     staleTime: 15_000,
   });
 
   function updateFilter<K extends keyof AuditListParams>(key: K, val: AuditListParams[K]) {
-    setPage(0);
+    setPage(1);
     setFilters((f) => {
       const next = { ...f };
       if (val === '' || val == null) delete next[key];
@@ -62,7 +64,14 @@ export function AuditLogPage() {
     });
   }
 
-  const rows = query.data ?? [];
+  function handlePageSizeChange(n: number) {
+    setPageSize(n);
+    setPage(1);
+  }
+
+  const rows = query.data?.rows ?? [];
+  const total = query.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div className="space-y-4">
@@ -164,28 +173,14 @@ export function AuditLogPage() {
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-500">
-          Trang {page + 1} · {rows.length} bản ghi
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-          >
-            ← Trước
-          </Button>
-          <Button
-            variant="outline"
-            disabled={rows.length < PAGE_SIZE}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Sau →
-          </Button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+      />
 
       {/* Detail drawer — simple overlay panel */}
       {selected && (

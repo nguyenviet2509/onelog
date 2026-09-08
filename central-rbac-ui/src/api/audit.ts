@@ -35,7 +35,16 @@ export interface AuditListParams {
   offset?: number;
 }
 
-export async function listAudit(params: AuditListParams = {}): Promise<AuditLogRow[]> {
-  const res = await apiClient.get<{ data: AuditLogRow[]; count: number }>('/audit', { params });
-  return res.data.data;
+export interface AuditListResult {
+  rows: AuditLogRow[];
+  total: number;
+}
+
+export async function listAudit(params: AuditListParams = {}): Promise<AuditListResult> {
+  const res = await apiClient.get<{ data: AuditLogRow[]; count: number; total?: number }>('/audit', { params });
+  return {
+    rows: res.data.data,
+    // Fallback = current page count if backend deploy lags (still lets pagination render).
+    total: res.data.total ?? res.data.data.length,
+  };
 }

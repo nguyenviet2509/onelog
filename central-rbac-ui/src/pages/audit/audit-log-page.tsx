@@ -17,6 +17,18 @@ import { Badge } from '@/components/ui/badge';
 
 const PAGE_SIZE = 100;
 
+// Placeholder tokens ingress-side khi target không có meaning (VD interceptor
+// legacy trước fix). Hiển thị '—' thay vì noise chuỗi 'unknown/unknown'.
+const NULLISH_TARGETS = new Set(['unknown', 'n/a', '', null, undefined]);
+function formatTarget(type: string | null, id: string | null): string {
+  const t = type && !NULLISH_TARGETS.has(type) ? type : '';
+  const i = id && !NULLISH_TARGETS.has(id) ? id : '';
+  if (!t && !i) return '—';
+  if (t && !i) return t;
+  if (!t && i) return i;
+  return `${t}/${i}`;
+}
+
 // App options: NULL bucket for internal rbac + known external app_ids.
 // Add new app_ids here as they ingress (or switch to server-side facets endpoint).
 const APP_OPTIONS = [
@@ -139,7 +151,7 @@ export function AuditLogPage() {
                 </td>
                 <td className="px-3 py-2 font-mono text-xs">{r.action}</td>
                 <td className="px-3 py-2 text-xs">
-                  {r.target_type}/{r.target_id}
+                  {formatTarget(r.target_type, r.target_id)}
                 </td>
                 <td className="px-3 py-2 text-xs text-gray-500">{r.ip ?? '—'}</td>
               </tr>

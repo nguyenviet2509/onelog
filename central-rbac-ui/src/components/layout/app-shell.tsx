@@ -6,7 +6,7 @@
  * Header toggles. New pages using AppShell inherit mobile layout for free.
  */
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
@@ -34,9 +34,44 @@ function useRadixPointerEventsGuard() {
   }, []);
 }
 
+/**
+ * Bypass React Router's useLocation and subscribe directly to browser history.
+ * Diagnostic 2026-09-08 confirmed that after NavLink click:
+ *   - window.location.pathname DOES update
+ *   - React Router's useLocation() returns STALE pathname
+ *   - <Outlet key={useLocation().pathname}> therefore does not re-mount
+ * Root cause suspected: React 19 concurrent scheduler + Router's
+ * useSyncExternalStore selector short-circuits on rapid transitions.
+ * This hook intercepts pushState/replaceState to force our own reactive
+ * pathname state, independent of React Router internals.
+ */
+function useBrowserPathname(): string {
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const sync = () => setPathname(window.location.pathname);
+    const origPush = window.history.pushState;
+    const origReplace = window.history.replaceState;
+    window.history.pushState = function (...args) {
+      origPush.apply(this, args as Parameters<typeof origPush>);
+      sync();
+    };
+    window.history.replaceState = function (...args) {
+      origReplace.apply(this, args as Parameters<typeof origReplace>);
+      sync();
+    };
+    window.addEventListener('popstate', sync);
+    return () => {
+      window.history.pushState = origPush;
+      window.history.replaceState = origReplace;
+      window.removeEventListener('popstate', sync);
+    };
+  }, []);
+  return pathname;
+}
+
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { pathname } = useLocation();
+  const pathname = useBrowserPathname();
   useRadixPointerEventsGuard();
 
   return (

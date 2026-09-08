@@ -12,7 +12,6 @@
  * Polling: refetchInterval 30s keeps table fresh after outbox events.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -108,16 +107,6 @@ export function RolesListPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedQ, selectedAppId, setPage]);
-
-  // Defense in depth: auto-close any open drawer/dialog on route change so users navigating
-  // via sidebar don't get stuck with a modal orphaned over the destination page.
-  const { pathname } = useLocation();
-  useEffect(() => {
-    setDrawerRoleKey(null);
-    setEditingRole(null);
-    setDeletingRole(null);
-    setCreateOpen(false);
-  }, [pathname]);
 
   const columns = useMemo(
     () => [

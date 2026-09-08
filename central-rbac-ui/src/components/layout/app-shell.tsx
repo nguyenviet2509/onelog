@@ -6,7 +6,7 @@
  * Header toggles. New pages using AppShell inherit mobile layout for free.
  */
 import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
@@ -36,6 +36,7 @@ function useRadixPointerEventsGuard() {
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { pathname } = useLocation();
   useRadixPointerEventsGuard();
 
   return (
@@ -50,7 +51,12 @@ export function AppShell() {
         )}
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <Outlet />
+          {/* key={pathname} forces React to unmount/mount page on route change.
+              Defensive against React Router edge cases where Outlet fails to
+              re-render (e.g. useSyncExternalStore selector short-circuits under
+              React 19 concurrent mode). Diagnostic 2026-09-08 showed URL updated
+              but Outlet element stayed as previous page. */}
+          <Outlet key={pathname} />
         </main>
       </div>
     </div>

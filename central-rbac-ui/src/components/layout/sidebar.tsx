@@ -6,7 +6,8 @@
  * mounted as overlay there).
  */
 import { useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { flushSync } from 'react-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const auth = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -29,6 +31,24 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   function handleLogout() {
     void auth.signoutRedirect();
+  }
+
+  /**
+   * React 19 + React Router 7 defers navigate() via startTransition, which
+   * TanStack Query polling on the current page can starve indefinitely — user
+   * clicks sidebar, URL updates but Outlet doesn't remount until a subsequent
+   * urgent update flushes the transition. flushSync forces commit immediately.
+   * Ctrl/Cmd/Middle-click still opens new tab (default browser behavior).
+   */
+  function handleNavClick(to: string) {
+    return (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      flushSync(() => {
+        navigate(to);
+      });
+      onClose();
+    };
   }
 
   return (
@@ -59,7 +79,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <nav className="flex-1 px-3 py-4 space-y-1" aria-label="Điều hướng chính">
           <NavLink
             to="/users"
-            onClick={onClose}
+            onClick={handleNavClick('/users')}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
@@ -78,7 +98,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           <NavLink
             to="/apps"
-            onClick={onClose}
+            onClick={handleNavClick('/apps')}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
@@ -97,7 +117,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           <NavLink
             to="/roles"
-            onClick={onClose}
+            onClick={handleNavClick('/roles')}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
@@ -116,7 +136,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
           <NavLink
             to="/audit"
-            onClick={onClose}
+            onClick={handleNavClick('/audit')}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',

@@ -149,8 +149,14 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
         resolveUserEmail(userID, body.resourceOwner),
       ]);
 
-      // Encode app slug into action if resolved: user.login.onemcp
-      const action = appSlug ? `${baseAction}.${appSlug}` : baseAction;
+      // App_id resolution:
+      //   Nếu resolved slug (VD 'onemcp') → app_id = slug (đồng nhất với events
+      //     OneMCP publisher gửi cho cùng app → user filter theo app đích một cách nhất quán).
+      //   Fallback 'zitadel' cho events không xác định app đích (system events,
+      //     user CRUD, break-glass, etc.).
+      // Source (identity provider) lưu ở after_state.source cho forensic.
+      const resolvedAppId = appSlug ?? 'zitadel';
+      const action = baseAction;
 
       try {
         const entry = await insertAuditEntry(writerPool, {
@@ -162,6 +168,7 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
           target_id: aggregateID,
           before_state: null,
           after_state: capJson({
+            source: 'zitadel', // canonical identity provider — app_id is target app
             event_type: eventType,
             aggregate_type: aggregateType,
             resource_owner: body.resourceOwner,
@@ -182,7 +189,7 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
             (body.event_payload?.['session_id'] as string | undefined) ??
             (aggregateType === 'session' ? aggregateID : undefined),
           correlation_id: request.id,
-          app_id: 'zitadel',
+          app_id: resolvedAppId,
         });
 
         sendToVictoriaLogs(entry).catch((err) => {

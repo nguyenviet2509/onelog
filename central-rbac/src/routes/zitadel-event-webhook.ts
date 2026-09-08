@@ -22,6 +22,7 @@ import { insertAuditEntry } from '../db/queries/audit.js';
 import { sendToVictoriaLogs } from '../middleware/vl-audit-sync.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { redis } from '../lib/redis-client.js';
 import { verifyZitadelEventSignature } from '../lib/zitadel-event-signature.js';
 import { resolveAppSlug, resolveUserEmail } from '../lib/zitadel-event-enrichment.js';
 import { incrementAuditWriteFailures } from '../lib/audit-metrics.js';
@@ -163,6 +164,32 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
       // Source (identity provider) lưu ở after_state.source cho forensic.
       const resolvedAppId = appSlug ?? 'zitadel';
       const action = baseAction;
+
+      // Dedup: Zitadel v4 fires oidc_session.added multiple times per login when
+      // SPA does silent-renew / prompt=none refresh — each token issuance creates
+      // a new OIDC session (V2_...) bound to the same underlying auth session.
+      // We only want one audit row per (session, app, login|logout|token.revoke).
+      // Redis SETNX with 5-min TTL keyed on (session, app, action) → first event
+      // wins, subsequent duplicates drop silently (still 200 to Zitadel).
+      const sessionIdForDedup =
+        (body.event_payload?.['sessionID'] as string | undefined) ??
+        (body.event_payload?.['session_id'] as string | undefined) ??
+        (aggregateType === 'session' ? aggregateID : undefined);
+      const DEDUP_ACTIONS = new Set(['user.login', 'user.logout', 'user.token.revoked']);
+      if (DEDUP_ACTIONS.has(action) && sessionIdForDedup) {
+        const dedupKey = `audit-dedup:${action}:${resolvedAppId}:${sessionIdForDedup}`;
+        const acquired = await redis.set(dedupKey, '1', 'EX', 300, 'NX').catch((err) => {
+          logger.warn({ err }, 'zitadel-event: dedup redis SET failed — proceeding without dedup');
+          return 'OK';
+        });
+        if (acquired !== 'OK') {
+          logger.debug(
+            { session_id: sessionIdForDedup, app_id: resolvedAppId, action, event_type: eventType },
+            'zitadel-event: duplicate suppressed',
+          );
+          return reply.status(200).send({ ok: true, deduped: true, action });
+        }
+      }
 
       try {
         const entry = await insertAuditEntry(writerPool, {

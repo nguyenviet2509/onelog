@@ -30,6 +30,7 @@ export interface AuditLogRow {
   ip: string | null;
   session_id: string | null;
   correlation_id: string | null;
+  app_id: string | null;
   row_hash: string;
   prev_hash: string | null;
   chained_hash: string;
@@ -38,6 +39,7 @@ export interface AuditLogRow {
 export interface AuditQueryFilters {
   actor_id?: string;
   action?: string;
+  app_id?: string;
   from?: string;  // ISO timestamp
   to?: string;    // ISO timestamp
   limit?: number;
@@ -60,6 +62,10 @@ export async function queryAuditLog(
     conditions.push(`action = $${idx++}`);
     params.push(filters.action);
   }
+  if (filters.app_id) {
+    conditions.push(`app_id = $${idx++}`);
+    params.push(filters.app_id);
+  }
   if (filters.from) {
     conditions.push(`ts >= $${idx++}`);
     params.push(filters.from);
@@ -79,7 +85,8 @@ export async function queryAuditLog(
   const res = await pool.query<AuditLogRow>(
     `SELECT id, seq, ts, actor_id, actor_type, actor_email, action,
             target_type, target_id, before_state, after_state,
-            ip, session_id, correlation_id, row_hash, prev_hash, chained_hash
+            ip, session_id, correlation_id, app_id,
+            row_hash, prev_hash, chained_hash
      FROM rbac.audit_log
      ${where}
      ORDER BY ts DESC, seq DESC
@@ -101,6 +108,7 @@ export interface AuditInsertInput {
   ip?: string;
   session_id?: string;
   correlation_id?: string;
+  app_id?: string;
 }
 
 /**
@@ -132,6 +140,7 @@ export async function insertAuditEntry(
     target_id: input.target_id,
     before_state: input.before_state,
     after_state: input.after_state,
+    app_id: input.app_id ?? null,
   };
 
   const row_hash = computeRowHash(rowData);
@@ -156,9 +165,9 @@ export async function insertAuditEntry(
     const res = await client.query<AuditLogRow>(
       `INSERT INTO rbac.audit_log
          (id, ts, actor_id, actor_type, actor_email, action, target_type, target_id,
-          before_state, after_state, ip, session_id, correlation_id,
+          before_state, after_state, ip, session_id, correlation_id, app_id,
           row_hash, prev_hash, chained_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         id, ts,
@@ -169,6 +178,7 @@ export async function insertAuditEntry(
         input.ip ?? null,
         input.session_id ?? null,
         input.correlation_id ?? null,
+        input.app_id ?? null,
         row_hash, prev_hash, chained_hash,
       ],
     );

@@ -74,6 +74,12 @@ const envSchema = z.object({
     .transform((v) => v.toLowerCase() !== 'false')
     .default('true'),
 
+  // Audit ingress tokens — comma-separated `app_id:token` pairs granting
+  // external apps write access to POST /v1/audit/ingest. Empty = ingress disabled.
+  // Example: AUDIT_INGEST_TOKENS=onemcp:s3cr3t123,onelog:othertoken456
+  // Token min length enforced per pair at ingest-token module load (≥32 chars).
+  AUDIT_INGEST_TOKENS: z.string().default(''),
+
   // Feature flags
   WEBHOOK_ECHO_ENABLED: z
     .string()

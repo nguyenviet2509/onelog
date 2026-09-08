@@ -12,6 +12,7 @@ import { queryAuditLog } from '../db/queries/audit.js';
 const auditQuerySchema = z.object({
   actor_id: z.string().optional(),
   action: z.string().optional(),
+  app_id: z.string().optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   limit: z.coerce.number().int().min(1).max(1000).default(100),

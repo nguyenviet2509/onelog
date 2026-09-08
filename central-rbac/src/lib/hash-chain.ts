@@ -14,11 +14,14 @@ export interface AuditRowData {
   target_id: string;
   before_state: unknown;
   after_state: unknown;
+  app_id?: string | null;
 }
 
 /**
  * Compute SHA-256 hash of the audit row's content fields.
  * Input is deterministically serialized (sorted keys, no whitespace).
+ * NOTE: app_id concatenated at end so existing rows (pre-migration-005) with
+ * no app_id compute identical hash — chain remains verifiable across upgrade.
  */
 export function computeRowHash(row: AuditRowData): string {
   const payload =
@@ -30,7 +33,8 @@ export function computeRowHash(row: AuditRowData): string {
     row.target_type +
     row.target_id +
     JSON.stringify(row.before_state ?? null) +
-    JSON.stringify(row.after_state ?? null);
+    JSON.stringify(row.after_state ?? null) +
+    (row.app_id ?? '');
 
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }

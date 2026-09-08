@@ -1,21 +1,20 @@
 /**
  * routes/zitadel-event-webhook.ts — POST /v1/webhooks/zitadel-event
  *
- * Adapter: receives Zitadel Actions v2 Target callbacks (session/user events)
- * and maps to central audit_log format. Different from /v1/audit/ingest which
- * expects our own schema — this endpoint accepts Zitadel's fixed payload.
+ * Adapter: Zitadel Actions v2 Target callbacks (Condition = "all" fires ALL events)
+ * → filtered whitelist → map → audit_log with app_id='zitadel'.
  *
- * Auth: HMAC-SHA256 signature verification via ZITADEL_EVENT_SIGNING_KEY.
- * Central-imposed app_id = 'zitadel'.
+ * Auth: HMAC-SHA256 signature via ZITADEL_EVENT_SIGNING_KEY (Target's signingKey).
  *
- * Event mapping table (extend as new event types matter):
- *   session.added                          → user.login
- *   session.terminated                     → user.logout
- *   user.human.password.check.succeeded    → user.password.verified
- *   otherwise                              → zitadel.<eventType>
+ * Zitadel v4 payload keys are snake_case (event_type, event_payload, created_at)
+ * — verified 2026-09-08 via debug dump.
  *
- * Not-verified events still get inserted with best-effort mapping — audit
- * completeness > event type coverage.
+ * Whitelist strategy: Zitadel emits ~7 events per login (auth_request.*, oidc_session.*).
+ * We only insert audit rows for events that map to user-visible facts (login/logout/mfa),
+ * silently 200-OK the rest to keep audit UI clean.
+ *
+ * App enrichment: event_payload.client_id (Zitadel OIDC app client_id) → app slug
+ * via CLIENT_ID_TO_APP registry. Extend when new app onboarded to Zitadel.
  */
 import type { FastifyInstance } from 'fastify';
 import { writerPool } from '../db/writer-pool.js';
@@ -34,57 +33,62 @@ function capJson(val: unknown): unknown {
   return s.length > MAX_JSON_BYTES ? { __truncated: true, size: s.length } : val;
 }
 
-// Zitadel v4 Action v2 payload shape (best-effort — union across event types).
-// Undocumented fields tolerated — we extract what we can.
 interface ZitadelEventBody {
   aggregateID?: string;
   aggregateType?: string;
   resourceOwner?: string;
   instanceID?: string;
   sequence?: number | string;
-  eventType?: string;
-  createdAt?: string;
+  event_type?: string;
+  created_at?: string;
   userID?: string;
   editorUser?: string;
-  eventPayload?: Record<string, unknown> | null;
-  // Some Zitadel schemas wrap event in `event`:
-  event?: Partial<ZitadelEventBody>;
-  // Actions v2 may nest as `request` too:
-  request?: Partial<ZitadelEventBody>;
+  event_payload?: Record<string, unknown> | null;
 }
 
-function pickEventType(body: ZitadelEventBody): string {
-  return body.eventType ?? body.event?.eventType ?? body.request?.eventType ?? 'unknown';
+// Whitelist: Zitadel event_type → central audit action name.
+// Non-listed events return 200 without DB insert (drop-silently, keep UI clean).
+const EVENT_ACTION_MAP: Record<string, string> = {
+  'oidc_session.added': 'user.login',
+  'session.added': 'user.login',
+  'oidc_session.terminated': 'user.logout',
+  'session.terminated': 'user.logout',
+  'oidc_session.access_token.revoked': 'user.token.revoked',
+  'user.human.password.check.succeeded': 'user.password.verified',
+  'user.human.password.check.failed': 'user.password.failed',
+  'user.human.mfa.otp.check.succeeded': 'user.mfa.verified',
+  'user.human.mfa.otp.check.failed': 'user.mfa.failed',
+  'user.locked': 'user.locked',
+  'user.unlocked': 'user.unlocked',
+  'user.added': 'user.created',
+  'user.removed': 'user.deleted',
+};
+
+// Registry: Zitadel OIDC application client_id → app slug (đọc được).
+// Update khi register app mới trong Zitadel Console. Source: event_payload.client_id.
+const CLIENT_ID_TO_APP: Record<string, string> = {
+  '387060281072746499': 'onemcp',
+  '387780002415968260': 'central-rbac-ui',
+};
+
+function extractClientId(payload: Record<string, unknown> | null | undefined): string | undefined {
+  if (!payload) return undefined;
+  // oidc_session events: client_id at top of payload
+  // auth_request events: also client_id
+  const v = payload['client_id'] ?? payload['clientID'];
+  return typeof v === 'string' ? v : undefined;
 }
 
-function pickAggregateID(body: ZitadelEventBody): string {
-  return (
-    body.aggregateID ?? body.event?.aggregateID ?? body.request?.aggregateID ?? 'unknown'
-  );
-}
-
-function pickAggregateType(body: ZitadelEventBody): string {
-  return (
-    body.aggregateType ?? body.event?.aggregateType ?? body.request?.aggregateType ?? 'unknown'
-  );
-}
-
-function pickUserID(body: ZitadelEventBody): string {
-  const p = (body.eventPayload as Record<string, unknown> | undefined) ?? {};
-  const uid = body.userID ?? body.editorUser ?? body.event?.userID ?? body.request?.userID;
-  if (uid) return String(uid);
-  // Session events keep userID inside payload.userId
-  const nested = p['userId'] ?? p['userID'];
-  if (typeof nested === 'string') return nested;
-  return 'unknown';
-}
-
-function mapEventTypeToAction(eventType: string): string {
-  if (eventType === 'session.added') return 'user.login';
-  if (eventType === 'session.terminated') return 'user.logout';
-  if (eventType === 'user.human.password.check.succeeded') return 'user.password.verified';
-  if (eventType === 'user.human.mfa.otp.check.succeeded') return 'user.mfa.verified';
-  return `zitadel.${eventType}`;
+function extractUserID(body: ZitadelEventBody): string {
+  const p = body.event_payload ?? {};
+  // Top-level userID (from event envelope)
+  if (body.userID && body.userID !== 'SYSTEM') return body.userID;
+  // Payload user id fields (oidc_session, session, auth_request.session.linked)
+  const candidates = [p['userID'], p['user_id'], p['userId']];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c !== 'SYSTEM') return c;
+  }
+  return body.userID ?? 'unknown';
 }
 
 export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<void> {
@@ -97,7 +101,6 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
         return reply.status(503).send({ error: 'zitadel event webhook disabled (no signing key)' });
       }
 
-      // rawBody captured by content-type parser in app.ts (Buffer)
       const raw = request.rawBody;
       if (!raw) {
         logger.warn('zitadel-event: rawBody missing — content-type parser mis-configured');
@@ -109,40 +112,55 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
         (request.headers['x-zitadel-signature'] as string | undefined);
       const check = verifyZitadelEventSignature(key, raw, sigHeader);
       if (!check.ok) {
-        // Log at info: helps debug first setup without spamming errors
         logger.info(
-          { reason: check.reason, header_present: Boolean(sigHeader), header_names: Object.keys(request.headers).filter((h) => h.toLowerCase().includes('sig')) },
+          { reason: check.reason, header_present: Boolean(sigHeader) },
           'zitadel-event: signature invalid',
         );
         return reply.status(401).send({ error: 'invalid signature', reason: check.reason });
       }
 
       const body = (request.body ?? {}) as ZitadelEventBody;
-      const eventType = pickEventType(body);
-      const aggregateID = pickAggregateID(body);
-      const aggregateType = pickAggregateType(body);
-      const userID = pickUserID(body);
+      const eventType = body.event_type ?? 'unknown';
 
-      const action = mapEventTypeToAction(eventType);
+      // Drop-silently: not in whitelist. Return 200 to keep Zitadel happy.
+      const baseAction = EVENT_ACTION_MAP[eventType];
+      if (!baseAction) {
+        return reply.status(200).send({ ok: true, dropped: true, event_type: eventType });
+      }
+
+      const aggregateID = body.aggregateID ?? 'unknown';
+      const aggregateType = body.aggregateType ?? 'unknown';
+      const userID = extractUserID(body);
+      const clientId = extractClientId(body.event_payload);
+      const appSlug = clientId ? CLIENT_ID_TO_APP[clientId] : undefined;
+
+      // Encode app slug into action if known: user.login.onemcp / user.logout.central-rbac-ui
+      const action = appSlug ? `${baseAction}.${appSlug}` : baseAction;
 
       try {
         const entry = await insertAuditEntry(writerPool, {
           actor_id: userID,
-          actor_type: 'user',
-          actor_email: '', // Zitadel event body doesn't include email; enrich phase 2 via Mgmt API
+          actor_type: userID === 'SYSTEM' || userID === 'unknown' ? 'service' : 'user',
+          actor_email: '', // Zitadel event doesn't carry email; enrich via Mgmt API in phase 2
           action,
-          target_type: aggregateType || 'session',
+          target_type: aggregateType,
           target_id: aggregateID,
           before_state: null,
           after_state: capJson({
-            eventType,
-            aggregateType,
-            resourceOwner: body.resourceOwner,
+            event_type: eventType,
+            aggregate_type: aggregateType,
+            resource_owner: body.resourceOwner,
             sequence: body.sequence,
-            eventPayload: body.eventPayload,
+            created_at: body.created_at,
+            client_id: clientId,
+            app_slug: appSlug,
+            event_payload: body.event_payload,
           }),
           ip: request.ip,
-          session_id: aggregateType === 'session' ? aggregateID : undefined,
+          session_id:
+            (body.event_payload?.['sessionID'] as string | undefined) ??
+            (body.event_payload?.['session_id'] as string | undefined) ??
+            (aggregateType === 'session' ? aggregateID : undefined),
           correlation_id: request.id,
           app_id: 'zitadel',
         });
@@ -151,8 +169,7 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
           logger.error({ err }, 'zitadel-event: VL dual-write failed');
         });
 
-        // Return 200 fast — Zitadel Target async doesn't wait, but 200 is polite.
-        return reply.status(200).send({ ok: true, id: entry.id });
+        return reply.status(200).send({ ok: true, id: entry.id, action });
       } catch (err) {
         logger.error({ err, eventType, aggregateID }, 'zitadel-event: DB write failed');
         incrementAuditWriteFailures();

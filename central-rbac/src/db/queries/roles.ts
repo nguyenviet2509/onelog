@@ -10,13 +10,15 @@ export interface Role {
   parent_key: string | null;
   /** Migration 011: link back to rbac.apps for grant dialog project→role filter. */
   app_id: string | null;
+  /** Migration 016: 'manual' (admin created via UI, editable) vs 'manifest' (imported, read-only). */
+  source: 'manual' | 'manifest';
   created_at: string;
   updated_at: string;
 }
 
 export async function listRoles(pool: Pool): Promise<Role[]> {
   const res = await pool.query<Role>(
-    `SELECT id, key, description, parent_key, app_id, created_at, updated_at
+    `SELECT id, key, description, parent_key, app_id, source, created_at, updated_at
      FROM rbac.roles ORDER BY key ASC`,
   );
   return res.rows;
@@ -24,7 +26,7 @@ export async function listRoles(pool: Pool): Promise<Role[]> {
 
 export async function getRoleByKey(pool: Pool, key: string): Promise<Role | null> {
   const res = await pool.query<Role>(
-    `SELECT id, key, description, parent_key, created_at, updated_at
+    `SELECT id, key, description, parent_key, app_id, source, created_at, updated_at
      FROM rbac.roles WHERE key = $1`,
     [key],
   );
@@ -47,7 +49,7 @@ export async function createRole(pool: Pool | PoolClient, input: CreateRoleInput
   const res = await pool.query<Role>(
     `INSERT INTO rbac.roles (key, description, parent_key, app_id)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, key, description, parent_key, created_at, updated_at`,
+     RETURNING id, key, description, parent_key, app_id, source, created_at, updated_at`,
     [input.key, input.description ?? '', input.parent_key ?? null, input.app_id ?? null],
   );
   return res.rows[0]!;

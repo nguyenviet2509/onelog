@@ -5,15 +5,38 @@
  * @responsive Sidebar becomes off-canvas drawer < lg (1024px). Hamburger in
  * Header toggles. New pages using AppShell inherit mobile layout for free.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 
 const IS_REVIEW_MODE = import.meta.env.VITE_REVIEW_MODE === 'true';
 
+/**
+ * Radix Dialog / Drawer sometimes leaves `body.style.pointerEvents = 'none'` stuck
+ * after close/unmount (race between onOpenChange cleanup and route change).
+ * Symptom: user clicks sidebar navlinks → nothing fires → stuck on current page.
+ * Guard: watch body style and clear pointer-events whenever no dialog is open.
+ */
+function useRadixPointerEventsGuard() {
+  useEffect(() => {
+    const clearIfSafe = () => {
+      if (document.body.style.pointerEvents === 'none') {
+        const anyOpen = document.querySelector('[data-state="open"][role="dialog"]');
+        if (!anyOpen) document.body.style.pointerEvents = '';
+      }
+    };
+    // Initial cleanup on mount (in case we entered mid-stuck state).
+    clearIfSafe();
+    const observer = new MutationObserver(clearIfSafe);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    return () => observer.disconnect();
+  }, []);
+}
+
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  useRadixPointerEventsGuard();
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

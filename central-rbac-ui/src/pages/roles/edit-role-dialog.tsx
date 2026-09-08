@@ -113,10 +113,11 @@ export function EditRoleDialog({ role, onClose }: EditRoleDialogProps) {
   const canSubmit = isDirty && !mutation.isPending;
 
   return (
-    <Dialog open={!!role} onOpenChange={(open) => { if (!open) handleClose(); }}>
+    <Dialog open={!!role} onOpenChange={(open) => { if (!open) handleClose(); }} modal={false}>
       <DialogContent
         title="Sửa vai trò"
         description="Chỉ có thể sửa mô tả và vai trò cha. Key vai trò là bất biến."
+        nonModal
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
 

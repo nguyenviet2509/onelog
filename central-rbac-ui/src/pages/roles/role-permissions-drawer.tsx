@@ -140,11 +140,11 @@ export function RolePermissionsDrawer({ roleKey, onClose }: RolePermissionsDrawe
 
   const isReadOnly = role?.source === 'manifest';
 
-  // Parse app prefix from role key: "qlts.approver" → "qlts."
+  // Parse app prefix from role key: "qlts.approver" → "qlts:" (permission keys use colon separator per Central schema)
   const appPrefix = useMemo(() => {
     if (!role?.key) return undefined;
     const dot = role.key.indexOf('.');
-    return dot > 0 ? `${role.key.slice(0, dot)}.` : undefined;
+    return dot > 0 ? `${role.key.slice(0, dot)}:` : undefined;
   }, [role?.key]);
 
   // All permissions filtered to this app's prefix, non-deprecated
@@ -213,8 +213,8 @@ export function RolePermissionsDrawer({ roleKey, onClose }: RolePermissionsDrawe
       : 'Permissions';
 
   return (
-    <Drawer open={!!roleKey} onOpenChange={handleOpenChange}>
-      <DrawerContent title={drawerTitle}>
+    <Drawer open={!!roleKey} onOpenChange={handleOpenChange} modal={false}>
+      <DrawerContent title={drawerTitle} nonModal>
         {/* Manifest read-only banner */}
         {isReadOnly && (
           <div className="mb-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">

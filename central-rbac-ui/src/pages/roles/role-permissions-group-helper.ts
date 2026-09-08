@@ -1,9 +1,9 @@
 /**
  * pages/roles/role-permissions-group-helper.ts — Pure helpers for grouping permissions by module.
  *
- * Permission key format: <app>.<module>.<action>  (e.g. qlts.assets.read)
- * Groups by the <module> segment (index 1).
- * Keys with fewer than 3 segments go into "other".
+ * Permission key format per Central schema: <service>:<module>.<action>  (e.g. qlts:assets.read)
+ * Groups by the <module> segment (part after ':' and before '.').
+ * Keys not matching the pattern go into "other".
  */
 import type { Permission } from '@/api/permissions';
 
@@ -13,15 +13,18 @@ export interface PermissionGroup {
 }
 
 /**
- * Group permissions by module (second dot-segment).
+ * Group permissions by module.
+ * Parses `<service>:<module>.<action>` — module is the segment between ':' and first '.'.
  * Returns groups sorted alphabetically by module name.
  */
 export function groupPermissionsByModule(perms: Permission[]): PermissionGroup[] {
   const map = new Map<string, Permission[]>();
   for (const p of perms) {
-    const parts = p.key.split('.');
-    // qlts.assets.read → module = "assets"; qlts.read → module = "other"
-    const module = parts.length >= 3 ? (parts[1] ?? 'other') : 'other';
+    // qlts:assets.read → resourceAction = "assets.read"; then module = "assets"
+    const colon = p.key.indexOf(':');
+    const afterColon = colon > 0 ? p.key.slice(colon + 1) : p.key;
+    const dot = afterColon.indexOf('.');
+    const module = dot > 0 ? afterColon.slice(0, dot) : 'other';
     const list = map.get(module) ?? [];
     list.push(p);
     map.set(module, list);

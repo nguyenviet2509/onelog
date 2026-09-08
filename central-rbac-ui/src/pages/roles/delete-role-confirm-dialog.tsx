@@ -61,10 +61,11 @@ export function DeleteRoleConfirmDialog({ role, onClose }: DeleteRoleConfirmDial
   const canDelete = confirmInput === (role?.key ?? '') && !mutation.isPending;
 
   return (
-    <Dialog open={!!role} onOpenChange={(open) => { if (!open) handleClose(); }}>
+    <Dialog open={!!role} onOpenChange={(open) => { if (!open) handleClose(); }} modal={false}>
       <DialogContent
         title="Xoá vai trò"
         description="Hành động này không thể hoàn tác. Vai trò sẽ bị xoá khỏi hệ thống và Zitadel."
+        nonModal
       >
         <div className="space-y-4">
           {/* Warning */}

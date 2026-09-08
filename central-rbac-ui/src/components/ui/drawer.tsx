@@ -17,12 +17,20 @@ interface DrawerContentProps {
   children: ReactNode;
   className?: string;
   title?: string;
+  /**
+   * When true, overlay is pointer-transparent so clicks on sidebar/nav still fire
+   * (drawer closes via onPointerDownOutside separately). Use for side-panel style
+   * where user should freely navigate away.
+   */
+  nonModal?: boolean;
 }
 
-export function DrawerContent({ children, className, title }: DrawerContentProps) {
+export function DrawerContent({ children, className, title, nonModal }: DrawerContentProps) {
   return (
     <RadixDialog.Portal>
-      <RadixDialog.Overlay className="fixed inset-0 bg-black/40 z-40" />
+      <RadixDialog.Overlay
+        className={cn('fixed inset-0 bg-black/40 z-40', nonModal && 'pointer-events-none')}
+      />
       <RadixDialog.Content
         className={cn(
           'fixed right-0 top-0 h-full w-full max-w-2xl bg-white shadow-2xl z-50',

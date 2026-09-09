@@ -13,6 +13,7 @@ export const createRoleSchema = z.object({
   key: roleKeySchema,
   description: z.string().max(500).default(''),
   parent_key: z.string().max(128).optional().nullable(),
+  app_id: z.string().uuid().optional().nullable(),
 });
 
 export const updateRoleSchema = z

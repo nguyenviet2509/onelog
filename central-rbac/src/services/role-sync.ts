@@ -72,12 +72,24 @@ export async function createRoleWithSync(
   input: CreateRoleInput,
   correlationId?: string,
   /**
-   * Optional Zitadel projectId override. If omitted, falls back to env
-   * ZITADEL_PROJECT_ID (legacy). Wizard passes the new app's zitadel_project_id.
+   * Optional Zitadel projectId override. If omitted, resolves from input.app_id
+   * → apps.zitadel_project_id, else falls back to env ZITADEL_PROJECT_ID.
+   * Wizard passes explicit override; UI POST passes app_id in body.
    */
   projectIdOverride?: string,
 ): Promise<CreateRoleResult> {
-  const projectId = projectIdOverride ?? getProjectId();
+  let projectId: string;
+  if (projectIdOverride) {
+    projectId = projectIdOverride;
+  } else if (input.app_id) {
+    const { rows } = await writerPool.query<{ zitadel_project_id: string | null }>(
+      `SELECT zitadel_project_id FROM rbac.apps WHERE id = $1`,
+      [input.app_id],
+    );
+    projectId = rows[0]?.zitadel_project_id ?? getProjectId();
+  } else {
+    projectId = getProjectId();
+  }
   const orgId = config.ZITADEL_ORG_ID || '';
   const idempotencyKey = makeIdempotencyKey('add_project_role', projectId, input.key);
 

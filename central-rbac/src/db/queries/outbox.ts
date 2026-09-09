@@ -43,14 +43,15 @@ export interface EnqueueResult {
 }
 
 /** Enqueue an outbox event inside an open transaction.
- *  ON CONFLICT on idempotency_key is a no-op — idempotent for double-submit
- *  and worker-crash retry safety.
  *
- *  Lifecycle re-enqueue (create → delete → create-again same key): rows in a
- *  terminal state (`done` / `dead`) are removed first so the new cycle can
- *  insert cleanly. `pending` / `processing` / `failed` rows are NOT deleted
- *  — those still represent an in-flight or retry-eligible attempt that must
- *  not be lost.
+ *  Idempotency semantics:
+ *    - No prior row       → INSERT new row (pending)
+ *    - Prior row terminal → UPDATE reset to pending (lifecycle re-enqueue,
+ *                           e.g. role deleted then recreated with same key)
+ *    - Prior row in-flight → no-op (protects worker crash retry + double-submit)
+ *
+ *  Uses INSERT ON CONFLICT DO UPDATE so writer role only needs INSERT + UPDATE
+ *  (not DELETE) on rbac.outbox_events.
  */
 export async function enqueueOutbox(
   tx: Pool | PoolClient,
@@ -59,15 +60,19 @@ export async function enqueueOutbox(
   idempotencyKey: string,
   correlationId?: string,
 ): Promise<EnqueueResult> {
-  await tx.query(
-    `DELETE FROM rbac.outbox_events
-      WHERE idempotency_key = $1 AND status IN ('done', 'dead')`,
-    [idempotencyKey],
-  );
   const res = await tx.query<{ id: string; idempotency_key: string }>(
     `INSERT INTO rbac.outbox_events (idempotency_key, operation, args, correlation_id)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT (idempotency_key) DO NOTHING
+     ON CONFLICT (idempotency_key) DO UPDATE
+       SET status = 'pending',
+           attempts = 0,
+           last_error = NULL,
+           processing_started_at = NULL,
+           processed_at = NULL,
+           args = EXCLUDED.args,
+           correlation_id = EXCLUDED.correlation_id,
+           operation = EXCLUDED.operation
+       WHERE rbac.outbox_events.status IN ('done', 'dead')
      RETURNING id, idempotency_key`,
     [idempotencyKey, operation, JSON.stringify(args), correlationId ?? null],
   );

@@ -9,7 +9,9 @@
  *   - "Sửa vai trò" (Phase 04): opens EditRoleDialog (manual only)
  *   - "Xoá" (Phase 04): opens DeleteRoleConfirmDialog (manual only)
  *
- * Polling: refetchInterval 30s keeps table fresh after outbox events.
+ * No auto-polling: sync badge was deferred (Phase 04) so nothing needs the
+ * 30s refresh. Polling was starving React Router transitions on this page
+ * only (other pages navigated fine) — root cause of nav-stuck bug 2026-09-08.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -58,8 +60,7 @@ export function RolesListPage() {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [deletingRole, setDeletingRole] = useState<Role | null>(null);
 
-  // refetchInterval 30s for polling outbox-driven sync state changes
-  const { data: allRoles = [], isLoading, error, refetch } = useRolesQuery({ refetchInterval: 30_000 });
+  const { data: allRoles = [], isLoading, error, refetch } = useRolesQuery();
   const { data: apps = [] } = useAppsQuery();
   const { canWrite } = usePermissions();
 

@@ -190,7 +190,7 @@ export async function listOidcApps(
 }
 
 /** GET current OIDC config for a specific app — needed to preserve fields we do not want to change. */
-export async function getOidcAppConfig(
+async function getOidcAppConfig(
   projectId: string,
   appId: string,
   targetOrgId: string,
@@ -213,7 +213,7 @@ export async function getOidcAppConfig(
  * merge on top of current state (see ensureAssertionFlags). Returns true if
  * Zitadel accepted the update.
  */
-export async function putOidcAppConfig(
+async function putOidcAppConfig(
   projectId: string,
   appId: string,
   targetOrgId: string,

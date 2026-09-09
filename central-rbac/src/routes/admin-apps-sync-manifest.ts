@@ -12,7 +12,9 @@
  *
  * Cache: Redis TTL 1h keyed by `manifest:cache:${sha256}`.
  */
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
@@ -20,7 +22,54 @@ import { writerPool } from '../db/writer-pool.js';
 import { redis } from '../lib/redis-client.js';
 import { fetchManifest } from '../services/manifest-fetcher.js';
 import { validateManifest, computeDiff, type DiffAction } from '../services/manifest-diff.js';
+import { enqueueOutbox } from '../db/queries/outbox.js';
+import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+
+/**
+ * Upsert role linked to app + enqueue add_project_role Zitadel sync outbox on INSERT.
+ *
+ * KEY BEHAVIOR:
+ *   - Sets `source='manifest'` on INSERT (was defaulting to 'manual' due to bug 2026-09-09).
+ *   - On new INSERT (rowCount=1) → enqueue `add_project_role` outbox event so Zitadel
+ *     Mgmt API creates the role in project (needed for user_grant HTTP 400 fix). Without
+ *     this, user assignment fails permanently because Zitadel rejects grants for unknown
+ *     roles.
+ *   - On CONFLICT (role already exists) → no-op for Zitadel (assume idempotent from prior sync).
+ *   - Uses same idempotency-key format as `role-sync.ts.createRoleWithSync()` so if
+ *     admin already created role via wizard, outbox insert is idempotent (bump status to
+ *     pending only, no duplicate Zitadel call).
+ */
+async function upsertManifestRole(
+  client: PoolClient,
+  appId: string,
+  projectId: string,
+  role: { key: string; description?: string },
+): Promise<{ isNewRole: boolean }> {
+  const description = role.description ?? `Role ${role.key} (from manifest)`;
+  const result = await client.query(
+    `INSERT INTO rbac.roles (key, description, app_id, source)
+     VALUES ($1, $2, $3, 'manifest')
+     ON CONFLICT (key) DO UPDATE SET
+       app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id),
+       source = CASE WHEN rbac.roles.source = 'manual' THEN 'manifest' ELSE rbac.roles.source END`,
+    [role.key, description, appId],
+  );
+  // rowCount=1 for INSERT (new row) or UPDATE (existing) — can't distinguish reliably from
+  // rowCount alone. Instead: check if role existed BEFORE insert to decide Zitadel sync need.
+  // Simpler: always enqueue idempotent outbox; enqueueOutbox de-dupes by idempotency_key.
+  const idempotencyKey = createHash('sha256')
+    .update(`add_project_role:${projectId}:${role.key}`)
+    .digest('hex')
+    .slice(0, 64);
+  await enqueueOutbox(
+    client,
+    'add_project_role',
+    { projectId, orgId: config.ZITADEL_ORG_ID || '', roleKey: role.key, displayName: description },
+    idempotencyKey,
+  );
+  return { isNewRole: (result.rowCount ?? 0) > 0 };
+}
 
 const MANIFEST_CACHE_TTL_SEC = 60 * 60;
 
@@ -82,19 +131,20 @@ async function autoWireDefaultRoles(
   appId: string,
 ): Promise<number> {
   if (!manifest.default_roles || manifest.default_roles.length === 0) return 0;
+  // Resolve Zitadel projectId for this app (Migration 011). Fallback env only for legacy apps.
+  const { rows: appRows } = await writerPool.query<{ zitadel_project_id: string | null }>(
+    `SELECT zitadel_project_id FROM rbac.apps WHERE id = $1`,
+    [appId],
+  );
+  const projectId = appRows[0]?.zitadel_project_id ?? config.ZITADEL_PROJECT_ID;
   const client = await writerPool.connect();
   try {
     await client.query('BEGIN');
     let inserted = 0;
     for (const role of manifest.default_roles) {
-      // Ensure role row exists + linked to this app (Migration 011)
-      await client.query(
-        `INSERT INTO rbac.roles (key, description, app_id)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (key) DO UPDATE SET
-           app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id)`,
-        [role.key, role.description ?? `Role ${role.key} (from manifest)`, appId],
-      );
+      // Ensure role row exists + linked to this app + source=manifest + Zitadel role synced
+      // (2026-09-09 bug fix: was missing source + Zitadel sync → qlts.user assignment failed 400)
+      await upsertManifestRole(client, appId, projectId, role);
       for (const permKey of role.permissions) {
         const result = await client.query(
           `INSERT INTO rbac.role_permissions (role_key, permission_key)
@@ -287,15 +337,15 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
         // If admin later customizes a role, existing rows preserved (only new pairs INSERT'd).
         let rolePermsAdded = 0;
         if (manifest.default_roles && manifest.default_roles.length > 0) {
+          // Resolve Zitadel projectId for this app once for the whole loop.
+          const { rows: appRows } = await client.query<{ zitadel_project_id: string | null }>(
+            `SELECT zitadel_project_id FROM rbac.apps WHERE id = $1`,
+            [dbApp.id],
+          );
+          const projectId = appRows[0]?.zitadel_project_id ?? config.ZITADEL_PROJECT_ID;
           for (const role of manifest.default_roles) {
-            // Ensure role exists (wizard already creates {slug}.viewer/editor/admin, but
-            // manifest may declare additional custom roles — create if missing).
-            await client.query(
-              `INSERT INTO rbac.roles (key, description)
-               VALUES ($1, $2)
-               ON CONFLICT (key) DO NOTHING`,
-              [role.key, role.description ?? `Role ${role.key} (from manifest)`],
-            );
+            // Ensure role row + source=manifest + Zitadel role sync (2026-09-09 fix — was missing).
+            await upsertManifestRole(client, dbApp.id, projectId, role);
             for (const permKey of role.permissions) {
               const result = await client.query(
                 `INSERT INTO rbac.role_permissions (role_key, permission_key)

@@ -1,6 +1,6 @@
 /**
  * router.tsx — Application routes.
- * / → redirect to /users
+ * / → redirect to /apps (aligned with sidebar order Ứng dụng → Người dùng)
  * /login — public login page
  * /callback — OIDC callback handler
  * /users, /users/:id — protected, requires rbac.admin.read
@@ -40,7 +40,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <Navigate to="/users" replace /> },
+          { index: true, element: <Navigate to="/apps" replace /> },
           { path: 'users', element: <UsersListPage /> },
           // /users/:id is handled as a drawer overlay within UsersListPage
           { path: 'users/:id', element: <UsersListPage /> },

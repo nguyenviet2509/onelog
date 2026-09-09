@@ -12,7 +12,7 @@ export function LoginPage() {
 
   useEffect(() => {
     if (auth.isAuthenticated) {
-      navigate('/users', { replace: true });
+      navigate('/apps', { replace: true });
     }
   }, [auth.isAuthenticated, navigate]);
 

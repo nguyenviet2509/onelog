@@ -13,7 +13,7 @@ export function CallbackPage() {
 
   useEffect(() => {
     if (!auth.isLoading && auth.isAuthenticated) {
-      navigate('/users', { replace: true });
+      navigate('/apps', { replace: true });
     }
     if (!auth.isLoading && !auth.isAuthenticated && auth.error) {
       navigate('/login', { replace: true });

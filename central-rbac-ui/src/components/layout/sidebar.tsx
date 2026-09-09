@@ -6,8 +6,7 @@
  * mounted as overlay there).
  */
 import { useEffect } from 'react';
-import { flushSync } from 'react-dom';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { cn } from '@/lib/utils';
 
@@ -18,7 +17,6 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const auth = useAuth();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -34,20 +32,22 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }
 
   /**
-   * React 19 + React Router 7 defers navigate() via startTransition, which
-   * TanStack Query polling on the current page can starve indefinitely — user
-   * clicks sidebar, URL updates but Outlet doesn't remount until a subsequent
-   * urgent update flushes the transition. flushSync forces commit immediately.
-   * Ctrl/Cmd/Middle-click still opens new tab (default browser behavior).
+   * BRUTE-FORCE nav: 6 defensive fixes for the "click nav from /roles doesn't
+   * update Outlet" bug (React 19 + React Router 7 + TanStack Query interaction)
+   * all failed to solve it. Given this is an admin panel where UX cost of a
+   * page reload is minimal (~500ms flash), sidebar clicks now do a full
+   * document navigation via window.location.assign(). Guarantees fresh React
+   * tree on every nav — no possibility of stuck Outlet or stale state.
+   *
+   * Ctrl/Cmd/Shift/middle-click preserved for new-tab default behavior via
+   * the anchor's native href.
    */
   function handleNavClick(to: string) {
     return (e: React.MouseEvent) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
-      flushSync(() => {
-        navigate(to);
-      });
       onClose();
+      window.location.assign(to);
     };
   }
 

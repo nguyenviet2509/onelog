@@ -9,11 +9,11 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
-  listRoles, getRoleByKey, updateRole,
+  listRoles, getRoleByKey,
   getRolePermissions, addRolePermission, removeRolePermission,
   getAllRolesFlat, getRoleStats,
 } from '../db/queries/roles.js';
-// Note: createRole and deleteRole are now called via role-sync service (outbox pattern)
+// Note: create/update/delete roles are called via role-sync service (outbox pattern)
 import { getPermissionByKey } from '../db/queries/permissions.js';
 import { wouldCreateCycle } from '../lib/cycle-check.js';
 import {
@@ -21,7 +21,7 @@ import {
   rolePermissionBodySchema, roleKeyParamSchema,
 } from '../schemas/role-schemas.js';
 import { bumpResolveEpoch } from '../db/queries/resolve-epoch.js';
-import { createRoleWithSync, deleteRoleWithSync } from '../services/role-sync.js';
+import { createRoleWithSync, updateRoleWithSync, deleteRoleWithSync } from '../services/role-sync.js';
 
 export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
@@ -96,8 +96,15 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
       if (!parent) return reply.status(422).send({ error: 'parent_key does not exist' });
     }
 
-    const updated = await updateRole(writerPool, p.data.key, parsed.data);
-    if (!updated) return reply.status(404).send({ error: 'Role not found' });
+    let result;
+    try {
+      result = await updateRoleWithSync(p.data.key, parsed.data, request.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.status(500).send({ error: 'Failed to update role', detail: msg });
+    }
+    if (!result) return reply.status(404).send({ error: 'Role not found' });
+    const updated = result.role;
 
     // Bump epoch if hierarchy changed (parent_key affects resolve output)
     if (parsed.data.parent_key !== undefined && parsed.data.parent_key !== before.parent_key) {
@@ -106,7 +113,8 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
 
     await writeAuditLog(request, {
       action: 'role.update', target_type: 'role', target_id: p.data.key,
-      before_state: before, after_state: updated,
+      before_state: before,
+      after_state: { ...updated, outbox_id: result.outbox?.id ?? null },
     });
     return reply.send(updated);
   });

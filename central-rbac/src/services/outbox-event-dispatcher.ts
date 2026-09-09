@@ -13,6 +13,7 @@
  */
 import {
   addProjectRole,
+  updateProjectRole,
   removeProjectRole,
   addUserGrant,
   updateUserGrant,
@@ -55,6 +56,7 @@ const MAX_ATTEMPTS = 5;
 // Whitelisted operations — anything else triggers [SA-ANOMALY]
 export const ALLOWED_OPERATIONS: Set<OutboxOperation> = new Set([
   'add_project_role',
+  'update_project_role',
   'remove_project_role',
   'add_user_grant',
   'update_user_grant',
@@ -141,6 +143,9 @@ async function dispatch(
   switch (operation) {
     case 'add_project_role':
       await addProjectRole(args);
+      break;
+    case 'update_project_role':
+      await updateProjectRole(args);
       break;
     case 'remove_project_role':
       await removeProjectRole(args);

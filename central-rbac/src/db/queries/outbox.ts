@@ -13,6 +13,7 @@ import type { Pool, PoolClient } from 'pg';
 
 export type OutboxOperation =
   | 'add_project_role'
+  | 'update_project_role'
   | 'remove_project_role'
   | 'add_user_grant'
   | 'update_user_grant'

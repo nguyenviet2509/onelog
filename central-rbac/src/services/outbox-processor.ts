@@ -17,6 +17,7 @@
  */
 import {
   addProjectRole as clientAddProjectRole,
+  updateProjectRole as clientUpdateProjectRole,
   removeProjectRole as clientRemoveProjectRole,
 } from '../lib/zitadel-project-roles-client.js';
 import {
@@ -67,6 +68,21 @@ export async function addProjectRole(args: Record<string, unknown>): Promise<voi
 
   logger.info({ projectId, roleKey }, 'outbox-processor: add_project_role');
   await clientAddProjectRole(projectId, orgId, roleKey, displayName, group);
+}
+
+/**
+ * update_project_role — args: { projectId, orgId?, roleKey, displayName, group? }
+ * PUT is naturally idempotent; 404 (role gone) treated as success in client.
+ */
+export async function updateProjectRole(args: Record<string, unknown>): Promise<void> {
+  const projectId = requireString(args, 'projectId');
+  const orgId = getOrgId(args);
+  const roleKey = requireString(args, 'roleKey');
+  const displayName = requireString(args, 'displayName');
+  const group = typeof args['group'] === 'string' ? args['group'] : '';
+
+  logger.info({ projectId, roleKey, displayName }, 'outbox-processor: update_project_role');
+  await clientUpdateProjectRole(projectId, orgId, roleKey, displayName, group);
 }
 
 /**

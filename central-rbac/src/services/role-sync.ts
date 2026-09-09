@@ -14,7 +14,9 @@ import { writerPool } from '../db/writer-pool.js';
 import {
   createRole as dbCreateRole,
   deleteRole as dbDeleteRole,
+  updateRole as dbUpdateRole,
   type CreateRoleInput,
+  type UpdateRoleInput,
   type Role,
 } from '../db/queries/roles.js';
 import { bumpResolveEpoch } from '../db/queries/resolve-epoch.js';
@@ -117,6 +119,83 @@ export async function createRoleWithSync(
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error({ err, roleKey: input.key }, 'role-sync: createRoleWithSync rolled back');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export interface UpdateRoleResult {
+  role: Role;
+  /** null when description didn't change (no Zitadel sync needed). */
+  outbox: EnqueueResult | null;
+}
+
+/**
+ * Update a role in Central DB and, when the description changed, enqueue an
+ * update_project_role event so Zitadel's role.display_name follows. parent_key
+ * changes are Central-only (Zitadel has no role hierarchy).
+ */
+export async function updateRoleWithSync(
+  key: string,
+  input: UpdateRoleInput,
+  correlationId?: string,
+): Promise<UpdateRoleResult | null> {
+  const orgId = config.ZITADEL_ORG_ID || '';
+
+  const client = await (writerPool as Pool).connect();
+  try {
+    await client.query('BEGIN');
+
+    // Resolve Zitadel projectId + previous description from role.app_id link
+    // BEFORE the update so we can decide whether Zitadel needs the change.
+    const { rows: preRows } = await client.query<{
+      zitadel_project_id: string | null;
+      description: string;
+    }>(
+      `SELECT a.zitadel_project_id, r.description
+         FROM rbac.roles r
+         LEFT JOIN rbac.apps a ON a.id = r.app_id
+        WHERE r.key = $1`,
+      [key],
+    );
+    if (preRows.length === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const projectId = preRows[0]!.zitadel_project_id ?? getProjectId();
+    const prevDescription = preRows[0]!.description;
+
+    const updated = await dbUpdateRole(client, key, input);
+    if (!updated) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    let outbox: EnqueueResult | null = null;
+    const descriptionChanged =
+      input.description !== undefined && input.description !== prevDescription;
+    if (descriptionChanged) {
+      const displayName = updated.description || updated.key;
+      const idempotencyKey = makeIdempotencyKey('update_project_role', projectId, key);
+      outbox = await enqueueOutbox(
+        client,
+        'update_project_role',
+        { projectId, orgId, roleKey: key, displayName },
+        idempotencyKey,
+        correlationId,
+      );
+    }
+
+    await client.query('COMMIT');
+    logger.info(
+      { roleKey: key, descriptionChanged, outboxId: outbox?.id ?? null },
+      'role-sync: updateRoleWithSync committed',
+    );
+    return { role: updated, outbox };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error({ err, roleKey: key }, 'role-sync: updateRoleWithSync rolled back');
     throw err;
   } finally {
     client.release();

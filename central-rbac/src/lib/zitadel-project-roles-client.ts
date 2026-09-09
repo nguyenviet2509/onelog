@@ -10,7 +10,7 @@
  * HTTP transport delegated to zitadel-http.ts.
  */
 import { logger } from './logger.js';
-import { mgmtPost, mgmtDelete } from './zitadel-http.js';
+import { mgmtPost, mgmtPut, mgmtDelete } from './zitadel-http.js';
 import { ZitadelHttpError } from './zitadel-http-error.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -63,6 +63,43 @@ export async function addProjectRole(
 
   logger.info({ projectId, roleKey }, 'zitadel-mgmt: addProjectRole ok');
   return { created: true };
+}
+
+/**
+ * Update a project role's displayName / group in Zitadel.
+ * Maps to: PUT /management/v1/projects/{projectId}/roles/{roleKey}
+ *
+ * Idempotency: PUT is naturally idempotent; retries with same body → same state.
+ * 404 → role doesn't exist in Zitadel → treat as success (Central-side truth
+ * is that the role should have displayName X; if role is gone, another cleanup
+ * event already handled it — no useful action).
+ */
+export async function updateProjectRole(
+  projectId: string,
+  orgId: string,
+  roleKey: string,
+  displayName: string,
+  group?: string,
+): Promise<void> {
+  const path = `/management/v1/projects/${encodeURIComponent(projectId)}/roles/${encodeURIComponent(roleKey)}`;
+  let res: Response;
+  try {
+    res = await mgmtPut(path, orgId, { displayName, group: group ?? '' });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ projectId, roleKey, err: msg }, 'zitadel-mgmt: updateProjectRole fetch failed');
+    throw new Error(`Zitadel Mgmt API unreachable: ${msg}`);
+  }
+  if (res.status === 404) {
+    logger.info({ projectId, roleKey }, 'zitadel-mgmt: updateProjectRole 404 (role gone) — treating as success');
+    return;
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    logger.error({ projectId, roleKey, status: res.status, body: text.slice(0, 200) }, 'zitadel-mgmt: updateProjectRole failed');
+    throw new ZitadelHttpError(res.status, `Zitadel updateProjectRole error: HTTP ${res.status}`);
+  }
+  logger.info({ projectId, roleKey, displayName }, 'zitadel-mgmt: updateProjectRole ok');
 }
 
 /**

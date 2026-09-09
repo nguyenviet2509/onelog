@@ -189,6 +189,21 @@ export function RolePermissionsDrawer({ roleKey, onClose }: RolePermissionsDrawe
     });
   }
 
+  const allAppSelected = appPerms.length > 0 && appPerms.every((p) => selected.has(p.key));
+  const someAppSelected = appPerms.some((p) => selected.has(p.key));
+
+  function toggleAllApp() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allAppSelected) {
+        appPerms.forEach((p) => next.delete(p.key));
+      } else {
+        appPerms.forEach((p) => next.add(p.key));
+      }
+      return next;
+    });
+  }
+
   function handleSave() {
     saveMutation.mutate(
       { oldKeys: initialKeys, newKeys: selected },
@@ -239,13 +254,33 @@ export function RolePermissionsDrawer({ roleKey, onClose }: RolePermissionsDrawe
               className="w-full"
             />
 
-            {/* Stats */}
-            <div className="text-xs text-gray-500">
-              {selected.size} / {appPerms.length} permissions được chọn
-              {appPerms.length === 0 && appPrefix && (
-                <span className="ml-1 text-amber-600">
-                  — Chưa có permission nào cho prefix <code>{appPrefix}</code>
-                </span>
+            {/* Stats + select-all-app toggle */}
+            <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+              <div>
+                {selected.size} / {appPerms.length} permissions được chọn
+                {appPerms.length === 0 && appPrefix && (
+                  <span className="ml-1 text-amber-600">
+                    — Chưa có permission nào cho prefix <code>{appPrefix}</code>
+                  </span>
+                )}
+              </div>
+              {!isReadOnly && appPerms.length > 0 && (
+                <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300"
+                    checked={allAppSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someAppSelected && !allAppSelected;
+                    }}
+                    onChange={toggleAllApp}
+                    disabled={saveMutation.isPending}
+                    aria-label="Chọn tất cả permissions của ứng dụng"
+                  />
+                  <span className="font-medium text-gray-700">
+                    {allAppSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${appPerms.length})`}
+                  </span>
+                </label>
               )}
             </div>
 

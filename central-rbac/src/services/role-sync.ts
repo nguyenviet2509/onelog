@@ -19,7 +19,6 @@ import {
 } from '../db/queries/roles.js';
 import { bumpResolveEpoch } from '../db/queries/resolve-epoch.js';
 import { enqueueOutbox, type EnqueueResult } from '../db/queries/outbox.js';
-import { listUserGrants } from '../lib/zitadel-mgmt-client.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 
@@ -187,20 +186,3 @@ export async function deleteRoleWithSync(
   }
 }
 
-/**
- * Check whether a user has active Zitadel grants that include a given role key.
- * Used by DELETE /v1/roles to warn admin before attempting delete.
- */
-export async function hasActiveGrantsForRole(
-  userId: string,
-  roleKey: string,
-): Promise<boolean> {
-  const orgId = config.ZITADEL_ORG_ID || '';
-  if (!orgId) return false;
-  try {
-    const grants = await listUserGrants(userId, orgId);
-    return grants.some((g) => g.roleKeys.includes(roleKey));
-  } catch {
-    return false; // fail open — caller can proceed, Zitadel may be down
-  }
-}

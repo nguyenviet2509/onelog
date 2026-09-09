@@ -19,25 +19,8 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import { redis } from '../lib/redis-client.js';
 import { logger } from '../lib/logger.js';
 
-export const PERM_HASH_TTL_SEC = 300; // 5 minutes
-export const PERM_HASH_KEY_PREFIX = 'perm-hash:';
-
-/** Build the Redis key for a permissions hash. */
-export function permHashKey(hash: string): string {
-  return `${PERM_HASH_KEY_PREFIX}${hash}`;
-}
-
-/**
- * Seed a hash → permissions mapping in Redis.
- * Called by resolve route after computing permissions for a role set.
- * Non-blocking: fire-and-forget, errors logged not thrown.
- */
-export async function seedPermHash(hash: string, permissions: string[]): Promise<void> {
-  try {
-    await redis.setex(permHashKey(hash), PERM_HASH_TTL_SEC, JSON.stringify(permissions));
-  } catch (err) {
-    logger.warn({ err, hash }, 'permissions-lookup: failed to seed perm-hash in Redis');
-  }
+function permHashKey(hash: string): string {
+  return `perm-hash:${hash}`;
 }
 
 export async function permissionsLookupRoutes(app: FastifyInstance): Promise<void> {

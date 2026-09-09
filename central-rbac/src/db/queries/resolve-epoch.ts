@@ -56,7 +56,3 @@ export async function bumpResolveEpoch(poolOrClient: Pool | PoolClient): Promise
   return newEpoch;
 }
 
-/** Invalidate in-process cache (called after bumpResolveEpoch externally). */
-export function invalidateEpochCache(): void {
-  _cachedEpoch = null;
-}

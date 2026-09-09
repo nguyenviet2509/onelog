@@ -23,7 +23,7 @@ import { verifyZitadelActionHmac } from '../middleware/zitadel-action-hmac.js';
 import { redis } from '../lib/redis-client.js';
 import { singleflight } from '../lib/singleflight.js';
 import { isBreakGlassUser, getBreakGlassPerms, emitBreakGlassAlert } from '../lib/break-glass.js';
-import { listUserGrants } from '../lib/zitadel-mgmt-client.js';
+import { listUserGrantsAllOrgs } from '../services/user-grant-sync.js';
 import { resolvePermissions } from '../db/queries/resolve.js';
 import { getResolveEpoch } from '../db/queries/resolve-epoch.js';
 import { writerPool } from '../db/writer-pool.js';
@@ -94,12 +94,24 @@ function hashRoleKeys(roleKeys: string[]): string {
 }
 
 /**
- * Fetch user grants with Redis cache.
+ * Fetch user grants with Redis cache — CROSS-ORG (2026-09-09 bug fix).
+ *
+ * Trước dùng `listUserGrants(userId, orgId)` scope theo 1 org đơn (body.org.id fallback env).
+ * Vấn đề: user có grant trong nhiều project owned bởi nhiều Zitadel org khác nhau (VD qlts org
+ * 387656897144029188, onemcp org 385591139173990404) → webhook chỉ thấy grants trong 1 org →
+ * user login qlts sau khi Central assign qlts.user vẫn nhận 403 "Role Central không được ánh xạ".
+ *
+ * Nay dùng `listUserGrantsAllOrgs(userId)` iterate qua tất cả DISTINCT `rbac.apps.zitadel_org_id`
+ * + env fallback, dedupe bằng grantId. Zitadel Mgmt API `x-zitadel-orgid` header scope theo owner
+ * org — user grant nằm ở project → project owned by org → cần query đúng org đó để nhìn thấy.
+ *
+ * Trade-off: N HTTP calls tới Zitadel per cache miss (N = số org đăng ký apps). Chấp nhận vì
+ * cache TTL 5min + số org thấp (hiện 2 orgs).
+ *
  * Key: user-grants:v{epoch}:{userId}  TTL: 5min
  */
 async function fetchUserGrantsCached(
   userId: string,
-  orgId: string,
   epoch: number,
 ): Promise<string[]> {
   const cacheKey = `user-grants:v${epoch}:${userId}`;
@@ -114,8 +126,8 @@ async function fetchUserGrantsCached(
     logger.warn({ err, cacheKey }, 'webhook-pre-token: Redis get failed for user-grants');
   }
 
-  // Cache miss — call Zitadel Mgmt API
-  const grants = await listUserGrants(userId, orgId);
+  // Cache miss — call Zitadel Mgmt API cross-org
+  const grants = await listUserGrantsAllOrgs(userId);
   const roleKeys = grants.flatMap((g) => g.roleKeys);
 
   try {
@@ -191,6 +203,7 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
       const correlationId = request.id;
       const body = request.body;
       const userId = body.user?.id;
+      // orgId từ body chỉ dùng để LOG context, không dùng cho listUserGrants nữa (đã cross-org).
       const orgId = body.org?.id ?? config.ZITADEL_ORG_ID;
       const appId = body.application?.client_id ?? 'unknown';
 
@@ -234,8 +247,8 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
         // Step 1: get current epoch (in-process cache avoids DB on warm path)
         const epoch = await getResolveEpoch(writerPool);
 
-        // Step 2: fetch role keys (Redis cache → Mgmt API)
-        const roleKeys = await fetchUserGrantsCached(userId, orgId, epoch);
+        // Step 2: fetch role keys (Redis cache → Mgmt API cross-org)
+        const roleKeys = await fetchUserGrantsCached(userId, epoch);
 
         logger.debug(
           { userId, roleCount: roleKeys.length, correlationId },

@@ -10,9 +10,16 @@
  * disabled for unregistered).
  */
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { useAppsQuery, useDeleteAppMutation } from '@/hooks/use-apps-query';
 import { usePagination } from '@/hooks/use-pagination';
 import { EditManifestUrlDialog } from './edit-manifest-url-dialog';
@@ -21,6 +28,50 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Pagination } from '@/components/pagination';
 import { toastSuccess, toastError } from '@/lib/toast-bus';
 import type { App } from '@/api/apps';
+
+/**
+ * Row action dropdown. Replaces the previous 4-button row (Sửa OIDC / Sync /
+ * Sửa URL / Xoá) with a single trigger to keep the table compact — critical
+ * when the org name + manifest URL columns already consume horizontal space.
+ */
+interface AppRowActionsProps {
+  app: App;
+  onEditManifest: (app: App) => void;
+  onDelete: (app: App) => void;
+}
+
+function AppRowActions({ app, onEditManifest, onDelete }: AppRowActionsProps) {
+  const navigate = useNavigate();
+  if (!app.registered || !app.id) {
+    return <span className="text-xs text-gray-400">chỉ hiển thị</span>;
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="outline" aria-label="Hành động">
+          Hành động ▾
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {app.slug && (
+          <DropdownMenuItem onSelect={() => navigate(`/apps/${app.slug}/edit`)}>
+            Sửa OIDC
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={() => navigate(`/apps/${app.id}/manifest`)}>
+          Đồng bộ manifest
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onEditManifest(app)}>
+          Sửa manifest URL
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem destructive onSelect={() => onDelete(app)}>
+          Xoá ứng dụng
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function AppsListPage() {
   const { data: apps = [], isLoading, error, refetch } = useAppsQuery();
@@ -157,26 +208,13 @@ export function AppsListPage() {
                       {app.manifest_url.replace(/^https?:\/\//, '')}
                     </div>
                   )}
-                  {app.registered && app.id ? (
-                    <div className="mt-2 flex gap-2 flex-wrap">
-                      {app.slug && (
-                        <Link to={`/apps/${app.slug}/edit`}>
-                          <Button size="sm" variant="outline">Sửa OIDC</Button>
-                        </Link>
-                      )}
-                      <Link to={`/apps/${app.id}/manifest`}>
-                        <Button size="sm" variant="outline">Sync</Button>
-                      </Link>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingApp(app)}>
-                        Sửa URL
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => setDeletingApp(app)}>
-                        Xoá
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-xs text-gray-400">chỉ hiển thị</div>
-                  )}
+                  <div className="mt-2">
+                    <AppRowActions
+                      app={app}
+                      onEditManifest={setEditingApp}
+                      onDelete={setDeletingApp}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -257,34 +295,11 @@ export function AppsListPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {app.registered && app.id ? (
-                      <div className="flex gap-2 flex-wrap">
-                        {app.slug && (
-                          <Link to={`/apps/${app.slug}/edit`}>
-                            <Button size="sm" variant="outline">
-                              Sửa OIDC
-                            </Button>
-                          </Link>
-                        )}
-                        <Link to={`/apps/${app.id}/manifest`}>
-                          <Button size="sm" variant="outline">
-                            Sync
-                          </Button>
-                        </Link>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingApp(app)}>
-                          Sửa URL
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setDeletingApp(app)}
-                        >
-                          Xoá
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">chỉ hiển thị</span>
-                    )}
+                    <AppRowActions
+                      app={app}
+                      onEditManifest={setEditingApp}
+                      onDelete={setDeletingApp}
+                    />
                   </td>
                 </tr>
               );

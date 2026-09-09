@@ -141,17 +141,27 @@ export async function deleteRoleWithSync(
   roleKey: string,
   correlationId?: string,
 ): Promise<DeleteRoleResult> {
-  const projectId = getProjectId();
   const orgId = config.ZITADEL_ORG_ID || '';
 
   // Zitadel-side active-grant check deferred to /v1/drift (admin-driven).
   // Central DB referential integrity (role_permissions FK) blocks delete when in use.
 
-  const idempotencyKey = makeIdempotencyKey('remove_project_role', projectId, roleKey);
-
   const client = await (writerPool as Pool).connect();
   try {
     await client.query('BEGIN');
+
+    // Resolve the Zitadel projectId BEFORE deleting the role row (row carries
+    // the app_id link that maps to the target project). Env fallback only for
+    // legacy roles with app_id NULL — those live in the env-configured project.
+    const { rows: linkRows } = await client.query<{ zitadel_project_id: string | null }>(
+      `SELECT a.zitadel_project_id
+         FROM rbac.roles r
+         LEFT JOIN rbac.apps a ON a.id = r.app_id
+        WHERE r.key = $1`,
+      [roleKey],
+    );
+    const projectId = linkRows[0]?.zitadel_project_id ?? getProjectId();
+    const idempotencyKey = makeIdempotencyKey('remove_project_role', projectId, roleKey);
 
     // Delete from Central DB — cascades to role_permissions
     const deleted = await dbDeleteRole(client, roleKey);

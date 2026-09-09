@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { auditorPool } from '../db/auditor-pool.js';
-import { queryAuditLog, countAuditLog } from '../db/queries/audit.js';
+import { queryAuditLog, countAuditLog, listAuditAppFacets } from '../db/queries/audit.js';
 
 const auditQuerySchema = z.object({
   actor_id: z.string().optional(),
@@ -35,6 +35,17 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
         countAuditLog(auditorPool, parsed.data),
       ]);
       return reply.send({ data: rows, count: rows.length, total });
+    },
+  );
+
+  // Facets endpoint: distinct app_id values present in audit_log for the filter dropdown.
+  // NULL bucket (internal rbac events) is returned as app_id=null so the UI can label it.
+  app.get(
+    '/v1/audit/apps',
+    { preHandler: [verifyJwt] },
+    async (_request, reply) => {
+      const apps = await listAuditAppFacets(auditorPool);
+      return reply.send({ apps });
     },
   );
 }

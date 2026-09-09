@@ -7,9 +7,15 @@
  * Data source: GET /v1/audit (JWT-protected). Rows include both internal rbac
  * events (app_id=NULL) and events pushed from external apps via /v1/audit/ingest.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { listAudit, type AuditLogRow, type AuditListParams } from '@/api/audit';
+import {
+  listAudit,
+  listAuditApps,
+  APP_ID_NULL_SENTINEL,
+  type AuditLogRow,
+  type AuditListParams,
+} from '@/api/audit';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -33,13 +39,19 @@ function formatTarget(type: string | null, id: string | null): string {
   return `${t}/${i}`;
 }
 
-// App options: NULL bucket for internal rbac + known external app_ids.
-// Add new app_ids here as they ingress (or switch to server-side facets endpoint).
-const APP_OPTIONS = [
-  { value: '', label: 'Tất cả app' },
-  { value: 'rbac', label: 'Central RBAC (nội bộ)' },
-  { value: 'onemcp', label: 'OneMCP' },
-];
+// Human-friendly labels for known app_id tags. Anything not in the map falls
+// back to the raw slug (uppercased) so a new ingest token starts appearing in
+// the dropdown immediately without a UI redeploy.
+const APP_LABELS: Record<string, string> = {
+  onemcp: 'OneMCP',
+  zitadel: 'Zitadel',
+  qlts: 'QLTS',
+  rbac: 'Central RBAC',
+};
+
+function labelForAppId(id: string): string {
+  return APP_LABELS[id] ?? id;
+}
 
 export function AuditLogPage() {
   const [filters, setFilters] = useState<AuditListParams>({});
@@ -53,6 +65,29 @@ export function AuditLogPage() {
     queryFn: () => listAudit({ ...filters, limit: pageSize, offset: (page - 1) * pageSize }),
     staleTime: 15_000,
   });
+
+  // Facets fetched from backend so the dropdown reflects every app_id that has
+  // ever ingressed (avoids hardcoded UI list drifting out of sync).
+  const facetsQuery = useQuery({
+    queryKey: ['audit', 'apps'],
+    queryFn: listAuditApps,
+    staleTime: 60_000,
+  });
+
+  const appOptions = useMemo(() => {
+    const base = [{ value: '', label: 'Tất cả app' }];
+    const facets = facetsQuery.data ?? [];
+    // Sort: NULL bucket first (internal rbac), then non-null by facet order (count desc from server).
+    const nullFacet = facets.find((f) => f.app_id === null);
+    const rest = facets.filter((f) => f.app_id !== null);
+    if (nullFacet) {
+      base.push({ value: APP_ID_NULL_SENTINEL, label: 'Central RBAC (nội bộ)' });
+    }
+    for (const f of rest) {
+      base.push({ value: f.app_id as string, label: labelForAppId(f.app_id as string) });
+    }
+    return base;
+  }, [facetsQuery.data]);
 
   function updateFilter<K extends keyof AuditListParams>(key: K, val: AuditListParams[K]) {
     setPage(1);
@@ -86,16 +121,9 @@ export function AuditLogPage() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
         <Select
           value={filters.app_id ?? ''}
-          onChange={(e) => {
-            const v = e.target.value;
-            // 'rbac' = special: filter server can't do "IS NULL" via string; use 'rbac' text match
-            // Backend rbac events have app_id=NULL — filter behaves as "no filter" for now.
-            // TODO: server-side IS NULL sentinel if noise becomes issue.
-            if (v === 'rbac') updateFilter('app_id', undefined);
-            else updateFilter('app_id', v || undefined);
-          }}
+          onChange={(e) => updateFilter('app_id', e.target.value || undefined)}
         >
-          {APP_OPTIONS.map((o) => (
+          {appOptions.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </Select>

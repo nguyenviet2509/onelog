@@ -48,3 +48,20 @@ export async function listAudit(params: AuditListParams = {}): Promise<AuditList
     total: res.data.total ?? res.data.data.length,
   };
 }
+
+/**
+ * Sentinel the backend recognizes as `app_id IS NULL` (internal rbac events).
+ * Kept in sync with APP_ID_NULL_SENTINEL in central-rbac/src/db/queries/audit.ts.
+ */
+export const APP_ID_NULL_SENTINEL = '__null__';
+
+export interface AuditAppFacet {
+  /** null = internal rbac events (backend rows with app_id column NULL). */
+  app_id: string | null;
+  count: number;
+}
+
+export async function listAuditApps(): Promise<AuditAppFacet[]> {
+  const res = await apiClient.get<{ apps: AuditAppFacet[] }>('/audit/apps');
+  return res.data.apps;
+}

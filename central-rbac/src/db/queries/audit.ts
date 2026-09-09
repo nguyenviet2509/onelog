@@ -47,6 +47,12 @@ export interface AuditQueryFilters {
 }
 
 /**
+ * Sentinel value for filtering internal rbac events (app_id IS NULL).
+ * UI sends this because HTML <select> can't carry a real null value.
+ */
+export const APP_ID_NULL_SENTINEL = '__null__';
+
+/**
  * Build the shared WHERE clause + params for audit filters.
  * Returned params start at index 1; callers append LIMIT/OFFSET (or nothing for count).
  */
@@ -57,12 +63,36 @@ function buildAuditFilterSql(filters: AuditQueryFilters): { where: string; param
 
   if (filters.actor_id) { conditions.push(`actor_id = $${idx++}`); params.push(filters.actor_id); }
   if (filters.action)   { conditions.push(`action = $${idx++}`);   params.push(filters.action); }
-  if (filters.app_id)   { conditions.push(`app_id = $${idx++}`);   params.push(filters.app_id); }
+  if (filters.app_id) {
+    if (filters.app_id === APP_ID_NULL_SENTINEL) {
+      conditions.push(`app_id IS NULL`);
+    } else {
+      conditions.push(`app_id = $${idx++}`);
+      params.push(filters.app_id);
+    }
+  }
   if (filters.from)     { conditions.push(`ts >= $${idx++}`);      params.push(filters.from); }
   if (filters.to)       { conditions.push(`ts <= $${idx++}`);      params.push(filters.to); }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return { where, params, nextIdx: idx };
+}
+
+/**
+ * List distinct app_id values present in audit_log with counts.
+ * NULL bucket = internal rbac events; returned as app_id=null.
+ * Ordered NULLS FIRST (internal on top) then by count desc for UX.
+ */
+export async function listAuditAppFacets(
+  pool: Pool,
+): Promise<Array<{ app_id: string | null; count: number }>> {
+  const res = await pool.query<{ app_id: string | null; count: string }>(
+    `SELECT app_id, COUNT(*)::bigint AS count
+     FROM rbac.audit_log
+     GROUP BY app_id
+     ORDER BY app_id IS NOT NULL, count DESC, app_id ASC`,
+  );
+  return res.rows.map((r) => ({ app_id: r.app_id, count: Number(r.count) }));
 }
 
 export async function queryAuditLog(

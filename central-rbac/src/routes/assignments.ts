@@ -47,10 +47,35 @@ function userDetailCacheKey(userId: string): string {
   return `user-detail:v1:${userId}`;
 }
 
+/**
+ * Invalidate pre-token webhook `user-grants:v{epoch}:{userId}` cache (2026-09-09 bug fix).
+ *
+ * Trước: bustUserCaches chỉ xóa 2 cache Central UI dùng (assignments, user-detail). Cache webhook
+ * (5min TTL) không bị đụng → sau admin revoke role, user login lại vẫn nhận role list CŨ (có
+ * role bị revoke) → qlts backend map thành group → user vẫn truy cập được dashboard trong 5 phút.
+ *
+ * Key format: user-grants:v{epoch}:{userId} — epoch bump khi resolve-epoch thay đổi (rare).
+ * SCAN pattern-based delete: chỉ 1-2 key/user thường, không tốn kém.
+ */
+async function invalidateWebhookGrantsCache(userId: string): Promise<void> {
+  const pattern = `user-grants:*:${userId}`;
+  const keys: string[] = [];
+  let cursor = '0';
+  do {
+    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    keys.push(...batch);
+    cursor = nextCursor;
+  } while (cursor !== '0');
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
+}
+
 async function bustUserCaches(userId: string): Promise<void> {
   await Promise.all([
     redis.del(assignmentsCacheKey(userId)).catch(() => {}),
     redis.del(userDetailCacheKey(userId)).catch(() => {}),
+    invalidateWebhookGrantsCache(userId).catch(() => {}),
   ]);
 }
 

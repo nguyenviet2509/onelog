@@ -9,7 +9,47 @@ import { insertAuditEntry } from '../db/queries/audit.js';
 import { sendToVictoriaLogs } from './vl-audit-sync.js';
 import { logger } from '../lib/logger.js';
 import { incrementAuditWriteFailures } from '../lib/audit-metrics.js';
+import { getUserById } from '../lib/zitadel-user-search-client.js';
+import { config } from '../config.js';
 import type { JwtClaims } from './auth-jwt.js';
+
+/**
+ * In-memory LRU-lite cache for actor email lookup by Zitadel user sub.
+ * Zitadel access tokens omit `email` claim by default (email goes in id_token).
+ * Fetching /v2/users/:id per audit write would double load; cache 1h to
+ * amortize. Miss cost ~30ms, hit cost 0. Stale window ≤1h is acceptable for
+ * an admin display label.
+ */
+const EMAIL_CACHE_TTL_MS = 60 * 60 * 1000;
+const EMAIL_CACHE_MAX = 500;
+const emailCache = new Map<string, { email: string; expires: number }>();
+
+async function resolveActorEmail(sub: string, hintedEmail: string): Promise<string> {
+  if (hintedEmail) return hintedEmail;
+  const cached = emailCache.get(sub);
+  const now = Date.now();
+  if (cached && cached.expires > now) return cached.email;
+  const orgId = config.ZITADEL_ORG_ID || '';
+  if (!orgId) return '';
+  try {
+    const user = await getUserById(sub, orgId);
+    const email = user?.email ?? '';
+    if (emailCache.size >= EMAIL_CACHE_MAX) {
+      // Trim oldest ~10% to bound memory
+      const drop = Math.ceil(EMAIL_CACHE_MAX * 0.1);
+      let n = 0;
+      for (const k of emailCache.keys()) {
+        if (n++ >= drop) break;
+        emailCache.delete(k);
+      }
+    }
+    emailCache.set(sub, { email, expires: now + EMAIL_CACHE_TTL_MS });
+    return email;
+  } catch (err) {
+    logger.debug({ sub, err: err instanceof Error ? err.message : String(err) }, 'audit-log: actor email lookup failed');
+    return '';
+  }
+}
 
 export interface AuditContext {
   action: string;
@@ -36,8 +76,13 @@ export async function writeAuditLog(
 ): Promise<void> {
   const claims = request.jwtClaims as JwtClaims | undefined;
   const actor_id = claims?.sub ?? 'service';
-  const actor_email = (claims?.['email'] as string | undefined) ?? '';
+  const hintedEmail = (claims?.['email'] as string | undefined) ?? '';
   const actor_type = claims ? 'user' : 'service';
+  // Access tokens rarely carry email — fall back to /v2/users/:id (cached).
+  const actor_email =
+    actor_type === 'user' && actor_id !== 'service'
+      ? await resolveActorEmail(actor_id, hintedEmail)
+      : hintedEmail;
 
   // Cap before/after at 8KB to prevent JSONB bloat
   const MAX_JSON_BYTES = 8 * 1024;

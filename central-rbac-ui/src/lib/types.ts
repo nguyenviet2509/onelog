@@ -58,11 +58,6 @@ export interface UserDetail extends ZitadelUser {
   grants: Grant[];
 }
 
-export interface AssignmentRequest {
-  user_id: string;
-  role_key: string;
-}
-
 export interface AssignmentResponse {
   status: 'queued';
   operation: string;

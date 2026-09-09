@@ -43,7 +43,14 @@ export interface EnqueueResult {
 }
 
 /** Enqueue an outbox event inside an open transaction.
- *  ON CONFLICT on idempotency_key is a no-op — idempotent by design.
+ *  ON CONFLICT on idempotency_key is a no-op — idempotent for double-submit
+ *  and worker-crash retry safety.
+ *
+ *  Lifecycle re-enqueue (create → delete → create-again same key): rows in a
+ *  terminal state (`done` / `dead`) are removed first so the new cycle can
+ *  insert cleanly. `pending` / `processing` / `failed` rows are NOT deleted
+ *  — those still represent an in-flight or retry-eligible attempt that must
+ *  not be lost.
  */
 export async function enqueueOutbox(
   tx: Pool | PoolClient,
@@ -52,6 +59,11 @@ export async function enqueueOutbox(
   idempotencyKey: string,
   correlationId?: string,
 ): Promise<EnqueueResult> {
+  await tx.query(
+    `DELETE FROM rbac.outbox_events
+      WHERE idempotency_key = $1 AND status IN ('done', 'dead')`,
+    [idempotencyKey],
+  );
   const res = await tx.query<{ id: string; idempotency_key: string }>(
     `INSERT INTO rbac.outbox_events (idempotency_key, operation, args, correlation_id)
      VALUES ($1, $2, $3, $4)

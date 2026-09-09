@@ -129,6 +129,12 @@ export async function assignRoleToUser(
 
 export interface RevokeRoleResult {
   outbox: EnqueueResult;
+  /**
+   * Zitadel projectId của grant vừa revoke (nếu lookup thành công qua listUserGrantsAllOrgs).
+   * DELETE endpoint dùng để tra app từ rbac.apps.zitadel_project_id → enqueue notify_app_revoke
+   * (P2 immediate revoke). Null = grant không tìm thấy trước khi delete (race hoặc grant đã gone).
+   */
+  grantProjectId: string | null;
 }
 
 /**
@@ -188,7 +194,7 @@ export async function removeRoleFromUser(
         { userId, grantId, removed: targetRoleKeys, outboxId: outbox.id },
         'user-grant-sync: all listed roles revoked — enqueued remove_user_grant',
       );
-      return { outbox };
+      return { outbox, grantProjectId: grantProjectId ?? null };
     }
 
     const idemKey = makeIdempotencyKey(
@@ -211,7 +217,7 @@ export async function removeRoleFromUser(
       { userId, grantId, removed: targetRoleKeys, remaining: updatedRoles, outboxId: outbox.id },
       'user-grant-sync: enqueued update_user_grant (partial revoke)',
     );
-    return { outbox };
+    return { outbox, grantProjectId: grantProjectId ?? null };
   }
 
   // Full grant removal (no targetRoleKeys → drop entire grant)
@@ -225,7 +231,7 @@ export async function removeRoleFromUser(
   );
 
   logger.info({ userId, grantId, outboxId: outbox.id }, 'user-grant-sync: enqueued remove_user_grant (full)');
-  return { outbox };
+  return { outbox, grantProjectId: grantProjectId ?? null };
 }
 
 /**

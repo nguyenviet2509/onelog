@@ -18,7 +18,8 @@ export type OutboxOperation =
   | 'add_user_grant'
   | 'update_user_grant'
   | 'remove_user_grant'
-  | 'add_or_update_user_grant';
+  | 'add_or_update_user_grant'
+  | 'notify_app_revoke';
 
 export type OutboxStatus = 'pending' | 'processing' | 'done' | 'failed' | 'dead';
 

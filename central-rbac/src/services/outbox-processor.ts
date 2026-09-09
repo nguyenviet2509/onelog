@@ -15,6 +15,7 @@
  *     same (userId, projectId) are serialized in the DB — the second reads the
  *     state left by the first (correct merged set), not the stale pre-first state.
  */
+import { createHmac } from 'node:crypto';
 import {
   addProjectRole as clientAddProjectRole,
   updateProjectRole as clientUpdateProjectRole,
@@ -26,6 +27,8 @@ import {
   removeUserGrant as clientRemoveUserGrant,
   listUserGrants,
 } from '../lib/zitadel-user-grants-client.js';
+import { getUserById } from '../lib/zitadel-user-search-client.js';
+import { ZitadelHttpError } from '../lib/zitadel-http-error.js';
 import { writerPool } from '../db/writer-pool.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
@@ -220,4 +223,94 @@ export async function addOrUpdateUserGrant(args: Record<string, unknown>): Promi
   } finally {
     client.release();
   }
+}
+
+/**
+ * notify_app_revoke — args: { appId, userId }
+ *
+ * P2 "immediate revoke" (2026-09-09). Sau admin revoke user grant, Central push event tới
+ * app-side revoke webhook để app xóa local session state (JWT/refresh_tokens/group members).
+ * Không cần chờ TTL access token expire.
+ *
+ * Flow:
+ *   1. Lookup app.revoke_url + app.revoke_secret + app.zitadel_org_id từ rbac.apps
+ *   2. Nếu revoke_url NULL → no-op (app không support, đây là fallback graceful)
+ *   3. Get user email từ Zitadel Mgmt API `/v2/users/:id`
+ *   4. Build HMAC-SHA256 signature: msg = `${email.toLowerCase()}|revoke`
+ *   5. POST revoke_url với `X-Sso-Revoke-Signature: sha256=${hex}` header + JSON body {userEmail}
+ *   6. 2xx = done, 4xx = permanent fail (dead), 5xx/network = retry
+ *
+ * Timeout 10s (app should respond nhanh — chỉ xóa DB row).
+ */
+export async function notifyAppRevoke(args: Record<string, unknown>): Promise<void> {
+  const appId = requireString(args, 'appId');
+  const userId = requireString(args, 'userId');
+
+  const { rows } = await writerPool.query<{
+    revoke_url: string | null;
+    revoke_secret: string | null;
+    zitadel_org_id: string | null;
+    slug: string;
+  }>(
+    `SELECT revoke_url, revoke_secret, zitadel_org_id, slug FROM rbac.apps WHERE id = $1`,
+    [appId],
+  );
+  const app = rows[0];
+  if (!app) {
+    // App bị xóa giữa lúc enqueue và process — skip, không phải error
+    logger.warn({ appId }, 'notify_app_revoke: app not found — skipping');
+    return;
+  }
+  if (!app.revoke_url || !app.revoke_secret) {
+    logger.info(
+      { appId, slug: app.slug },
+      'notify_app_revoke: app has no revoke_url/secret — skipping (backward-compat)',
+    );
+    return;
+  }
+
+  const orgId = app.zitadel_org_id ?? config.ZITADEL_ORG_ID;
+  const user = await getUserById(userId, orgId);
+  if (!user?.email) {
+    // User không có email trong Zitadel → không sign được HMAC → mark dead
+    throw new Error(`notify_app_revoke: user ${userId} has no email in Zitadel`);
+  }
+
+  const email = user.email.toLowerCase();
+  const msg = `${email}|revoke`;
+  const sig = createHmac('sha256', app.revoke_secret).update(msg).digest('hex');
+
+  logger.info(
+    { appId, slug: app.slug, userEmail: email, revoke_url: app.revoke_url },
+    'notify_app_revoke: calling app webhook',
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(app.revoke_url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sso-Revoke-Signature': `sha256=${sig}`,
+      },
+      body: JSON.stringify({ userEmail: email }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // Network error / timeout → treated as 5xx (retry)
+    throw new Error(`notify_app_revoke fetch error: ${errMsg}`);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    logger.error(
+      { appId, status: res.status, body: body.slice(0, 200) },
+      'notify_app_revoke: app webhook non-2xx',
+    );
+    // ZitadelHttpError vì dispatcher đã match instanceof/HTTP regex to classify 4xx vs 5xx
+    throw new ZitadelHttpError(res.status, `App revoke webhook HTTP ${res.status}`);
+  }
+
+  logger.info({ appId, userEmail: email }, 'notify_app_revoke: ok');
 }

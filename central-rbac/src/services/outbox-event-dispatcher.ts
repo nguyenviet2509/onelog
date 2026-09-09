@@ -19,6 +19,7 @@ import {
   updateUserGrant,
   removeUserGrant,
   addOrUpdateUserGrant,
+  notifyAppRevoke,
 } from './outbox-processor.js';
 import { type OutboxEvent, type OutboxOperation } from '../db/queries/outbox.js';
 import { redis } from '../lib/redis-client.js';
@@ -62,6 +63,7 @@ export const ALLOWED_OPERATIONS: Set<OutboxOperation> = new Set([
   'update_user_grant',
   'remove_user_grant',
   'add_or_update_user_grant', // H1+H4: enqueue-first assign path (worker decides add vs update)
+  'notify_app_revoke',        // P2 (2026-09-09): push revoke event tới app-side webhook
 ]);
 
 export type EventOutcome = 'done' | 'failed' | 'dead';
@@ -162,6 +164,10 @@ async function dispatch(
     case 'add_or_update_user_grant':
       // H1+H4: advisory-locked read-modify-write in worker (no hot-path Zitadel call)
       await addOrUpdateUserGrant(args);
+      break;
+    case 'notify_app_revoke':
+      // P2: push revoke event tới app-side webhook (HMAC-signed) → xóa session state ngay
+      await notifyAppRevoke(args);
       break;
   }
 }

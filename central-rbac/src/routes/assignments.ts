@@ -13,6 +13,9 @@ import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { assignRoleToUser, removeRoleFromUser, getUserGrants } from '../services/user-grant-sync.js';
+import { enqueueOutbox } from '../db/queries/outbox.js';
+import { writerPool } from '../db/writer-pool.js';
+import { createHash } from 'node:crypto';
 import { redis } from '../lib/redis-client.js';
 import { logger } from '../lib/logger.js';
 
@@ -155,6 +158,36 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await bustUserCaches(userId);
+
+    // P2 immediate revoke (2026-09-09): enqueue notify_app_revoke để app-side (VD qlts) xóa
+    // local session state (UserGroupMember + refresh_tokens) ngay. Không đợi TTL access token.
+    // Skip nếu grant không map tới app trong rbac.apps (VD legacy grant), hoặc app không set
+    // revoke_url (backward-compat với apps chưa implement webhook).
+    if (result.grantProjectId) {
+      const { rows: appRows } = await writerPool.query<{ id: string; revoke_url: string | null }>(
+        `SELECT id, revoke_url FROM rbac.apps WHERE zitadel_project_id = $1 LIMIT 1`,
+        [result.grantProjectId],
+      );
+      const app = appRows[0];
+      if (app?.revoke_url) {
+        // Time-bucket idempotency key (10s) — cho phép retry manual sau 10s nếu app fail
+        const timeBucket = Math.floor(Date.now() / 10_000).toString();
+        const notifyIdemKey = createHash('sha256')
+          .update(`notify_app_revoke:${app.id}:${userId}:${timeBucket}`)
+          .digest('hex')
+          .slice(0, 64);
+        await enqueueOutbox(
+          writerPool,
+          'notify_app_revoke',
+          { appId: app.id, userId },
+          notifyIdemKey,
+          request.id,
+        ).catch((err) => {
+          // Enqueue fail không được block DELETE flow — log + tiếp tục (revoke đã sync Zitadel)
+          logger.warn({ err, appId: app.id, userId }, 'assignments: notify_app_revoke enqueue failed');
+        });
+      }
+    }
 
     await writeAuditLog(request, {
       action: 'assignment.delete',

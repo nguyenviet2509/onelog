@@ -30,6 +30,7 @@ import { CreateRoleDialog } from './create-role-dialog';
 import { RolePermissionsDrawer } from './role-permissions-drawer';
 import { EditRoleDialog } from './edit-role-dialog';
 import { DeleteRoleConfirmDialog } from './delete-role-confirm-dialog';
+import { BulkDeleteRolesDialog } from './bulk-delete-roles-dialog';
 import type { Role } from '@/lib/types';
 
 const col = createColumnHelper<Role>();
@@ -59,6 +60,10 @@ export function RolesListPage() {
   // Phase 04: edit + delete state
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [deletingRole, setDeletingRole] = useState<Role | null>(null);
+
+  // Bulk delete state — keys of selected manual roles
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const { data: allRoles = [], isLoading, error, refetch } = useRolesQuery();
   const { data: apps = [] } = useAppsQuery();
@@ -109,8 +114,74 @@ export function RolesListPage() {
     setPage(1);
   }, [debouncedQ, selectedAppId, setPage]);
 
+  // Selectable rows on current page: only source='manual' AND user has canWrite
+  const selectableOnPage = useMemo(
+    () => paged.filter((r) => (r.source ?? 'manual') !== 'manifest'),
+    [paged],
+  );
+
+  const selectedRoles = useMemo(
+    () => allRoles.filter((r) => selectedKeys.has(r.key) && (r.source ?? 'manual') !== 'manifest'),
+    [allRoles, selectedKeys],
+  );
+
+  function toggleRowSelect(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage(e: React.ChangeEvent<HTMLInputElement>) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (e.target.checked) selectableOnPage.forEach((r) => next.add(r.key));
+      else selectableOnPage.forEach((r) => next.delete(r.key));
+      return next;
+    });
+  }
+
+  const allOnPageSelected =
+    selectableOnPage.length > 0 && selectableOnPage.every((r) => selectedKeys.has(r.key));
+  const someOnPageSelected = selectableOnPage.some((r) => selectedKeys.has(r.key));
+
   const columns = useMemo(
     () => [
+      col.display({
+        id: 'select',
+        header: () =>
+          canWrite() ? (
+            <input
+              type="checkbox"
+              aria-label="Chọn tất cả vai trò manual trên trang"
+              className="rounded"
+              checked={allOnPageSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = someOnPageSelected && !allOnPageSelected;
+              }}
+              onChange={toggleSelectAllOnPage}
+              disabled={selectableOnPage.length === 0}
+            />
+          ) : null,
+        cell: ({ row }) => {
+          const role = row.original;
+          const isManifest = (role.source ?? 'manual') === 'manifest';
+          const canSelect = !isManifest && canWrite();
+          return (
+            <input
+              type="checkbox"
+              aria-label={`Chọn ${role.key}`}
+              className="rounded"
+              checked={selectedKeys.has(role.key)}
+              onChange={() => canSelect && toggleRowSelect(role.key)}
+              disabled={!canSelect}
+              title={isManifest ? 'Role manifest — không thể xoá' : undefined}
+            />
+          );
+        },
+      }),
       col.accessor('key', {
         header: 'Key',
         cell: (info) => (
@@ -230,7 +301,7 @@ export function RolesListPage() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [appMap, canWrite],
+    [appMap, canWrite, selectedKeys, allOnPageSelected, someOnPageSelected, selectableOnPage],
   );
 
   return (
@@ -239,11 +310,22 @@ export function RolesListPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-semibold text-gray-900">Vai trò</h1>
 
-        {canWrite() && (
-          <Button onClick={() => setCreateOpen(true)} size="sm">
-            + Tạo vai trò mới
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {canWrite() && selectedKeys.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              Xoá ({selectedKeys.size})
+            </Button>
+          )}
+          {canWrite() && (
+            <Button onClick={() => setCreateOpen(true)} size="sm">
+              + Tạo vai trò mới
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -302,8 +384,20 @@ export function RolesListPage() {
         mobileCard={(role) => {
           const app = role.app_id ? appMap.get(role.app_id) : null;
           const isManifest = (role.source ?? 'manual') === 'manifest';
+          const canSelect = !isManifest && canWrite();
           return (
-            <div className="min-w-0">
+            <div className="min-w-0 flex items-start gap-2">
+              {canWrite() && (
+                <input
+                  type="checkbox"
+                  aria-label={`Chọn ${role.key}`}
+                  className="mt-1 rounded shrink-0"
+                  checked={selectedKeys.has(role.key)}
+                  onChange={() => canSelect && toggleRowSelect(role.key)}
+                  disabled={!canSelect}
+                />
+              )}
+              <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono text-sm font-medium text-gray-900 truncate">
                   {role.key}
@@ -347,6 +441,7 @@ export function RolesListPage() {
                   </>
                 )}
               </div>
+              </div>
             </div>
           );
         }}
@@ -381,6 +476,14 @@ export function RolesListPage() {
       <DeleteRoleConfirmDialog
         role={deletingRole}
         onClose={() => setDeletingRole(null)}
+      />
+
+      {/* Bulk delete — manual roles only */}
+      <BulkDeleteRolesDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        selectedRoles={selectedRoles}
+        onDone={() => setSelectedKeys(new Set())}
       />
     </div>
   );

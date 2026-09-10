@@ -9,10 +9,11 @@
 # Usage:  bash snapshot-daily.sh [BACKUP_DIR]
 #   BACKUP_DIR default: /opt/onelog/backup
 # Cron:   0 2 * * * /opt/onelog/infra/scripts/snapshot-daily.sh >> /var/log/onelog-snapshot.log 2>&1
-# Retention:
-#   S3 → BACKUP_S3_KEEP_DAYS in infra/.env (recommended: 5).
-#   Local → deleted immediately after successful S3 upload; failed uploads
-#           linger up to KEEP_DAYS (default 2) as a stranded-file safety net.
+# Retention (user policy 2026-09-10):
+#   S3    → BACKUP_S3_KEEP_DAYS in infra/.env (recommended: 5).
+#   Local → keep latest 1 archive ALWAYS; delete older ones > KEEP_LOCAL_DAYS
+#           (default 3) IF S3 has verified copy. Rationale: fast local restore
+#           without S3 network + safety net if S3 credential rotation breaks upload.
 # Prereq: age binary + infra/backup/backup-age.pub committed. See infra/backup/README.md.
 
 set -euo pipefail
@@ -22,15 +23,45 @@ INFRA_DIR="${INFRA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BACKUP_DIR="${1:-${BACKUP_DIR:-$INFRA_DIR/../backup}}"
 DATE="$(date +%Y%m%d-%H%M)"
 STAGE="$(mktemp -d -t ragsnap.XXXXXX)"
-# Local disk is a staging area only when S3 is enabled — successful upload
-# deletes the archive immediately. Failed uploads linger for KEEP_DAYS so a
-# manual retry (or the next cron run) can retransmit before eviction.
-KEEP_DAYS="${KEEP_DAYS:-2}"
+# Retention windows (see header comment for policy).
+KEEP_LOCAL_DAYS="${KEEP_LOCAL_DAYS:-3}"
 
-cleanup() { rm -rf "$STAGE"; }
+# ARCHIVE declared early so cleanup trap can see it on early-exit paths.
+ARCHIVE=""
+
+# Exit-code-aware cleanup: always rm STAGE; if script failed AND partial
+# ARCHIVE was written (< 1MB = broken age header, likely disk-full mid-write),
+# rm it too. Otherwise leave archive for retry. Fix incident 2026-09-06 →
+# 2026-09-10 where ENOSPC left 4 partial .age files eating 20GB.
+cleanup() {
+  local rc=$?
+  rm -rf "$STAGE"
+  if [[ "$rc" -ne 0 && -n "$ARCHIVE" && -f "$ARCHIVE" ]]; then
+    local size=$(stat -c%s "$ARCHIVE" 2>/dev/null || echo 0)
+    if [[ "$size" -lt 1048576 ]]; then
+      echo "[snapshot] cleanup: removing partial archive $ARCHIVE (${size}B, script exit $rc)" >&2
+      rm -f "$ARCHIVE"
+    fi
+  fi
+}
 trap cleanup EXIT
 
 mkdir -p "$BACKUP_DIR"
+
+# ─── Pre-flight disk check ───────────────────────────────────────────────
+# Require 3× last-archive-size free (staging tmp + archive + safety headroom).
+# Aborts BEFORE any tar/curl work so cron doesn't waste minutes on doomed run.
+# Fallback if no history: assume 3GB × 3 = 9GB. Fix 2026-09-10 (Phase B).
+LAST_ARCHIVE_SIZE=$(find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -printf '%s\n' 2>/dev/null | sort -rn | head -1)
+LAST_ARCHIVE_SIZE=${LAST_ARCHIVE_SIZE:-3221225472}
+REQUIRED_KB=$(( LAST_ARCHIVE_SIZE * 3 / 1024 ))
+AVAIL_KB=$(df --output=avail "$BACKUP_DIR" | tail -1)
+if [[ "$AVAIL_KB" -lt "$REQUIRED_KB" ]]; then
+  echo "[snapshot] ERROR pre-flight: need $((REQUIRED_KB / 1024))MB free in $BACKUP_DIR, have $((AVAIL_KB / 1024))MB" >&2
+  echo "[snapshot] $(date -Is) ABORT (insufficient disk)"
+  exit 3
+fi
+echo "[snapshot] pre-flight OK ($((AVAIL_KB / 1024))MB free, need $((REQUIRED_KB / 1024))MB for 3× last archive)"
 
 # Load env (POSTGRES_USER, QDRANT_API_KEY)
 if [[ -f "$INFRA_DIR/.env" ]]; then
@@ -310,8 +341,7 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
   fi
 
   echo "[snapshot] s3 verified ($REMOTE_SIZE bytes match)"
-  rm -f "$ARCHIVE"
-  echo "[snapshot] local archive purged (uploaded + verified on S3)"
+  echo "[snapshot] local archive KEPT (retention: 1 latest always + up to ${KEEP_LOCAL_DAYS}d if S3-confirmed)"
 
   # Best-effort remote retention (skip if 0/unset — assume lifecycle handles).
   KEEP_S3="${BACKUP_S3_KEEP_DAYS:-0}"
@@ -330,11 +360,27 @@ if [[ "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
   fi
 fi
 
-# --- Local retention (safety net for stranded archives) ---
-# Normal path: local archive was rm'd after S3 upload succeeded, this find is a
-# noop. When S3 upload fails (network, creds, endpoint down), the archive stays
-# on disk so the next successful run can be triggered manually; this purge only
-# evicts *stranded* archives older than KEEP_DAYS to bound disk usage.
-find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -mtime "+${KEEP_DAYS}" -print -delete || true
+# --- Local retention (user policy: keep latest 1 + delete >KEEP_LOCAL_DAYS if S3-confirmed) ---
+# Rule (2026-09-10 Phase B):
+#   - Always keep newest archive (fast local restore path, no S3 network).
+#   - Delete anything older than KEEP_LOCAL_DAYS if its S3 counterpart exists.
+#   - Do NOT delete files without S3 counterpart (safety net when S3 upload failing).
+# Result in steady state: 1-3 files locally (1 latest + 0-2 recent within window).
+LATEST=$(ls -t "$BACKUP_DIR"/onelog-*.tar.gz.age 2>/dev/null | head -1)
+if [[ -n "$LATEST" && "${BACKUP_S3_ENABLE:-false}" == "true" ]]; then
+  find "$BACKUP_DIR" -maxdepth 1 -name 'onelog-*.tar.gz.age' -mtime "+${KEEP_LOCAL_DAYS}" 2>/dev/null | while read -r old; do
+    # Skip newest (safety net — always keep 1).
+    [[ "$old" == "$LATEST" ]] && continue
+    old_name=$(basename "$old")
+    # Verify S3 counterpart BEFORE local delete.
+    if aws "${S3_ENDPOINT_ARG[@]}" s3api head-object \
+         --bucket "$BUCKET_NAME" --key "${BACKUP_S3_PREFIX:-}${old_name}" >/dev/null 2>&1; then
+      echo "[snapshot] retention: purge local $old_name (>${KEEP_LOCAL_DAYS}d, S3 confirmed)"
+      rm -f "$old"
+    else
+      echo "[snapshot] retention: keep local $old_name (>${KEEP_LOCAL_DAYS}d but NOT in S3 — safety net)" >&2
+    fi
+  done
+fi
 
 echo "[snapshot] $(date -Is) done"

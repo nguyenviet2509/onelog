@@ -44,6 +44,10 @@ services:
       - "127.0.0.1:6333:6333"
     volumes:
       - ./data/qdrant:/qdrant/storage
+      # Snapshots dir bind-mount — prevents container writable layer bloat.
+      # Fix 2026-09-10 (Phase B.5): before this, /qdrant/snapshots wrote to
+      # container FS (3.37GB layer). Bind → host = disk visible + reclaimable.
+      - ./data/qdrant/snapshots:/qdrant/snapshots
 
   # postgres: DECOMMISSIONED 2026-07-13 (previous chat/audit) + 2026-07-17 (KB
   # Phase 1 pivot to OpenWebUI native Knowledge — /web + Postgres removed).

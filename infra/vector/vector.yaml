@@ -425,6 +425,14 @@ transforms:
       # Bắt token/api_key/access_key/secret_key/auth_token/client_secret/refresh_token
       # cho mọi vendor không có dedicated pattern. Underscore/dash đều OK (api_key|api-key).
       msg = replace(msg, r'(?i)\b(token|api[_-]?key|access[_-]?key|secret[_-]?key|auth[_-]?token|client[_-]?secret|refresh[_-]?token)\s*[:=]\s*\S+', "<TOKEN>")
+      # PII additions 2026-09-10 (user request):
+      # Session cookies as text values (PHPSESSID/JSESSIONID/CSRF token — value part).
+      msg = replace(msg, r'(?i)\b(phpsessid|jsessionid|csrf[_-]?token|xsrf[_-]?token|session[_-]?id)\s*[:=]\s*[A-Za-z0-9]{16,}', "<SESSION>")
+      # Vietnamese mobile: +84 or 0-prefix, follows 3/5/7/8/9 + 8 digits.
+      msg = replace(msg, r'(?:\+84|0)(?:3|5|7|8|9)\d{8}\b', "<PHONE_VN>")
+      # Credit card: 13-19 digits, may contain spaces or dashes. Placed AFTER
+      # other numeric patterns to avoid clobbering PORT/BIGINT (which cap ≤ digits).
+      msg = replace(msg, r'\b(?:\d[ -]?){13,19}\b', "<CC>")
 
       # ────────────────────────────────────────────────────────────────
       # High-cardinality noise scrub — CHỐNG template explosion downstream.

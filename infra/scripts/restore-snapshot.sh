@@ -82,18 +82,26 @@ fi
 
 cd "$INFRA_DIR"
 
-# Helper: replace a data subdir from a stage tar. Idempotent — noop when the
-# tar is missing (older backup schema, or component removed from stack).
+# Helper: replace a data subdir from stage.
+# Supports 2 archive formats:
+#   v1 (legacy, pre-2026-09-10): $STAGE/<name>.tar per service
+#   v2 (streaming, 2026-09-10+):  $STAGE/<name>/ raw dir
+# Auto-detect via file existence. Idempotent — noop when neither present.
 restore_data_dir() {
   local name="$1"
   local tarball="$STAGE/${name}.tar"
-  if [[ ! -f "$tarball" ]]; then
-    echo "  ($name.tar missing in archive — skipped)"
-    return 0
+  local raw_dir="$STAGE/${name}"
+  if [[ -f "$tarball" ]]; then
+    echo "[restore] ${name} data (v1 format, tar)"
+    rm -rf "$INFRA_DIR/data/$name"
+    tar -C "$INFRA_DIR/data" -xf "$tarball"
+  elif [[ -d "$raw_dir" ]]; then
+    echo "[restore] ${name} data (v2 format, raw dir)"
+    rm -rf "$INFRA_DIR/data/$name"
+    mv "$raw_dir" "$INFRA_DIR/data/$name"
+  else
+    echo "  ($name missing in archive — skipped)"
   fi
-  echo "[restore] ${name} data"
-  rm -rf "$INFRA_DIR/data/$name"
-  tar -C "$INFRA_DIR/data" -xf "$tarball"
 }
 
 # --- 1. Stop affected services ---

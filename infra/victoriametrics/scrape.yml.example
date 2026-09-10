@@ -151,18 +151,22 @@ scrape_configs:
           cluster: authway
           service: zitadel
 
-  # Synthetic HTTP probe — Zitadel discovery endpoints via blackbox_exporter.
-  # Sau khi swap ExternalDomain sang zitadel.000nethost.com (docs/deployment-central-rbac-domain-swap.md):
-  # module http_2xx_zitadel set Host header override — Zitadel v4 reject request Host mismatch → 404.
+  # Synthetic HTTPS probe — Zitadel + Central RBAC public endpoints via blackbox_exporter.
+  # Sau khi swap ExternalDomain sang zitadel.000nethost.com / rbacnb.000nethost.com
+  # (docs/deployment-central-rbac-domain-swap.md), probe public HTTPS để:
+  #   1. Cover full user-facing path (000nethost upstream → Traefik → backend)
+  #   2. Thu thập probe_ssl_earliest_cert_expiry cho panel "Cert days remaining"
   - job_name: authway_blackbox_http
     metrics_path: /probe
     params:
-      module: [http_2xx_zitadel]
+      module: [http_2xx]
     static_configs:
       - targets:
-          - http://10.200.0.125/.well-known/openid-configuration
-          - http://10.200.0.125/oauth/v2/keys
-          - http://10.200.0.125/oidc/v1/userinfo
+          - https://zitadel.000nethost.com/.well-known/openid-configuration
+          - https://zitadel.000nethost.com/oauth/v2/keys
+          - https://zitadel.000nethost.com/oidc/v1/userinfo
+          - https://rbacnb.000nethost.com/v1/health
+          - https://rbacnb.000nethost.com/
         labels:
           cluster: authway
     relabel_configs:

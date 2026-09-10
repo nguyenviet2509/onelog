@@ -244,9 +244,13 @@ LAST_S3_SIZE=$(aws "${S3_ENDPOINT_ARG[@]}" s3api list-objects-v2 \
 
 echo "[snapshot] s3 upload (streaming) → $S3_KEY (expected ~$((LAST_S3_SIZE / 1073741824))GB)"
 
-# The pipeline. tar -h dereferences the Qdrant symlinks. --warning=no-file-changed
-# and --ignore-failed-read tolerate hot-copy of live SQLite/RocksDB. `set -o
-# pipefail` propagates any component's non-zero exit to the whole pipeline exit.
+# The pipeline. tar -h dereferences the Qdrant symlinks.
+# --warning=no-file-changed + --ignore-failed-read tolerate hot-copy race
+# (live SQLite WAL, NATS block rotation, RocksDB compaction) — tar exits 1
+# with "File removed" warning; we treat as acceptable inconsistency (NATS
+# block gone = already discarded by max_age anyway). Fatal errors = tar exit ≥2.
+# PIPESTATUS check per-component instead of relying on pipefail (which would
+# reject the whole pipeline on tar's benign exit 1).
 set +e
 tar --warning=no-file-changed --ignore-failed-read \
     -h -C "$STAGE" --create . \
@@ -258,13 +262,33 @@ tar --warning=no-file-changed --ignore-failed-read \
       --expected-size "$LAST_S3_SIZE" \
       --only-show-errors \
       --metadata "hostname=$(hostname),created=$(date -Iseconds)"
-UPLOAD_RC=$?
+RCS=("${PIPESTATUS[@]}")
 set -e
+TAR_RC=${RCS[0]}
+GZIP_RC=${RCS[1]}
+AGE_RC=${RCS[2]}
+AWS_RC=${RCS[3]}
 
-if [[ "$UPLOAD_RC" -ne 0 ]]; then
-  echo "[snapshot] ERROR streaming pipeline exit $UPLOAD_RC" >&2
-  echo "[snapshot] $(date -Is) FAILED (partial upload aborted by S3, no local file to clean)"
-  exit "$UPLOAD_RC"
+if [[ "$TAR_RC" -gt 1 ]]; then
+  echo "[snapshot] ERROR tar fatal (exit $TAR_RC)" >&2
+  echo "[snapshot] $(date -Is) FAILED (tar fatal — check permissions/paths)"
+  exit "$TAR_RC"
+fi
+if [[ "$TAR_RC" -eq 1 ]]; then
+  echo "[snapshot] tar exit 1 (files changed during hot copy — acceptable)"
+fi
+if [[ "$GZIP_RC" -ne 0 ]]; then
+  echo "[snapshot] ERROR gzip failed (exit $GZIP_RC)" >&2
+  exit "$GZIP_RC"
+fi
+if [[ "$AGE_RC" -ne 0 ]]; then
+  echo "[snapshot] ERROR age encryption failed (exit $AGE_RC)" >&2
+  exit "$AGE_RC"
+fi
+if [[ "$AWS_RC" -ne 0 ]]; then
+  echo "[snapshot] ERROR aws s3 cp failed (exit $AWS_RC)" >&2
+  echo "[snapshot] $(date -Is) FAILED (partial upload — S3 rejected or aborted)"
+  exit "$AWS_RC"
 fi
 
 # --- 5. Verify S3 object exists (streaming = no byte-level compare, only existence) ---

@@ -80,12 +80,13 @@
     },
     {
       "id": 5,
-      "title": "Postgres container UP",
+      "title": "Zitadel scrape UP (proxy for Zitadel+Postgres)",
+      "description": "cAdvisor v0.49 không parse được Docker overlayfs driver (mới trong Docker 25+) → container_last_seen không có docker series. Dùng up{authway_zitadel} làm proxy: Zitadel scrape UP nghĩa là process alive; nếu Postgres down thì Zitadel entrypoint healthcheck fail → container restart loop → scrape DOWN.",
       "type": "stat",
       "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
       "datasource": {"type": "prometheus", "uid": "victoriametrics"},
       "targets": [
-        {"expr": "max(container_last_seen{name=~\".*authway-prod-postgres.*\",job=\"authway_cadvisor\"} > (time() - 60))", "refId": "A"}
+        {"expr": "up{job=\"authway_zitadel\"}", "refId": "A"}
       ],
       "fieldConfig": {
         "defaults": {

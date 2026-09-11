@@ -23,7 +23,11 @@ volumes:
     driver: local
 
 services:
-  postgres:
+  # Service name = central-rbac-db (KHÔNG dùng `postgres`) để tránh Docker DNS alias
+  # collision với `authway-prod-postgres-1` (cùng share network authway-prod_internal).
+  # Xem 2026-09-11 root cause: zitadel-init intermittent SASL fail vì round-robin
+  # DNS đến sai postgres. Backend đã ref `central-rbac-postgres` container_name → không impact.
+  central-rbac-db:
     image: postgres:16-alpine
     container_name: central-rbac-postgres
     restart: unless-stopped
@@ -77,7 +81,7 @@ services:
     extra_hosts:
       - "zitadel.000nethost.com:10.200.0.125"
     depends_on:
-      postgres:
+      central-rbac-db:
         condition: service_healthy
       redis:
         condition: service_healthy

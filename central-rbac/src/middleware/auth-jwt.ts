@@ -32,6 +32,7 @@ function refreshJwksSet(): ReturnType<typeof createRemoteJWKSet> {
 
 export interface JwtClaims extends JWTPayload {
   azp?: string;
+  email?: string;
   permissions?: string[];
   permissions_hash?: string;
   roles?: string[];
@@ -121,4 +122,15 @@ export async function verifyJwt(
   }
 
   request.jwtClaims = payload;
+
+  // Bind SSO trace context onto the per-request pino child. Fastify's onResponse
+  // access log inherits these bindings, so a single VL query by user_email / sub
+  // surfaces the full request timeline (see docs/observability-log-forwarding-convention.md).
+  // Guard — auth-jwt unit tests inject a mock request without `.log`.
+  if (request.log && typeof request.log.child === 'function') {
+    request.log = request.log.child({
+      sub: payload.sub,
+      user_email: payload.email,
+    });
+  }
 }

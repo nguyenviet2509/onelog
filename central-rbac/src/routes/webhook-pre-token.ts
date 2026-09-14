@@ -208,14 +208,26 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
       const appId = body.application?.client_id ?? 'unknown';
 
       if (!userId) {
-        logger.error({ correlationId }, 'webhook-pre-token: missing user.id in payload');
+        request.log.error({ correlationId }, 'webhook-pre-token: missing user.id in payload');
         return reply.status(400).send({ error: 'Missing user.id' });
       }
 
-      logger.debug(
-        { userId, orgId, appId, correlationId, fn: body.function },
-        'webhook-pre-token: received',
-      );
+      // SSO trace: bind userId + appId + user_email onto request.log.
+      // JWT sub not available (webhook is HMAC-authed) — user_id is the correlation
+      // key here; joined to sub via zitadel-event-webhook actor_id in VL queries.
+      // Guard `.child` — test env uses Fastify({ logger: false }) which yields a
+      // no-op logger without child() method.
+      const userEmail = body.user?.human?.email;
+      if (typeof request.log.child === 'function') {
+        request.log = request.log.child({
+          user_id: userId,
+          user_email: userEmail,
+          app_id: appId,
+          org_id: orgId,
+        });
+      }
+
+      request.log.debug({ fn: body.function }, 'webhook-pre-token: received');
 
       // ── Break-glass path ──────────────────────────────────────────────────
       if (isBreakGlassUser(userId)) {
@@ -235,7 +247,7 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
             ],
           } satisfies WebhookResponse);
         } catch (err) {
-          logger.error({ err, userId, correlationId }, 'webhook-pre-token: break-glass perms error');
+          request.log.error({ err }, 'webhook-pre-token: break-glass perms error');
           emitBreakGlassAlert('break-glass-mfa-missing', userId, correlationId, appId);
           return reply.send(degradedResponse());
         }
@@ -250,10 +262,7 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
         // Step 2: fetch role keys (Redis cache → Mgmt API cross-org)
         const roleKeys = await fetchUserGrantsCached(userId, epoch);
 
-        logger.debug(
-          { userId, roleCount: roleKeys.length, correlationId },
-          'webhook-pre-token: roles fetched',
-        );
+        request.log.debug({ roleCount: roleKeys.length }, 'webhook-pre-token: roles fetched');
 
         // Step 3: resolve permissions (Redis cache → DB singleflight)
         const { permissions, permissions_hash } = await resolvePermissionsCached(roleKeys, epoch);
@@ -270,16 +279,16 @@ export async function webhookPreTokenRoutes(app: FastifyInstance): Promise<void>
           claims.push({ key: 'permissions', value: permissions });
         }
 
-        logger.info(
-          { userId, permCount: permissions.length, inlined: permissions.length <= INLINE_PERMS_MAX, correlationId },
+        request.log.info(
+          { permCount: permissions.length, inlined: permissions.length <= INLINE_PERMS_MAX },
           'webhook-pre-token: resolved ok',
         );
 
         return reply.send({ append_claims: claims } satisfies WebhookResponse);
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        logger.error(
-          { err: errMsg, userId, orgId, correlationId },
+        request.log.error(
+          { err: errMsg },
           'webhook-pre-token: resolve failed — returning degraded',
         );
         // Admin fail-close (F8) deferred to Phase 3: needs 2 Zitadel Targets +

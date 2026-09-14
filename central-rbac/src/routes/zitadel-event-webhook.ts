@@ -148,6 +148,22 @@ export async function zitadelEventWebhookRoutes(app: FastifyInstance): Promise<v
       const userID = extractUserID(body);
       const clientId = extractClientId(body.event_payload);
 
+      // SSO trace: bind event context onto request.log so onResponse access log
+      // and all child logs from this handler carry session_id + event_type + user_id.
+      // Guard `.child` — test env uses Fastify({ logger: false }) (no-op logger).
+      const sessionIdEarly =
+        (body.event_payload?.['sessionID'] as string | undefined) ??
+        (body.event_payload?.['session_id'] as string | undefined) ??
+        (aggregateType === 'session' ? aggregateID : undefined);
+      if (typeof request.log.child === 'function') {
+        request.log = request.log.child({
+          session_id: sessionIdEarly,
+          event_type: eventType,
+          user_id: userID,
+          client_id: clientId,
+        });
+      }
+
       // Enrich (both cached — first-hit adds ~50ms Zitadel API, subsequent 0ms):
       //   appSlug   ← rbac.apps table by client_id (10 min TTL)
       //   userEmail ← Zitadel /v2/users/:id (24h TTL)

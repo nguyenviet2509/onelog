@@ -7,7 +7,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { config } from './config.js';
-import { logger } from './lib/logger.js';
+import { logger, fastifyLoggerOptions } from './lib/logger.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { healthRoutes } from './routes/health.js';
 import { permissionRoutes } from './routes/permissions.js';
@@ -52,7 +52,10 @@ export async function buildApp() {
   // trustProxy: real client IP behind Traefik/Caddy on 10.200.0.0/24 (H1 fix).
   // In dev, accept all proxy headers (true). In prod, restrict to internal subnet.
   const app = Fastify({
-    logger: false, // Using pino directly via logger singleton
+    // Fastify builds its own pino using shared options from logger.ts.
+    // Emits structured JSON per request (reqId, method, url, status, responseTime,
+    // sub, user_email, session_id) — consumed by Vector → VL for SSO trace.
+    logger: fastifyLoggerOptions,
     requestIdHeader: 'x-request-id',
     requestIdLogLabel: 'reqId',
     genReqId: () => crypto.randomUUID(),

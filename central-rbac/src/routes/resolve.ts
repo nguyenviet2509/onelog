@@ -13,7 +13,6 @@ import { writerPool } from '../db/writer-pool.js';
 import { redis } from '../lib/redis-client.js';
 import { singleflight } from '../lib/singleflight.js';
 import { resolveBodySchema } from '../schemas/resolve-schemas.js';
-import { logger } from '../lib/logger.js';
 
 const RESOLVE_CACHE_TTL_S = 15 * 60; // 15 min
 
@@ -42,7 +41,7 @@ export async function resolveRoutes(app: FastifyInstance): Promise<void> {
       try {
         const cached = await redis.get(cacheKey);
         if (cached) {
-          logger.debug({ cacheKey }, 'resolve: cache hit');
+          request.log.debug({ cacheKey }, 'resolve: cache hit');
           const parsed = JSON.parse(cached) as {
             permissions: string[];
             roles_expanded: string[];
@@ -51,7 +50,7 @@ export async function resolveRoutes(app: FastifyInstance): Promise<void> {
           return reply.send({ ...parsed, cached: true, epoch });
         }
       } catch (err) {
-        logger.warn({ err, cacheKey }, 'resolve: Redis get failed — falling through to DB');
+        request.log.warn({ err, cacheKey }, 'resolve: Redis get failed — falling through to DB');
       }
 
       // Cache miss — singleflight guards stampede
@@ -76,7 +75,7 @@ export async function resolveRoutes(app: FastifyInstance): Promise<void> {
           JSON.stringify(result.permissions),
         );
       } catch (err) {
-        logger.warn({ err, cacheKey }, 'resolve: Redis setex failed — result not cached');
+        request.log.warn({ err, cacheKey }, 'resolve: Redis setex failed — result not cached');
       }
 
       return reply.send({ ...result, cached: false, epoch });

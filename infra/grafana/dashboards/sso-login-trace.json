@@ -14,9 +14,9 @@
         "name": "user_email",
         "type": "textbox",
         "label": "user_email",
-        "current": {"value": "", "text": ""},
-        "query": "",
-        "description": "Filter by exact user_email — leave blank to see all users."
+        "current": {"value": "*", "text": "*"},
+        "query": "*",
+        "description": "Filter by exact user_email. Default '*' = show all logs carrying user_email/actor_email field. LogsQL treats '*' as wildcard match on the field."
       }
     ]
   },

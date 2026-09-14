@@ -36,14 +36,17 @@ export function Header({ title = 'Quản trị RBAC', onOpenSidebar }: HeaderPro
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [menuOpen]);
 
-  // Local signout only — clear rbac session, keep Zitadel SSO session intact.
-  // User revisit → OIDC init → Zitadel session còn (externalLoginCheckLifetime 10 ngày)
-  // → auto redirect back → vào rbac không cần chọn lại IdP (đúng SSO semantic).
+  // Local signout — clear rbac session, keep Zitadel SSO session intact, land trên
+  // /login (KHÔNG auto signinRedirect — trước đây gây loop reauth ngay, user không thấy
+  // được logout). User click "Đăng nhập qua Zitadel" → SSO silent (Zitadel session còn
+  // 10 ngày) → back vào app không phải chọn IdP.
   // Muốn end SSO toàn bộ (share máy) → dùng button "Đăng xuất & đổi tài khoản" trên
   // 403 unauthorized page (protected-route.tsx) — nó gọi signoutRedirect full end_session.
   function handleLogout() {
     setMenuOpen(false);
-    void auth.removeUser().then(() => auth.signinRedirect());
+    void auth.removeUser().then(() => {
+      window.location.href = '/login';
+    });
   }
 
   return (

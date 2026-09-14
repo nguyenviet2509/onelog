@@ -1,6 +1,6 @@
 # Central RBAC observability & SSO login trace
 
-Runbook để trace 1 login SSO qua Central + Zitadel khi member báo lỗi. Dùng VMUI + Grafana dashboard **SSO Login Trace** + OpenWebUI chat.
+Runbook để trace 1 login SSO qua Central + Zitadel khi member báo lỗi. Dùng **VMUI** (bookmark URLs với query embed sẵn) + OpenWebUI chat. Grafana dashboard đã bị bỏ (2026-09-14) — VMUI đủ dùng cho use case single-user trace, đỡ 1 lớp abstraction.
 
 ## Kiến trúc
 
@@ -37,7 +37,7 @@ Không phải mọi field đều xuất hiện — tuỳ endpoint:
 
 Zitadel v4 access token **KHÔNG** carry `sid` claim (đã verify OIDC discovery 2026-09-14). Cross-service join:
 
-- **Primary:** `user_email` — có ở cả Central JWT log, pre-token webhook (từ `body.user.human.email`), zitadel-event enrichment (`actor_email`). Grafana dashboard input variable dùng key này.
+- **Primary:** `user_email` — có ở cả Central JWT log, pre-token webhook (từ `body.user.human.email`), zitadel-event enrichment (`actor_email`). Query VMUI OR-join 2 field name.
 - **Secondary:** `sub` / `user_id` (Zitadel user UUID) — stable, unique. Dùng khi user không có email (service account).
 - **Zitadel-only:** `session_id` — chỉ có trong Zitadel event webhook payload (`event_payload.session_id`). Dùng để dedup events cùng session.
 - **Fallback:** timestamp bucket ±5s + `user_email` — probabilistic, cho case join với log không có bất kỳ ID chung.
@@ -45,18 +45,51 @@ Zitadel v4 access token **KHÔNG** carry `sid` claim (đã verify OIDC discovery
 ## Quick ops workflow — user báo lỗi login
 
 1. Hỏi user: **email + timestamp lỗi** (làm tròn phút).
-2. Mở Grafana → dashboard **"SSO Login Trace"** ([http://<grafana>/d/sso-login-trace](http://onelog-vps/grafana/d/sso-login-trace)).
-3. Set `user_email` variable = email user, time range = ±15 phút quanh timestamp.
-4. Panel "Login timeline" show đủ event Zitadel + Central call. Đọc theo thứ tự thời gian:
+2. Mở VMUI bookmark **"SSO login timeline"** (dưới) — sửa email trong URL, chỉnh time range ±15 phút quanh timestamp.
+3. Đọc timeline theo thứ tự thời gian:
    - `service:zitadel event_type:auth_request.added` → user click login
    - `service:zitadel event_type:user.human.password.check.succeeded|failed` → mật khẩu
    - `service:zitadel event_type:user.human.mfa.otp.check.*` → MFA
    - `service:central-rbac req.url:/v1/webhooks/pre-token` → Central resolve permissions
    - `service:zitadel event_type:oidc_session.added` → token issued
-5. Nếu error nằm ở Central pre-token (webhook 5xx): xem `msg:"resolve failed"` payload chi tiết
-6. Nếu error nằm ở Zitadel: check panel Panel 2 (Central 5xx) + Zitadel container log level=WARN|ERROR trong cùng window
+4. Nếu error ở Central pre-token: xem `msg:"resolve failed"` payload chi tiết
+5. Nếu error ở Zitadel: check bookmark "Central 5xx" + Zitadel container log level=WARN|ERROR trong cùng window
 
-## Query VMUI trực tiếp
+## VMUI bookmark URLs (paste + sửa email/time)
+
+Thay `<VL_HOST>` = domain VL của bạn (VD `10.200.0.30:9428` LAN hoặc `vl.internal` DNS). Query string đã URL-encoded sẵn.
+
+**Timeline user** (sửa `alice@inet.vn` → email thật):
+```
+http://<VL_HOST>/select/vmui/?g0.query=host%3Aauthway+AND+%28service%3Acentral-rbac+OR+service%3Azitadel%29+AND+%28user_email%3A%22alice%40inet.vn%22+OR+actor_email%3A%22alice%40inet.vn%22%29&g0.range_input=30m
+```
+
+**Central 5xx last 1h**:
+```
+http://<VL_HOST>/select/vmui/?g0.query=host%3Aauthway+AND+service%3Acentral-rbac+AND+res.statusCode%3A%3E%3D500&g0.range_input=1h
+```
+
+**Central p95 latency per URL last 1h**:
+```
+http://<VL_HOST>/select/vmui/?g0.query=host%3Aauthway+AND+service%3Acentral-rbac+AND+responseTime%3A*+%7C+stats+by+%28req.url%29+quantile%280.95%2C+responseTime%29+as+p95_ms&g0.range_input=1h
+```
+
+**Trace 1 request cụ thể** (sửa `reqId` value):
+```
+http://<VL_HOST>/select/vmui/?g0.query=reqId%3A%226dad128f-d023-4c08-bec2-2670e6ced681%22&g0.range_input=6h
+```
+
+**Pre-token webhook fail per app** (sửa `app_id`):
+```
+http://<VL_HOST>/select/vmui/?g0.query=service%3Acentral-rbac+AND+req.url%3A%22%2Fv1%2Fwebhooks%2Fpre-token%22+AND+app_id%3A%22qlts%22+AND+level%3A%3E%3D50&g0.range_input=1h
+```
+
+**Brute-force detect Zitadel password fail (>5 in 15m)**:
+```
+http://<VL_HOST>/select/vmui/?g0.query=service%3Azitadel+AND+_msg%3A*%22password.check.failed%22*+%7C+stats+by+%28ip%2C+actor_email%29+count%28%29+as+fails+%7C+filter+fails%3A%3E5&g0.range_input=15m
+```
+
+## Query VMUI trực tiếp (raw LogsQL)
 
 Ví dụ tiện lấy nhanh:
 
@@ -106,21 +139,6 @@ Nếu >10M/ngày → xem xét Phase 3 (dedicated stream để retention riêng).
 1. **GitLab-side** (external IdP): khi Zitadel log `IdP intent failed`, không thấy reason từ GitLab. Workaround: hỏi team GitLab + timestamp + user_email → check GitLab production.log.
 2. **App-side sau khi login thành công**: nếu app tự reject (role không đủ, session invalid) không thấy trong VL. Workaround: ship app log về VL (out of scope hiện tại).
 3. **Zitadel session_id** không có trong access token JWT → Central `/v1/resolve` log không carry `session_id`, chỉ `sub`. Join qua `user_email` trong Grafana.
-
-## Deploy — nếu update dashboard
-
-Grafana provisioning tự load JSON mới:
-
-```bash
-# Local: edit d:\Vietnt\Project\onelog\infra\grafana\dashboards\sso-login-trace.json
-git add infra/grafana/dashboards/sso-login-trace.json
-git commit -m "feat(grafana): update SSO Login Trace dashboard"
-git push origin master
-
-# onelog-vps
-ssh onelog-vps 'cd /opt/onelog && sudo git pull && sudo docker exec ragstack-grafana kill -HUP 1'
-# hoặc: sudo docker compose restart grafana
-```
 
 ## Update Vector allowlist — khi thêm container mới trên authway-vps
 

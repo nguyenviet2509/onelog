@@ -1,5 +1,10 @@
 /**
- * api/client.ts — Axios instance with Bearer interceptor, 401 force-logout, 403 toast.
+ * api/client.ts — Axios instance with Bearer interceptor, 401 local re-auth, 403 toast.
+ *
+ * 401 handling: local clear + signinRedirect (không end_session Zitadel). Zitadel session
+ * còn hạn (externalLoginCheckLifetime 10 ngày) → silent auth → back to app không cần chọn
+ * IdP. Trước đây gọi signoutRedirect làm mất Zitadel session → user phải chọn lại IdP →
+ * SSO gãy semantic.
  */
 import axios, { type AxiosError } from 'axios';
 import { userManager } from '@/auth/oidc-client';
@@ -21,12 +26,12 @@ apiClient.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Handle 401 (force logout) and 403 (toast)
+// Handle 401 (local re-auth, preserve Zitadel session for SSO) and 403 (toast)
 apiClient.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
     if (err.response?.status === 401) {
-      void userManager.signoutRedirect();
+      void userManager.removeUser().then(() => userManager.signinRedirect());
     } else if (err.response?.status === 403) {
       toastError('Bạn không có quyền thực hiện thao tác này.');
     }

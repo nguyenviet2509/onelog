@@ -27,8 +27,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     return () => document.removeEventListener('keydown', onEsc);
   }, [open, onClose]);
 
+  // Local signout — preserve Zitadel SSO session. See header.tsx handleLogout comment.
   function handleLogout() {
-    void auth.signoutRedirect();
+    void auth.removeUser().then(() => auth.signinRedirect());
   }
 
   /**

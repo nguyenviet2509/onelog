@@ -11,7 +11,7 @@
  *     4. Zitadel SearchProjects → 409 if exists
  *     5. Zitadel AddProject → AddOIDCApp (transactional-ish)
  *     6. On AddOIDCApp fail → RemoveProject; if THAT fails → INSERT pending_cleanups
- *     7. On success → INSERT rbac.apps + create 3 default roles + writeAuditLog
+ *     7. On success → INSERT rbac.apps + create 4 default roles + writeAuditLog
  *     8. Return {project_id, client_id, client_secret} — ONE-TIME reveal
  *
  * GET /v1/admin/apps
@@ -159,7 +159,13 @@ async function insertApp(
 }
 
 /**
- * Create 3 default roles ({slug}.viewer/editor/admin) + enqueue Zitadel sync.
+ * Create 4 default roles ({slug}.superadmin/admin/member/viewer) + enqueue Zitadel sync.
+ * Semantic (Central-side is scaffolding only; app manifest attaches permissions):
+ *   - superadmin: full access incl. destructive ops + settings (billing, wipe data)
+ *   - admin:     business ops (invite user, moderation, assign lower roles)
+ *   - member:    daily create/update on own entities
+ *   - viewer:    read-only
+ * Ordering (high→low) is intentional for audit log readability.
  * Migration 011: sets role.app_id → wizard-created app so grant flow routes
  * to the NEW app's Zitadel project (not env ZITADEL_PROJECT_ID).
  * Fix for Phase 08 e2e discovery: outbox add_user_grant landed 'dead' because
@@ -171,7 +177,7 @@ async function createDefaultRoles(
   zitadelProjectId: string,
   adminSub: string,
 ): Promise<void> {
-  const roles = ['viewer', 'editor', 'admin'];
+  const roles = ['superadmin', 'admin', 'member', 'viewer'];
   for (const suffix of roles) {
     const key = `${appSlug}.${suffix}`;
     const description = `Default ${suffix} role for app ${appSlug}`;
@@ -200,7 +206,7 @@ async function createDefaultRoles(
   }
   logger.info(
     { app_slug: appSlug, app_id: appId, zitadel_project_id: zitadelProjectId, admin: adminSub },
-    'admin-apps: created 3 default roles + enqueued Zitadel sync',
+    'admin-apps: created 4 default roles + enqueued Zitadel sync',
   );
 }
 
@@ -355,10 +361,13 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         registered: boolean;
       }
 
+      // Migration 019: exclude dummy 'central' platform app (system-managed,
+      // không hiển thị trong UI list để tránh admin click Manage/Sync-Manifest).
       const { rows: dbApps } = await writerPool.query<DbApp & { zitadel_org_id: string | null; client_type: ClientType }>(
         `SELECT id, slug, name, client_type, zitadel_project_id, zitadel_org_id, zitadel_client_id,
                 manifest_url, created_at, created_by
            FROM rbac.apps
+          WHERE slug != 'central'
           ORDER BY created_at DESC`,
       );
       const appByProject = new Map(

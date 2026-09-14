@@ -11,6 +11,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "bootstrap-dev": "tsx scripts/bootstrap-dev.ts",
     "bootstrap": "tsx scripts/bootstrap.ts",
+    "bootstrap-operators": "tsx scripts/019-bootstrap-operators.ts",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run tests/integration --coverage"

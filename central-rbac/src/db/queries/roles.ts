@@ -10,15 +10,22 @@ export interface Role {
   parent_key: string | null;
   /** Migration 011: link back to rbac.apps for grant dialog project→role filter. */
   app_id: string | null;
-  /** Migration 016: 'manual' (admin created via UI, editable) vs 'manifest' (imported, read-only). */
-  source: 'manual' | 'manifest';
+  /**
+   * Source of role:
+   *   - 'manual'   (Migration 016): admin created via UI, editable
+   *   - 'manifest' (Migration 016): imported via manifest sync, read-only
+   *   - 'system'   (Migration 019): platform-managed (VD central.operator), không edit qua UI
+   */
+  source: 'manual' | 'manifest' | 'system';
+  /** Migration 019: delegation whitelist — role có thể grant các role_key trong list này. */
+  can_grant: string[];
   created_at: string;
   updated_at: string;
 }
 
 export async function listRoles(pool: Pool): Promise<Role[]> {
   const res = await pool.query<Role>(
-    `SELECT id, key, description, parent_key, app_id, source, created_at, updated_at
+    `SELECT id, key, description, parent_key, app_id, source, can_grant, created_at, updated_at
      FROM rbac.roles ORDER BY key ASC`,
   );
   return res.rows;
@@ -26,7 +33,7 @@ export async function listRoles(pool: Pool): Promise<Role[]> {
 
 export async function getRoleByKey(pool: Pool, key: string): Promise<Role | null> {
   const res = await pool.query<Role>(
-    `SELECT id, key, description, parent_key, app_id, source, created_at, updated_at
+    `SELECT id, key, description, parent_key, app_id, source, can_grant, created_at, updated_at
      FROM rbac.roles WHERE key = $1`,
     [key],
   );
@@ -43,14 +50,25 @@ export interface CreateRoleInput {
    * Migration 011.
    */
   app_id?: string | null;
+  /**
+   * Migration 019: delegation whitelist. Empty array = role không grant được ai.
+   * Set qua wizard v2 hoặc manifest v2 sync (Phase 2).
+   */
+  can_grant?: string[];
 }
 
 export async function createRole(pool: Pool | PoolClient, input: CreateRoleInput): Promise<Role> {
   const res = await pool.query<Role>(
-    `INSERT INTO rbac.roles (key, description, parent_key, app_id)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, key, description, parent_key, app_id, source, created_at, updated_at`,
-    [input.key, input.description ?? '', input.parent_key ?? null, input.app_id ?? null],
+    `INSERT INTO rbac.roles (key, description, parent_key, app_id, can_grant)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, key, description, parent_key, app_id, source, can_grant, created_at, updated_at`,
+    [
+      input.key,
+      input.description ?? '',
+      input.parent_key ?? null,
+      input.app_id ?? null,
+      input.can_grant ?? [],
+    ],
   );
   return res.rows[0]!;
 }
@@ -70,7 +88,7 @@ export async function updateRole(
      SET description = COALESCE($2, description),
          parent_key  = CASE WHEN $3::boolean THEN $4 ELSE parent_key END
      WHERE key = $1
-     RETURNING id, key, description, parent_key, created_at, updated_at`,
+     RETURNING id, key, description, parent_key, app_id, source, can_grant, created_at, updated_at`,
     [key, input.description ?? null, input.parent_key !== undefined, input.parent_key ?? null],
   );
   return res.rows[0] ?? null;

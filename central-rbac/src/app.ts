@@ -13,6 +13,8 @@ import { healthRoutes } from './routes/health.js';
 import { permissionRoutes } from './routes/permissions.js';
 import { roleRoutes } from './routes/roles.js';
 import { resolveRoutes } from './routes/resolve.js';
+import { resolveV2Routes } from './routes/resolve-v2.js';
+import { epochRoutes } from './routes/epoch.js';
 import { auditRoutes } from './routes/audit.js';
 import { auditIngestRoutes } from './routes/audit-ingest.js';
 import { zitadelEventWebhookRoutes } from './routes/zitadel-event-webhook.js';
@@ -119,12 +121,27 @@ export async function buildApp() {
     logger.info('mTLS global enforcement ENABLED — cert-header-signer + Traefik chain must be live');
   }
 
+  // Phase 09 (plan 260910-1334): X-Api-Version response header global hook.
+  // Injects header cho CẢ /v1 và /v2 routes → SDK verify match config version,
+  // throws RBAC_MANIFEST_MISMATCH nếu Central return unexpected version.
+  // Backward compat: SDK cũ không check header → không impact.
+  app.addHook('onSend', async (request, reply, payload) => {
+    if (request.url.startsWith('/v2/')) {
+      reply.header('X-Api-Version', '2');
+    } else if (request.url.startsWith('/v1/')) {
+      reply.header('X-Api-Version', '1');
+    }
+    return payload;
+  });
+
   // Register all route plugins
   await app.register(healthRoutes);
   await app.register(metricsRoutes);
   await app.register(permissionRoutes);
   await app.register(roleRoutes);
   await app.register(resolveRoutes);
+  await app.register(resolveV2Routes);
+  await app.register(epochRoutes);
   await app.register(auditRoutes);
   await app.register(auditIngestRoutes);
   await app.register(zitadelEventWebhookRoutes);

@@ -34,15 +34,18 @@ Nếu chưa có block chung Authway, add:
 
 ```env
 # ── Authway Zitadel (shared by all IAP apps) ──
-ZITADEL_ISSUER=http://10.200.0.125
-ZITADEL_HOST=10.200.0.125
+# Canonical issuer post 2026-09-05 domain swap = HTTPS public FQDN.
+# Container callers phải add `extra_hosts: - "zitadel.000nethost.com:10.200.0.125"`
+# vào docker-compose.yml để giữ traffic LAN (see oauth2-proxy + grafana pattern).
+ZITADEL_ISSUER=https://zitadel.000nethost.com
+ZITADEL_HOST=zitadel.000nethost.com
 
 # ── <APP> OIDC (client from Zitadel Console) ──
 <APP>_OIDC_CLIENT_ID=<snowflake_from_console>
 <APP>_OIDC_CLIENT_SECRET=<secret_from_console>  # bỏ nếu PKCE
 ```
 
-**KHÔNG hardcode** `http://10.200.0.125/...` trực tiếp vào compose.
+**KHÔNG hardcode** `http://10.200.0.125/...` trực tiếp vào compose (deprecated LAN URL).
 
 ## 3. Compose block pattern
 
@@ -73,7 +76,7 @@ Copy env block, thay `<APP>` + tên biến app:
       <APP>_OIDC_USE_PKCE: "true"
 ```
 
-**Bắt buộc:** dùng `${ZITADEL_ISSUER}/...` — KHÔNG hardcode `http://10.200.0.125/...`.
+**Bắt buộc:** dùng `${ZITADEL_ISSUER}/...` — KHÔNG hardcode `http://10.200.0.125/...` (deprecated). Container caller cần `extra_hosts` split-brain DNS để traffic đi LAN.
 
 ## 4. Caddy route (nếu behind Caddy)
 

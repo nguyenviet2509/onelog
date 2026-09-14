@@ -20,8 +20,10 @@ Backup path: `/root/authway-backup-YYYY-MM-DD-HHMM.tar.gz` (tạo trước khi i
 
 ```bash
 ssh authway-vps "cd /opt/authway/infra/authway-vps && docker compose ps"
-curl -sf http://10.200.0.125/.well-known/openid-configuration | jq .issuer
-curl -sf http://10.200.0.125:2112/debug/metrics | head -3
+# Canonical issuer post 2026-09-05 domain swap = https://zitadel.000nethost.com.
+# LAN-IP router (Host: 10.200.0.125) still works for legacy in-VPC callers.
+curl -sf https://zitadel.000nethost.com/.well-known/openid-configuration | jq .issuer
+curl -sf http://10.200.0.125:2112/debug/metrics | head -3   # Prometheus metrics — LAN-only
 ```
 
 Cả 3 phải trả kết quả < 3s.
@@ -39,11 +41,11 @@ Cả 3 phải trả kết quả < 3s.
    - **OOM**: `dmesg | grep -i "killed process.*zitadel"`. Nếu OOM → tăng memory limit Docker + restart.
    - **DB migration failed** khi upgrade Zitadel version → xem log có `migration failed`.
 5. Restart: `cd /opt/authway/infra/authway-vps && docker compose up -d zitadel`.
-6. Verify: `curl http://10.200.0.125/.well-known/openid-configuration`.
+6. Verify: `curl https://zitadel.000nethost.com/.well-known/openid-configuration` (canonical) HOẶC `curl -H 'Host: 10.200.0.125' http://127.0.0.1/.well-known/openid-configuration` (LAN fallback).
 
 ### `AuthwayHttpsProbeFail` <a id="https-probe-fail"></a>
 
-1. Test từ onelog-vps: `curl -v http://10.200.0.125/oauth/v2/keys`.
+1. Test từ onelog-vps: `curl -v https://zitadel.000nethost.com/oauth/v2/keys` (chuẩn). Fallback LAN: `curl -v http://10.200.0.125/oauth/v2/keys`.
 2. Nếu connection refused → Traefik down: `docker compose restart traefik`.
 3. Nếu 5xx từ Zitadel → xem `AuthwayZitadelDown`.
 4. Nếu chỉ 1 endpoint fail (VD `/oidc/v1/userinfo` return 5xx) → có thể bug Zitadel version, check upstream issues + downgrade.

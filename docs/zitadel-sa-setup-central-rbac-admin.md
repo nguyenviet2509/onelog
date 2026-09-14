@@ -14,7 +14,7 @@ Runbook để anh setup Zitadel service account cho Phase 07 admin wizard (`POST
 
 ## 1. Tạo SA trong Zitadel console
 
-**Đường dẫn:** http://10.200.0.125/ → Login admin → **Users** → **Service Users**
+**Đường dẫn:** https://zitadel.000nethost.com/ → Login admin → **Users** → **Service Users**
 
 1. Bấm **+ New**
 2. `Login Name`: `central-rbac-admin-sa`
@@ -65,6 +65,7 @@ docker compose -f docker-compose.prod.yml restart central-rbac
 sleep 8
 
 # Verify wizard endpoint từ chối token invalid (không phải "ZITADEL_SA_PAT not configured")
+# NOTE: central-rbac backend port 8082 vẫn bind LAN IP (review-mode entrypoint, không đụng domain swap)
 curl -sX POST http://10.200.0.125:8082/v1/admin/apps \
   -H "Authorization: Bearer fake" \
   -H "Content-Type: application/json" \

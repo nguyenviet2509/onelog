@@ -116,7 +116,7 @@ cd /opt/central-rbac
 docker compose -f docker-compose.prod.yml up -d --force-recreate --build central-rbac-ui
 ```
 
-VPN access `http://10.200.0.125:8082` sẽ hoạt động lại. Rollback safe vì URIs domain vẫn còn trong Zitadel OIDC client (không xoá cái cũ).
+VPN access `http://10.200.0.125:8082` (LAN review entrypoint) sẽ hoạt động lại. Rollback safe vì URIs domain vẫn còn trong Zitadel OIDC client (không xoá cái cũ).
 
 ## Troubleshooting
 
@@ -128,7 +128,26 @@ VPN access `http://10.200.0.125:8082` sẽ hoạt động lại. Rollback safe v
 | Login redirect về `http://` thay vì `https://` | `ZITADEL_EXTERNALSECURE=false` chưa đổi | Set `"true"` + restart zitadel |
 | Backend fail verify JWT | `ZITADEL_EXTERNAL_HOST` env central-rbac cũ | Cập nhật `.env` central-rbac `ZITADEL_EXTERNAL_HOST=zitadel.000nethost.com` + restart |
 
+## Rollback pattern (khi cần revert config)
+
+Không cần backup `.bak` files — git history là source of truth:
+
+```bash
+# List recent commits touching file cần rollback
+git log --oneline docker-compose.yml | head -10
+
+# Show version cũ (VD 3 commit trước)
+git show HEAD~3:docker-compose.yml
+
+# Rollback thẳng (careful — sẽ xóa change hiện tại)
+git checkout HEAD~3 -- docker-compose.yml
+# Hoặc revert commit gây issue
+git revert <bad-commit-hash>
+```
+
+Áp dụng cho mọi tracked file. Runtime secret file (`.env`, `oauth2-proxy.cfg`) không in git → SCP từ bản trước, hoặc restore từ off-VPS backup.
+
 ## Unresolved
 
 - Zitadel v4 Add Instance Domain qua API cần system JWT (không PAT). Không đăng ký được secondary domain — chấp nhận swap all-or-nothing.
-- Backend `ZITADEL_MGMT_URL` giữ `http://10.200.0.125` hay đổi sang `https://zitadel.000nethost.com` — chưa quyết. Giữ IP → không phụ thuộc DNS public, nhưng Zitadel sẽ 404 nếu Host header không match ExternalDomain. Nếu Zitadel dùng `x-forwarded-host` (đã bật) thì Traefik router match theo Host → forward. Cần smoke test sau swap.
+- Backend `ZITADEL_MGMT_URL` đã quyết (2026-09-14): đổi sang `https://zitadel.000nethost.com` để align issuer canonical + tránh drift. Container callers dùng `extra_hosts` split-brain DNS giữ traffic LAN.

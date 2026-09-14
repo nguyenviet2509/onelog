@@ -1,10 +1,16 @@
 provider = "oidc"
-oidc_issuer_url = "http://10.200.0.125"
+# Canonical Zitadel issuer post 2026-09-05 domain swap.
+# Container reaches this via extra_hosts split-brain DNS (docker-compose.yml)
+# → traffic stays on LAN 10.200.0.0/24, TLS SNI matches Sectigo wildcard.
+oidc_issuer_url = "https://zitadel.000nethost.com"
 insecure_oidc_allow_unverified_email = true
 
 client_id = "YOUR_ZITADEL_CLIENT_ID"
 client_secret = "YOUR_ZITADEL_CLIENT_SECRET"
 
+# Callback URL user browser sees after Zitadel authn. HTTP LAN kept for onelog
+# pilot (Caddy terminates on 10.200.0.30). Migrate to HTTPS when OneLog gets
+# public HTTPS domain.
 redirect_url = "http://10.200.0.30/oauth2/callback"
 
 cookie_secret = "REPLACE_WITH_32BYTE_BASE64URL_SECRET"
@@ -24,6 +30,6 @@ pass_authorization_header = true
 reverse_proxy = true
 
 http_address = "0.0.0.0:4180"
-whitelist_domains = ["10.200.0.30"]
+whitelist_domains = ["10.200.0.30", "zitadel.000nethost.com"]
 
 scope = "openid profile email offline_access"

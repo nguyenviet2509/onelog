@@ -138,7 +138,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=authway-prod_edge"
-      - "traefik.http.routers.central-rbac-api.rule=(PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api.rule=(PathPrefix(`/v1`) || PathPrefix(`/v2`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
       - "traefik.http.routers.central-rbac-api.entrypoints=rbac-review"
       - "traefik.http.routers.central-rbac-api.priority=200"
       - "traefik.http.services.central-rbac-api.loadbalancer.server.port=8083"
@@ -146,11 +146,11 @@ services:
       #   - HTTP (web :80) cho traffic từ OpenResty proxy 000nethost forward xuống (TLS đã terminate ở proxy)
       #   - HTTPS (websecure :443) cho direct-connect nếu proxy dùng SNI passthrough
       # tls=true trên cùng 1 router sẽ chặn traffic HTTP → phải tách.
-      - "traefik.http.routers.central-rbac-api-domain-http.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api-domain-http.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/v2`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
       - "traefik.http.routers.central-rbac-api-domain-http.entrypoints=web"
       - "traefik.http.routers.central-rbac-api-domain-http.priority=200"
       - "traefik.http.routers.central-rbac-api-domain-http.service=central-rbac-api"
-      - "traefik.http.routers.central-rbac-api-domain-https.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
+      - "traefik.http.routers.central-rbac-api-domain-https.rule=Host(`rbacnb.000nethost.com`) && (PathPrefix(`/v1`) || PathPrefix(`/v2`) || PathPrefix(`/.well-known/rbac-permissions-schema`))"
       - "traefik.http.routers.central-rbac-api-domain-https.entrypoints=websecure"
       - "traefik.http.routers.central-rbac-api-domain-https.tls=true"
       - "traefik.http.routers.central-rbac-api-domain-https.priority=200"

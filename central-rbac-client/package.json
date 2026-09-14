@@ -1,0 +1,52 @@
+{
+  "name": "@onelog/central-rbac-client",
+  "version": "0.1.0",
+  "description": "Node SDK cho Central RBAC v2 — resolve, epoch poll, Fastify/Express adapters",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./fastify": {
+      "types": "./dist/adapters/fastify-plugin.d.ts",
+      "import": "./dist/adapters/fastify-plugin.js"
+    },
+    "./express": {
+      "types": "./dist/adapters/express-middleware.d.ts",
+      "import": "./dist/adapters/express-middleware.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "lru-cache": "^11.0.1",
+    "undici": "^6.19.8"
+  },
+  "peerDependencies": {
+    "fastify": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "fastify": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@vitest/coverage-v8": "^2.1.1",
+    "fastify": "^5.12.4",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

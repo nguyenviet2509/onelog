@@ -3,7 +3,10 @@ apiVersion: 1
 providers:
   - name: onelog
     type: file
-    disableDeletion: true
+    # Let Grafana purge dashboards whose JSON files have been removed —
+    # git is the source of truth, so a deleted file means the dashboard is gone.
+    # Recover by restoring the file from git history.
+    disableDeletion: false
     updateIntervalSeconds: 30
     allowUiUpdates: false
     options:

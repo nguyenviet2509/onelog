@@ -84,7 +84,7 @@ async function resolvePinnedIp(hostname: string): Promise<{ family: 4 | 6; addre
   return { family: 6, address: ipv6 };
 }
 
-function validateUrlSyntax(rawUrl: string): URL {
+export function validateUrlSyntax(rawUrl: string): URL {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -97,6 +97,22 @@ function validateUrlSyntax(rawUrl: string): URL {
   // Refuse credentials in URL
   if (parsed.username || parsed.password) {
     throw new Error('URL must not contain credentials');
+  }
+  return parsed;
+}
+
+/**
+ * Validate URL is safe to fetch (HTTPS + no credentials + DNS resolves to public IP).
+ * Reused by manifest fetcher + manifest v2 tenant_lookup_url validator.
+ * Throws Error nếu URL syntax invalid, DNS fail, hoặc resolved IP is private/loopback.
+ * Returns parsed URL if OK.
+ */
+export async function validateSafeUrl(rawUrl: string): Promise<URL> {
+  const parsed = validateUrlSyntax(rawUrl);
+  const pinned = await resolvePinnedIp(parsed.hostname);
+  const isBlocked = pinned.family === 4 ? isBlockedIPv4(pinned.address) : isBlockedIPv6(pinned.address);
+  if (isBlocked) {
+    throw new Error(`Refused: resolved IP ${pinned.address} for ${parsed.hostname} is in a blocked private/loopback range`);
   }
   return parsed;
 }

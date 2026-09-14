@@ -60,6 +60,11 @@ const createBodySchema = z.object({
     .startsWith('https://', 'manifest_url must be HTTPS')
     .optional(),
   client_type: CLIENT_TYPE_ENUM.optional().default('web'),
+  /**
+   * Phase 09 (plan 260910-1334): skip 4-role default seeding cho small apps
+   * chỉ cần 2-3 role custom. BẮT BUỘC kèm `manifest_url` — app phải có nguồn role thay thế.
+   */
+  skip_default_roles: z.boolean().optional().default(false),
 });
 
 const patchBodySchema = z
@@ -159,28 +164,43 @@ async function insertApp(
 }
 
 /**
- * Create 4 default roles ({slug}.superadmin/admin/member/viewer) + enqueue Zitadel sync.
- * Semantic (Central-side is scaffolding only; app manifest attaches permissions):
- *   - superadmin: full access incl. destructive ops + settings (billing, wipe data)
- *   - admin:     business ops (invite user, moderation, assign lower roles)
- *   - member:    daily create/update on own entities
- *   - viewer:    read-only
- * Ordering (high→low) is intentional for audit log readability.
+ * Create 4 default roles với hierarchy chain + can_grant (Phase 09 plan 260910-1334).
+ *
+ * Order: viewer → member → admin → superadmin (root-first, tôn trọng parent_key FK).
+ * Semantic (Central-side scaffolding; app manifest attaches permissions):
+ *   - viewer:     read-only, parent=null, can_grant=[]
+ *   - member:     parent=viewer, can_grant=[] (create/update own entities)
+ *   - admin:      parent=member, can_grant=[member, viewer] (business ops + delegation)
+ *   - superadmin: parent=admin,  can_grant=[admin, member, viewer] (full incl. destructive)
+ *
  * Migration 011: sets role.app_id → wizard-created app so grant flow routes
  * to the NEW app's Zitadel project (not env ZITADEL_PROJECT_ID).
- * Fix for Phase 08 e2e discovery: outbox add_user_grant landed 'dead' because
- * roleKey did not exist in the target Zitadel project.
+ * Migration 019: adds parent_key + can_grant cột support.
  */
+interface DefaultRoleV2Spec {
+  suffix: 'viewer' | 'member' | 'admin' | 'superadmin';
+  parentSuffix: 'viewer' | 'member' | 'admin' | 'superadmin' | null;
+  canGrantSuffixes: Array<'viewer' | 'member' | 'admin' | 'superadmin'>;
+}
+
+const DEFAULT_ROLES_V2: DefaultRoleV2Spec[] = [
+  { suffix: 'viewer',     parentSuffix: null,     canGrantSuffixes: [] },
+  { suffix: 'member',     parentSuffix: 'viewer', canGrantSuffixes: [] },
+  { suffix: 'admin',      parentSuffix: 'member', canGrantSuffixes: ['member', 'viewer'] },
+  { suffix: 'superadmin', parentSuffix: 'admin',  canGrantSuffixes: ['admin', 'member', 'viewer'] },
+];
+
 async function createDefaultRoles(
   appSlug: string,
   appId: string,
   zitadelProjectId: string,
   adminSub: string,
 ): Promise<void> {
-  const roles = ['superadmin', 'admin', 'member', 'viewer'];
-  for (const suffix of roles) {
-    const key = `${appSlug}.${suffix}`;
-    const description = `Default ${suffix} role for app ${appSlug}`;
+  for (const spec of DEFAULT_ROLES_V2) {
+    const key = `${appSlug}.${spec.suffix}`;
+    const description = `Default ${spec.suffix} role for app ${appSlug}`;
+    const parentKey = spec.parentSuffix ? `${appSlug}.${spec.parentSuffix}` : null;
+    const canGrant = spec.canGrantSuffixes.map((s) => `${appSlug}.${s}`);
 
     // Skip if already exists (idempotent — wizard may be retried)
     const existing = await writerPool.query<{ id: string }>(
@@ -194,7 +214,7 @@ async function createDefaultRoles(
 
     try {
       await createRoleWithSync(
-        { key, description, app_id: appId },
+        { key, description, app_id: appId, parent_key: parentKey, can_grant: canGrant },
         undefined,
         zitadelProjectId,
       );
@@ -206,7 +226,7 @@ async function createDefaultRoles(
   }
   logger.info(
     { app_slug: appSlug, app_id: appId, zitadel_project_id: zitadelProjectId, admin: adminSub },
-    'admin-apps: created 4 default roles + enqueued Zitadel sync',
+    'admin-apps: created 4 default roles v2 hierarchy + enqueued Zitadel sync',
   );
 }
 
@@ -222,8 +242,16 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
       }
-      const { name, slug, callback_urls, post_logout_urls, manifest_url, client_type } = parsed.data;
+      const { name, slug, callback_urls, post_logout_urls, manifest_url, client_type, skip_default_roles } = parsed.data;
       const adminSub = request.jwtClaims!.sub!;
+
+      // (2a) skip_default_roles guard — Phase 09: nếu skip=true thì BẮT BUỘC có manifest_url
+      // (app phải có nguồn role thay thế qua manifest sync, không thì grant flow broken)
+      if (skip_default_roles && !manifest_url) {
+        return reply.status(400).send({
+          error: 'skip_default_roles requires manifest_url — app must have alternative role source',
+        });
+      }
 
       // (2) Slug + prefix-collision guard
       const collision = await checkSlugCollision(slug);
@@ -299,7 +327,14 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
       // If future multi-org needed, extract from addProject response details.resourceOwner.
       const projectOrgId = config.ZITADEL_ORG_ID ?? '';
       const newApp = await insertApp(slug, name, projectId, clientId, manifest_url ?? null, adminSub, projectOrgId, client_type);
-      await createDefaultRoles(slug, newApp.id, projectId, adminSub);
+      if (!skip_default_roles) {
+        await createDefaultRoles(slug, newApp.id, projectId, adminSub);
+      } else {
+        logger.info(
+          { app_slug: slug, app_id: newApp.id, admin: adminSub },
+          'admin-apps: skip_default_roles=true — MUST sync manifest before granting',
+        );
+      }
       await writeAuditLog(request, {
         action: 'app.create',
         target_type: 'app',
@@ -316,6 +351,9 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
 
       // (8) One-time reveal — public clients (spa/native) receive no meaningful secret
       const publicClient = isPublicClient(client_type);
+      const skipWarning = skip_default_roles
+        ? { skip_default_roles_warning: 'App created without default roles. You MUST sync + apply manifest before granting users.' }
+        : {};
       return reply.status(201).send({
         id: newApp.id,
         slug,
@@ -323,6 +361,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         client_type,
         zitadel_project_id: projectId,
         client_id: clientId,
+        ...skipWarning,
         ...(publicClient
           ? {
               note: 'Public client (PKCE) — no client_secret. Configure your app to use PKCE flow.',

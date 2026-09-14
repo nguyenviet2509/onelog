@@ -32,6 +32,7 @@ import { ZitadelHttpError } from '../lib/zitadel-http-error.js';
 import { writerPool } from '../db/writer-pool.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { expandRoleHierarchyV1Safe } from '../lib/expand-role-hierarchy.js';
 
 function requireString(args: Record<string, unknown>, key: string): string {
   const val = args[key];
@@ -196,12 +197,18 @@ export async function addOrUpdateUserGrant(args: Record<string, unknown>): Promi
     if (existingGrant) {
       // Merge: add roleKey only if not already present (idempotent)
       if (!existingGrant.roleKeys.includes(roleKey)) {
+        // Phase 09 (plan 260910-1334): expand hierarchy TRƯỚC PUT.
+        // V1 backward-compat guard: expandRoleHierarchyV1Safe returns input sorted (no expand)
+        //   nếu MỌI role trong list có parent_key=NULL → existing v1 grants (qlts, onemcp)
+        //   KHÔNG bị re-synced expanded → Zitadel Console state unchanged.
+        // V2 roles (parent_key set) → expand full chain → Zitadel JWT có inherited roles.
         const mergedRoles = [...existingGrant.roleKeys, roleKey];
+        const expandedRoles = await expandRoleHierarchyV1Safe(client, mergedRoles);
         logger.info(
-          { userId, projectId, grantId: existingGrant.grantId, mergedRoles },
-          'outbox-processor: updating existing grant with merged roles',
+          { userId, projectId, grantId: existingGrant.grantId, mergedRoles, expandedRoles },
+          'outbox-processor: updating existing grant with (hierarchy-expanded) merged roles',
         );
-        await clientUpdateUserGrant(userId, orgId, existingGrant.grantId, mergedRoles);
+        await clientUpdateUserGrant(userId, orgId, existingGrant.grantId, expandedRoles);
       } else {
         // Role already present — idempotent success, no Zitadel call needed
         logger.info(
@@ -210,9 +217,13 @@ export async function addOrUpdateUserGrant(args: Record<string, unknown>): Promi
         );
       }
     } else {
-      // No grant for this project yet — create new
-      logger.info({ userId, projectId, roleKey }, 'outbox-processor: creating new grant');
-      await clientAddUserGrant(userId, orgId, projectId, [roleKey]);
+      // No grant for this project yet — create new với hierarchy expand (V1-safe)
+      const expandedRoles = await expandRoleHierarchyV1Safe(client, [roleKey]);
+      logger.info(
+        { userId, projectId, roleKey, expandedRoles },
+        'outbox-processor: creating new grant with hierarchy-expanded roles',
+      );
+      await clientAddUserGrant(userId, orgId, projectId, expandedRoles);
     }
 
     // COMMIT releases the advisory lock

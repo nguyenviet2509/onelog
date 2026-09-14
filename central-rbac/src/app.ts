@@ -15,6 +15,7 @@ import { roleRoutes } from './routes/roles.js';
 import { resolveRoutes } from './routes/resolve.js';
 import { resolveV2Routes } from './routes/resolve-v2.js';
 import { epochRoutes } from './routes/epoch.js';
+import { grantsV2Routes } from './routes/grants-v2.js';
 import { auditRoutes } from './routes/audit.js';
 import { auditIngestRoutes } from './routes/audit-ingest.js';
 import { zitadelEventWebhookRoutes } from './routes/zitadel-event-webhook.js';
@@ -142,6 +143,7 @@ export async function buildApp() {
   await app.register(resolveRoutes);
   await app.register(resolveV2Routes);
   await app.register(epochRoutes);
+  await app.register(grantsV2Routes);
   await app.register(auditRoutes);
   await app.register(auditIngestRoutes);
   await app.register(zitadelEventWebhookRoutes);

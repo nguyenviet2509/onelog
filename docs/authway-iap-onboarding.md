@@ -78,6 +78,25 @@ Copy env block, thay `<APP>` + tên biến app:
 
 **Bắt buộc:** dùng `${ZITADEL_ISSUER}/...` — KHÔNG hardcode `http://10.200.0.125/...` (deprecated). Container caller cần `extra_hosts` split-brain DNS để traffic đi LAN.
 
+## 3.5 Logout pattern — Purist SSO (org-wide policy 2026-09-14)
+
+**Nguyên tắc:** logout mọi app = **local only**, KHÔNG hit `end_session_endpoint` Zitadel. Zitadel SSO session (10 ngày) preserved → user click Login → silent SSO → back vào app không picker.
+
+**Vì sao:** SSO promise = login once, access many. End_session mỗi lần logout = phá promise, user phải re-select IdP + credentials mỗi app. UX kém, không consistent.
+
+### Áp dụng theo loại app
+
+| Kiểu app | Config đúng | Config SAI (phá SSO) |
+|---|---|---|
+| **SPA React (oidc-client-ts)** | `userManager.removeUser()` + navigate `/login` | `userManager.signoutRedirect()` |
+| **Grafana native OIDC** | `GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL` unset | Set = `${ZITADEL_ISSUER}/oidc/v1/end_session` |
+| **oauth2-proxy IAP sidecar** | Default `/oauth2/sign_out` (clear cookie proxy) — OK | Set `whitelist_domains` route to end_session |
+| **Backend native OIDC (Next.js Auth.js, Express)** | Clear local session cookie + redirect app `/login` | Auth.js `signOut({callbackUrl})` với callbackUrl = Zitadel end_session |
+
+### Exception — cho case share machine
+
+Cần add nút riêng "Đăng xuất khỏi SSO" (rare, không default). Xem `central-rbac-ui/src/auth/protected-route.tsx` — button "Đăng xuất & đổi tài khoản" ở 403 page dùng `signoutRedirect()` full end_session cho intent switch account.
+
 ## 4. Caddy route (nếu behind Caddy)
 
 Xem `handle /grafana*` pattern trong [Caddyfile](../infra/caddy/Caddyfile) làm mẫu. Sub-path apps cần app config `SERVE_FROM_SUB_PATH` + `ROOT_URL` (VD Grafana `GF_SERVER_SERVE_FROM_SUB_PATH=true`).
@@ -96,7 +115,7 @@ Xem `handle /grafana*` pattern trong [Caddyfile](../infra/caddy/Caddyfile) làm 
 - [ ] Restart app: `docker compose up -d <app>`
 - [ ] Run smoke: `./infra/scripts/smoke-oidc.sh --verbose`
 - [ ] Browser incognito → full flow login OK
-- [ ] Sign out → land về Zitadel login (session cleared) — verify SIGNOUT_REDIRECT_URL chain
+- [ ] Sign out → land về app own `/login` (KHÔNG hit end_session Zitadel). Click Login lại → silent SSO — verify Purist SSO T1 policy § 3.5
 
 ## 6. Role mapping (nếu app support)
 

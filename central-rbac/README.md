@@ -3,6 +3,19 @@
 Central permissions + roles backend for the onelog/authway ecosystem.
 Deployed co-located with Zitadel v4 on `authway-vps`.
 
+## v2 architecture (2026-09-14) — plan [260910-1334](../plans/260910-1334-central-rbac-v2-refactor/)
+
+Migration 019 introduces RBAC v2: hierarchy (parent_key), delegation (can_grant), tenant scope,
+per-app epoch, Central-side `user_grants` (source of truth thay Zitadel). V1 endpoints tồn tại
+song song 12+6 tháng transition.
+
+**Key artifacts**:
+- SDK: [`@onelog/central-rbac-client`](../central-rbac-client/) — Node.js với circuit breaker + epoch poll
+- App template: [`central-rbac-app-template/`](../central-rbac-app-template/) — Fastify scaffold
+- Onboarding docs: [App onboarding](../docs/central-rbac-app-onboarding.md) — 5-step register + grant + verify
+- Migration v1→v2: [Manifest migration guide](../docs/central-rbac-manifest-v2-migration.md)
+- Operator runbook: [Central operator runbook](../docs/central-rbac-operator-runbook.md) — dual-control operator responsibilities
+
 ## Quickstart (local dev)
 
 ```bash

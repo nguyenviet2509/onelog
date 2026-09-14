@@ -1,0 +1,57 @@
+{
+  "$schema": "https://rbacnb.000nethost.com/.well-known/rbac-permissions-schema-v2.json",
+  "schema": "2",
+  "service": "template-app",
+  "version": "1.0.0",
+  "tenant_aware": true,
+  "permissions": [
+    { "id": "template-app:tickets.list", "description": "List tickets" },
+    { "id": "template-app:tickets.read", "description": "Read ticket details" },
+    { "id": "template-app:tickets.create", "description": "Create new ticket" },
+    { "id": "template-app:tickets.update.own", "description": "Update own tickets" },
+    { "id": "template-app:tickets.update.any", "description": "Update any ticket" },
+    { "id": "template-app:tickets.delete.any", "description": "Delete any ticket" },
+    { "id": "template-app:tickets.assign", "description": "Assign ticket to user" },
+    { "id": "template-app:users.invite", "description": "Invite user to app" },
+    { "id": "template-app:settings.read", "description": "View settings" },
+    { "id": "template-app:settings.update", "description": "Update settings" },
+    { "id": "template-app:billing.manage", "description": "Manage billing" },
+    { "id": "template-app:data.wipe", "description": "Destructive: wipe data" }
+  ],
+  "default_roles": [
+    {
+      "key": "template-app.viewer",
+      "parent_key": null,
+      "permissions": ["template-app:tickets.list", "template-app:tickets.read"],
+      "can_grant": []
+    },
+    {
+      "key": "template-app.member",
+      "parent_key": "template-app.viewer",
+      "permissions": ["template-app:tickets.create", "template-app:tickets.update.own"],
+      "can_grant": []
+    },
+    {
+      "key": "template-app.admin",
+      "parent_key": "template-app.member",
+      "permissions": [
+        "template-app:tickets.update.any",
+        "template-app:tickets.delete.any",
+        "template-app:tickets.assign",
+        "template-app:users.invite",
+        "template-app:settings.read"
+      ],
+      "can_grant": ["template-app.member", "template-app.viewer"]
+    },
+    {
+      "key": "template-app.superadmin",
+      "parent_key": "template-app.admin",
+      "permissions": [
+        "template-app:settings.update",
+        "template-app:billing.manage",
+        "template-app:data.wipe"
+      ],
+      "can_grant": ["template-app.admin", "template-app.member", "template-app.viewer"]
+    }
+  ]
+}

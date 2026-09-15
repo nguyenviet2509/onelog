@@ -27,7 +27,7 @@ class ChatRequest(BaseModel):
 
 @router.post(
     "/chat",
-    dependencies=[rbac.require("agent:chat.query")],       # no-op if RBAC_ENABLE=false
+    dependencies=[rbac.require("onelog-agent:chat.query")],   # no-op if RBAC_ENABLE=false
 )
 async def chat(req: ChatRequest, request: Request):
     user_sub = getattr(request.state, "user_sub", "anonymous")

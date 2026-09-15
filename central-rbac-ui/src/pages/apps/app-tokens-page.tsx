@@ -42,8 +42,8 @@ export function AppTokensPage() {
 
   return (
     <div className="p-6 max-w-5xl">
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
           <Link to="/apps" className="text-sm text-blue-600 hover:underline">
             ← Apps
           </Link>
@@ -55,7 +55,9 @@ export function AppTokensPage() {
             app — use labels like <code>prod</code>, <code>staging</code>, <code>dev-alice</code>.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>+ Create token</Button>
+        <Button size="sm" onClick={() => setCreateOpen(true)} className="shrink-0 whitespace-nowrap">
+          + Create token
+        </Button>
       </div>
 
       {isLoading && <div className="text-gray-500 text-sm">Loading tokens…</div>}

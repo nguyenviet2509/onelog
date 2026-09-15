@@ -34,6 +34,7 @@ import { userProvisionConfigRoutes } from './routes/user-provision-config.js';
 import { projectRoutes } from './routes/projects.js';
 import { adminAppsRoutes } from './routes/admin-apps.js';
 import { adminAppsSyncManifestRoutes } from './routes/admin-apps-sync-manifest.js';
+import { registerAdminAppTokensRoutes } from './routes/admin-app-tokens.js';
 import { wellKnownManifestSchemaRoutes } from './routes/well-known-manifest-schema.js';
 import { auditorPool } from './db/auditor-pool.js';
 import { writerPool } from './db/writer-pool.js';
@@ -168,6 +169,9 @@ export async function buildApp() {
   // Phase 08 routes — app self-registration (manifest sync + apply)
   await app.register(adminAppsSyncManifestRoutes);
   await app.register(wellKnownManifestSchemaRoutes);
+
+  // Per-app token CRUD (plan 260915-0830 phase 3)
+  await registerAdminAppTokensRoutes(app);
 
   // Retrofit endpoint for legacy OIDC apps missing assertion flags (bug 2026-08-27)
   await app.register(adminOidcConfigRoutes);

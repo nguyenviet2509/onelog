@@ -16,7 +16,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { constantTimeCompare } from '../lib/constant-time-compare.js';
-import { verifyPerAppToken } from '../lib/verify-per-app-token.js';
+import { verifyPerAppToken, PER_APP_TOKEN_RE } from '../lib/verify-per-app-token.js';
 
 // HMAC signature replay window: 5 minutes past
 const HMAC_WINDOW_MS = 5 * 60 * 1000;
@@ -116,7 +116,8 @@ export async function verifyResolveAuth(
   const rbacToken = request.headers['x-rbac-token'];
   if (typeof rbacToken === 'string') {
     // Try per-app token format `rbac_<8prefix>_<24secret>` first.
-    if (rbacToken.startsWith('rbac_')) {
+    // Use strict regex to avoid collision with legacy tokens that also start with `rbac_`.
+    if (PER_APP_TOKEN_RE.test(rbacToken)) {
       const verified = await verifyPerAppToken(rbacToken);
       if (verified) {
         (request as FastifyRequest & { appId?: string; tokenId?: string }).appId = verified.appId;

@@ -26,6 +26,7 @@ import { requireAdmin } from '../middleware/require-admin.js';
 import { rateLimitAdmin } from '../middleware/rate-limit-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
+import { createAppToken } from '../services/app-token-service.js';
 import { addProject, findProjectByName, removeProject, listAllProjectsAcrossOrgs } from '../lib/zitadel-project-client.js';
 import { getOrgsBatch } from '../lib/zitadel-org-client.js';
 import {
@@ -349,11 +350,39 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      // (8) One-time reveal — public clients (spa/native) receive no meaningful secret
+      // (8) Auto-generate prod rbac_token for SDK integration (Phase 4 plan 260915-0830).
+      // If token gen fails, log but don't rollback app — admin can create token manually later.
+      let rbacToken: { fullToken: string; id: string; prefix: string } | null = null;
+      try {
+        const t = await createAppToken({
+          appId: newApp.id,
+          label: 'prod',
+          createdBy: adminSub,
+        });
+        rbacToken = { fullToken: t.fullToken, id: t.id, prefix: t.prefix };
+        await writeAuditLog(request, {
+          action: 'app_token.create',
+          target_type: 'app_token',
+          target_id: t.id,
+          after_state: { app_id: newApp.id, app_slug: slug, label: 'prod', prefix: t.prefix },
+        });
+      } catch (tokErr) {
+        request.log.warn({ err: tokErr, app_id: newApp.id }, 'wizard: rbac_token auto-gen failed — admin can create manually');
+      }
+
+      // (9) One-time reveal — public clients (spa/native) receive no meaningful secret
       const publicClient = isPublicClient(client_type);
       const skipWarning = skip_default_roles
         ? { skip_default_roles_warning: 'App created without default roles. You MUST sync + apply manifest before granting users.' }
         : {};
+      const rbacTokenFields = rbacToken
+        ? {
+            rbac_token: rbacToken.fullToken,
+            rbac_token_id: rbacToken.id,
+            rbac_token_prefix: rbacToken.prefix,
+            rbac_token_warning: 'rbac_token shown once — store it now; cannot be retrieved again. Set as CENTRAL_RBAC_TOKEN in your app .env.',
+          }
+        : { rbac_token_warning: 'Auto-gen of rbac_token failed — create manually via /admin/apps/:slug/tokens' };
       return reply.status(201).send({
         id: newApp.id,
         slug,
@@ -362,6 +391,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         zitadel_project_id: projectId,
         client_id: clientId,
         ...skipWarning,
+        ...rbacTokenFields,
         ...(publicClient
           ? {
               note: 'Public client (PKCE) — no client_secret. Configure your app to use PKCE flow.',

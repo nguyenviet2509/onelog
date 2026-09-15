@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@onelog/central-rbac-client": "file:../central-rbac-client",
+    "@onelog/central-rbac-client": "file:../central-rbac-client/nodejs",
     "fastify": "^5.0.0",
     "zod": "^3.23.8"
   },

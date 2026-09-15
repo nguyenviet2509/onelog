@@ -1,0 +1,39 @@
+{
+  "schema": "2",
+  "service": "onelog-agent",
+  "version": "0.1.0",
+  "tenant_aware": false,
+  "permissions": [
+    {
+      "id": "onelog-agent:chat.query",
+      "description": "Submit /chat SSE agent loop query (triage + retrieval)"
+    },
+    {
+      "id": "onelog-agent:alert.push",
+      "description": "Send alert webhook to /alert (Alertmanager only — signature-based, not user auth)"
+    },
+    {
+      "id": "onelog-agent:admin.observe",
+      "description": "Read admin metrics/health (future — /admin/* endpoints)"
+    }
+  ],
+  "default_roles": [
+    {
+      "key": "onelog-agent.viewer",
+      "description": "Agent Viewer — can query /chat",
+      "permissions": [
+        "onelog-agent:chat.query"
+      ]
+    },
+    {
+      "key": "onelog-agent.admin",
+      "parent_key": "onelog-agent.viewer",
+      "description": "Agent Admin — all perms + inherits viewer",
+      "permissions": [
+        "onelog-agent:chat.query",
+        "onelog-agent:alert.push",
+        "onelog-agent:admin.observe"
+      ]
+    }
+  ]
+}

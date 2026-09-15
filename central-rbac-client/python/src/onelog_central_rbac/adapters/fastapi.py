@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Awaitable, Callable, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.params import Depends as DependsType
 
 from ..client import CentralRbacClient
 from ..errors import CentralRbacError
@@ -84,7 +85,7 @@ def require_permission(
     permission_key: str,
     *,
     tenant_id_from: Optional[str] = None,
-) -> object:
+) -> DependsType:
     """Return FastAPI dependency enforcing permission_key.
 
     tenant_id_from: 'query.dept' | 'params.dept' | 'headers.x-tid' | 'body.dept'.
@@ -132,4 +133,5 @@ def require_permission(
                 },
             )
 
-    return Depends(dependency)
+    dep: DependsType = Depends(dependency)
+    return dep

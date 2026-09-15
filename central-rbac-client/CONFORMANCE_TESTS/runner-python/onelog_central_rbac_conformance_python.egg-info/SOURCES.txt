@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-test_conformance.py
-onelog_central_rbac_conformance_python.egg-info/PKG-INFO
-onelog_central_rbac_conformance_python.egg-info/SOURCES.txt
-onelog_central_rbac_conformance_python.egg-info/dependency_links.txt
-onelog_central_rbac_conformance_python.egg-info/requires.txt
-onelog_central_rbac_conformance_python.egg-info/top_level.txt

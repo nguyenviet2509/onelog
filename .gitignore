@@ -16,6 +16,13 @@ plans/*
 !plans/reports/
 plans/reports/*.sh
 
+# Python build/venv artifacts
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # Backups & dumps — chứa data user / hashed passwords / secrets snapshot.
 # 2026-07-13: postgres-legacy-*.sql (28KB) dumped vào backups/ khi decom PG.
 # KHÔNG commit — nếu cần archive, upload offsite (S3/1Password/keepass).
@@ -68,6 +75,12 @@ infra/ansible/inventory.ini
 
 # Authway junction (mirror to D:\Vietnt\Project\authway — Zitadel selfhost project for IdP)
 /authway
+
+# MailCenter junction (mirror to D:\Vietnt\Project\vhkt\mail-center for cross-project context)
+/mailcenter
+
+# QuanLyThietBi junction (mirror to D:\Vietnt\Project\vhkt\quan-ly-thiet-bi-inet for cross-project context)
+/quan-ly-thiet-bi-inet
 
 # BookStack MCP config — chứa TOKEN_ID + TOKEN_SECRET plaintext, không commit
 mcp-bookstack/

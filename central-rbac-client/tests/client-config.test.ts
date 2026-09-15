@@ -99,3 +99,34 @@ describe('extractTenantId', () => {
     expect(extractTenantId({ query: { dept: 'x' } }, 'querydept')).toBe(null);
   });
 });
+
+describe('CentralRbacClient — legacy token warn (0.2.0)', () => {
+  it('warns when token does not match per-app format', () => {
+    const warnCalls: unknown[][] = [];
+    const logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (obj: unknown, msg?: string) => warnCalls.push([obj, msg]),
+      error: () => undefined,
+    };
+    build({ ...validConfig, centralRbacToken: 'legacy-shared-token', logger });
+    expect(warnCalls.length).toBe(1);
+    expect(String(warnCalls[0][1])).toContain('per-app format');
+  });
+
+  it('does not warn when token matches per-app format', () => {
+    const warnCalls: unknown[][] = [];
+    const logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: (obj: unknown, msg?: string) => warnCalls.push([obj, msg]),
+      error: () => undefined,
+    };
+    build({
+      ...validConfig,
+      centralRbacToken: 'rbac_abc12345_kqr7x8v9w2n5c4b1d6h3p0aa',
+      logger,
+    });
+    expect(warnCalls.length).toBe(0);
+  });
+});

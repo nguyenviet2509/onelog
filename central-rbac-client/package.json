@@ -1,6 +1,6 @@
 {
   "name": "@onelog/central-rbac-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node SDK cho Central RBAC v2 — resolve, epoch poll, Fastify/Express adapters",
   "type": "module",
   "main": "./dist/index.js",

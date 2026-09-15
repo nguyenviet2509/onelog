@@ -127,6 +127,62 @@ curl -X DELETE https://rbacnb.000nethost.com/v2/apps/qlts/grants/<grant-id> \
   -H "Authorization: Bearer <admin-JWT>"
 ```
 
+## Workflow: Manage app tokens (per-app rbac_token)
+
+Từ 2026-09-15 (Central v2.0.1), mỗi app có token riêng format
+`rbac_<8prefix>_<24secret>` cho `X-Rbac-Token` header. Multi-token per app
+(labels: `prod`, `staging`, `dev-alice`).
+
+### Create token via UI
+
+1. Login `/admin`
+2. Navigate `/apps` → dropdown app → **Quản lý tokens** → `/apps/:slug/tokens`
+3. Click **+ Create token** → nhập label → submit
+4. Reveal modal show full token → copy ngay → tick acknowledge → close
+5. Send secure (Bitwarden/1Password) → app dev set `CENTRAL_RBAC_TOKEN=<token>` trong `.env`
+
+### Create token via API
+
+```bash
+curl -X POST https://rbacnb.000nethost.com/v1/admin/apps/helpdesk/tokens \
+  -H "Authorization: Bearer <admin-JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"prod"}'
+
+# Response 201:
+# {"id":"...","prefix":"hj2kf9m8","label":"prod",
+#  "token":"rbac_hj2kf9m8_kqr7x8v9w2n5c4b1d6h3p0aa",
+#  "warning":"Copy this token now. It will not be shown again."}
+```
+
+Token field trong response = **ONE-TIME reveal**. GET endpoint không bao giờ trả token secret, chỉ prefix.
+
+### Revoke token
+
+```bash
+# Via UI: tokens page → Revoke row → confirm dialog
+# Via API:
+curl -X DELETE https://rbacnb.000nethost.com/v1/admin/apps/helpdesk/tokens/<token-id> \
+  -H "Authorization: Bearer <admin-JWT>"
+```
+
+Revoke → in-memory cache invalidated ngay → next request từ app trả 401.
+
+### Rotation SOP
+
+1. Tạo token mới với label `prod-YYYYMM` (VD `prod-260915`)
+2. App team update `.env` → deploy → verify `/v2/resolve` pass với token mới
+3. Revoke token cũ (label `prod` hoặc `prod-YYYYMM-1`)
+4. Check audit: `SELECT after_state->>'prefix' FROM rbac.audit_log WHERE action='app_token.create' ORDER BY ts DESC LIMIT 5`
+
+### Legacy shared token migration
+
+Apps hiện đang dùng `CENTRAL_RBAC_RESOLVE_TOKEN`:
+- Grace period tới **2028-01-01** (3+ tháng buffer)
+- SDK 0.2.0+ log warning khi detect legacy format
+- Migrate: tạo per-app token qua UI → update app `.env` → verify → deploy
+- Sau cutoff: legacy path removed, apps quên migrate → 401
+
 ## Workflow: Emergency revoke (Central operator only)
 
 Central operator bypass can_grant check → có thể revoke bất kỳ grant:

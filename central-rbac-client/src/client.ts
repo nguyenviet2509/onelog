@@ -36,6 +36,10 @@ const DEFAULT_CB_THRESHOLD = 5;
 const DEFAULT_CB_RESET_SEC = 30;
 const DEFAULT_TIMEOUT_MS = 500;
 
+// Per-app token format from Central v2.0.1 (plan 260915-0830).
+// Legacy shared CENTRAL_RBAC_RESOLVE_TOKEN accepted until 2028-01-01.
+const PER_APP_TOKEN_RE = /^rbac_[a-z0-9]{8}_[a-z0-9]{24}$/;
+
 const noopLogger: SdkLogger = {
   debug: () => undefined,
   info: () => undefined,
@@ -76,6 +80,18 @@ export class CentralRbacClient {
     }
 
     this.logger = inputConfig.logger ?? noopLogger;
+
+    // Warn once at startup if token does not match per-app format.
+    // Legacy shared token still works but will be sunset 2028-01-01.
+    if (!PER_APP_TOKEN_RE.test(inputConfig.centralRbacToken)) {
+      this.logger.warn(
+        { appSlug: inputConfig.appSlug },
+        '[central-rbac-client] centralRbacToken does not match per-app format (rbac_<prefix>_<secret>). ' +
+          'Legacy shared token detected. Migrate to per-app token via Central Admin UI ' +
+          '(/apps/<slug>/tokens). Legacy support ends 2028-01-01.',
+      );
+    }
+
     this.config = {
       centralUrl: inputConfig.centralUrl.replace(/\/+$/, ''),
       appSlug: inputConfig.appSlug,

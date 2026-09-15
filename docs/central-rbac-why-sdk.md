@@ -252,7 +252,20 @@ A: Vẫn nên. 7 concerns trên không scale theo số role — chúng scale the
 A: SDK có test coverage ≥80% + prod smoke test verified 2026-09-14. Bug SDK → fix 1 chỗ, tất cả app hưởng. Bug tự viết → fix N chỗ, dễ miss.
 
 **Q: SDK version compatibility với Central?**
-A: SDK v0.1.0 pin `X-Api-Version: 2` header. Central v2 endpoints giữ ổn định tới 2028-03-10. Breaking change → bump major SDK.
+A: SDK v0.1.0+ pin `X-Api-Version: 2` header. Central v2 endpoints giữ ổn định tới 2028-03-10. Breaking change → bump major SDK.
+
+**Q: Per-app token vs shared token?**
+A: Từ 2026-09-15 (Central v2.0.1 + SDK 0.2.0), mỗi app có token riêng format
+   `rbac_<8prefix>_<24secret>`. Trước đây shared `CENTRAL_RBAC_RESOLVE_TOKEN`
+   dùng chung — leak 1 app = compromise tất cả. Per-app: revoke riêng,
+   audit rõ app nào gọi, rate limit riêng. SDK config API không đổi
+   (`centralRbacToken: string`), chỉ giá trị token thay đổi. Get token từ
+   Central Admin UI wizard (khi register) hoặc `/apps/<slug>/tokens` page.
+
+**Q: Legacy shared token còn dùng được không?**
+A: Có, tới 2028-01-01 (grace period 3 tháng+). SDK 0.2.0+ log warning khi
+   detect. Migrate: tạo per-app token qua UI → update `.env`
+   `CENTRAL_RBAC_TOKEN=rbac_...` → deploy → verify `/v2/resolve` pass.
 
 ---
 

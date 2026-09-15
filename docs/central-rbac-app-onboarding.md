@@ -87,9 +87,20 @@ Response `201`:
   "slug": "my-app",
   "zitadel_project_id": "...",
   "client_id": "...",
-  "client_secret": "<one-time-reveal-store-in-vault>"
+  "client_secret": "<one-time-reveal-store-in-vault>",
+  "rbac_token": "rbac_hj2kf9m8_kqr7x8v9w2n5c4b1d6h3p0aa",
+  "rbac_token_id": "uuid",
+  "rbac_token_prefix": "hj2kf9m8",
+  "rbac_token_warning": "rbac_token shown once — store it now"
 }
 ```
+
+**Save 2 secrets from response (one-time reveal)**:
+- `client_secret` — OIDC secret cho JWT verification
+- `rbac_token` — per-app token cho SDK (`X-Rbac-Token` header, set as `CENTRAL_RBAC_TOKEN` env)
+
+Both are shown once. UI wizard hiển thị cả 2 trong reveal modal.
+Later, tạo thêm tokens (staging, dev-alice) tại `/apps/my-app/tokens`.
 
 Wizard tự động tạo 4 default roles với hierarchy:
 - `my-app.viewer` (root)

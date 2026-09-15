@@ -20,6 +20,8 @@ const MIGRATIONS = [
   { version: 3, file: '003_audit_hash_chain.sql' },
   { version: 4, file: '004_audit_immutable_trigger.sql' },
   { version: 5, file: '005_metadata_table.sql' }, // Phase 2: epoch counter for cache invalidation
+  { version: 19, file: '019_rbac_v2_foundation.sql' }, // RBAC v2: hierarchy + tenant + delegation + epoch
+  { version: 20, file: '020_app_tokens.sql' }, // Per-app tokens for /v2/resolve authentication
 ];
 
 async function migrate() {

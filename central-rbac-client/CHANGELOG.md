@@ -5,7 +5,7 @@ Shared changelog for `nodejs/` and `python/` SDKs. Both bump same semver per Cen
 ## Unreleased
 
 - Restructure repo to mono-repo layout (nodejs/ + python/ subdirs)
-- Add top-level shared docs stubs (SPEC, SECURITY_INVARIANTS, SDK-CONVENTION, AGENTS)
+- Populate top-level shared docs — SPEC.md (protocol contract), SECURITY_INVARIANTS.md (12 MUST rules), SDK-CONVENTION.md (Node↔Python mapping), AGENTS.md (AI integration guide)
 - Reserve python/ for upcoming Python SDK (plan 260915-1317)
 
 ## 0.2.0 (2026-09-15)

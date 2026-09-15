@@ -424,6 +424,7 @@ services:
       APP_SLUG: ${APP_SLUG:-onelog-agent}
       CENTRAL_RBAC_TOKEN: ${CENTRAL_RBAC_TOKEN:-}
       ENV: ${ENV:-production}
+      PILOT_USER_SUB: ${PILOT_USER_SUB:-sysadmin}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

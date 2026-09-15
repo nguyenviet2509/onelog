@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import yaml from 'js-yaml';
 import { verifyJwt } from '../middleware/auth-jwt.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
@@ -25,6 +26,10 @@ import { validateManifest, computeDiff, type DiffAction } from '../services/mani
 import { enqueueOutbox } from '../db/queries/outbox.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+
+/** Plan 260915-1615 phase 3: inline import guardrails.
+ *  100KB caps paste-in DoS; larger manifests should still use manifest_url. */
+const INLINE_MAX_BYTES = 100 * 1024;
 
 /**
  * Upsert role linked to app + enqueue add_project_role Zitadel sync outbox on INSERT.
@@ -44,16 +49,30 @@ async function upsertManifestRole(
   client: PoolClient,
   appId: string,
   projectId: string,
-  role: { key: string; description?: string },
+  role: { key: string; description?: string; parent_key?: string | null; can_grant?: string[] },
 ): Promise<{ isNewRole: boolean }> {
   const description = role.description ?? `Role ${role.key} (from manifest)`;
+  // v2 fields: parent_key + can_grant. v1 manifests don't declare these — leave existing
+  // DB state untouched via defined? checks below. Only apply on v2 sync.
+  const isV2 = role.parent_key !== undefined || role.can_grant !== undefined;
+  const parentKey = role.parent_key ?? null;
+  const canGrant = role.can_grant ?? [];
+
   const result = await client.query(
-    `INSERT INTO rbac.roles (key, description, app_id, source)
-     VALUES ($1, $2, $3, 'manifest')
-     ON CONFLICT (key) DO UPDATE SET
-       app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id),
-       source = CASE WHEN rbac.roles.source = 'manual' THEN 'manifest' ELSE rbac.roles.source END`,
-    [role.key, description, appId],
+    isV2
+      ? `INSERT INTO rbac.roles (key, description, app_id, source, parent_key, can_grant)
+         VALUES ($1, $2, $3, 'manifest', $4, $5)
+         ON CONFLICT (key) DO UPDATE SET
+           app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id),
+           source = CASE WHEN rbac.roles.source = 'manual' THEN 'manifest' ELSE rbac.roles.source END,
+           parent_key = EXCLUDED.parent_key,
+           can_grant = EXCLUDED.can_grant`
+      : `INSERT INTO rbac.roles (key, description, app_id, source)
+         VALUES ($1, $2, $3, 'manifest')
+         ON CONFLICT (key) DO UPDATE SET
+           app_id = COALESCE(rbac.roles.app_id, EXCLUDED.app_id),
+           source = CASE WHEN rbac.roles.source = 'manual' THEN 'manifest' ELSE rbac.roles.source END`,
+    isV2 ? [role.key, description, appId, parentKey, canGrant] : [role.key, description, appId],
   );
   // rowCount=1 for INSERT (new row) or UPDATE (existing) — can't distinguish reliably from
   // rowCount alone. Instead: check if role existed BEFORE insert to decide Zitadel sync need.
@@ -127,7 +146,15 @@ async function persistEtag(appId: string, etag: string | null): Promise<void> {
  * Returns count of pair rows actually INSERT'd this run.
  */
 async function autoWireDefaultRoles(
-  manifest: { default_roles?: Array<{ key: string; description?: string; permissions: string[] }> },
+  manifest: {
+    default_roles?: Array<{
+      key: string;
+      description?: string;
+      permissions: string[];
+      parent_key?: string | null;
+      can_grant?: string[];
+    }>;
+  },
   appId: string,
 ): Promise<number> {
   if (!manifest.default_roles || manifest.default_roles.length === 0) return 0;
@@ -204,7 +231,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
       }
 
       // Validate
-      const validation = validateManifest(fetchResult.bodyText, dbApp.slug);
+      const validation = await validateManifest(fetchResult.bodyText, dbApp.slug);
       if (!validation.ok) {
         return reply.status(400).send({ error: 'Manifest validation failed', errors: validation.errors });
       }
@@ -278,8 +305,10 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
       }
       const cached = JSON.parse(cachedJson) as CachedManifest;
 
-      // Re-validate cached content against app slug (defense in depth)
-      const validation = validateManifest(cached.raw, dbApp.slug);
+      // Re-validate cached content against app slug (defense in depth).
+      // skipSsrfCheck: apply flow uses cached body already SSRF-validated at sync time —
+      // re-checking DNS wastes latency + could differ if DNS flapped (accept cached decision).
+      const validation = await validateManifest(cached.raw, dbApp.slug, { skipSsrfCheck: true });
       if (!validation.ok) {
         return reply.status(500).send({ error: 'Cached manifest failed re-validation', errors: validation.errors });
       }
@@ -383,6 +412,96 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
       });
 
       return reply.send({ status: 'applied', applied_counts: appliedCounts });
+    },
+  );
+
+  // ── Sync from inline JSON/YAML paste (plan 260915-1615 phase 3) ────────────
+  // POST /v1/admin/apps/:id/sync-manifest-inline
+  //   Body: { format: 'json' | 'yaml', content: string }
+  // Bypass HTTP fetch — admin pastes manifest directly. Reuses validate + diff
+  // pipeline, caches by sha256 so existing apply-manifest-diff endpoint works
+  // unchanged. YAML parsed via js-yaml (safe schema — no custom tags).
+  const inlineBodySchema = z.object({
+    format: z.enum(['json', 'yaml']),
+    content: z.string().min(1).max(INLINE_MAX_BYTES),
+  });
+
+  app.post(
+    '/v1/admin/apps/:id/sync-manifest-inline',
+    { preHandler: [verifyJwt] },
+    async (request, reply) => {
+      const params = paramsSchema.safeParse(request.params);
+      if (!params.success) return reply.status(400).send({ error: 'Invalid app id' });
+
+      const body = inlineBodySchema.safeParse(request.body);
+      if (!body.success) {
+        return reply.status(400).send({ error: 'Invalid body', details: body.error.issues });
+      }
+
+      const dbApp = await loadApp(params.data.id);
+      if (!dbApp) return reply.status(404).send({ error: 'App not found' });
+
+      // Step 1: parse (YAML → JSON if needed). Yaml default schema safe: no custom
+      // tags, no arbitrary code execution, billion-laughs bounded by content size cap.
+      let parsedObject: unknown;
+      try {
+        if (body.data.format === 'yaml') {
+          parsedObject = yaml.load(body.data.content, { schema: yaml.CORE_SCHEMA });
+        } else {
+          parsedObject = JSON.parse(body.data.content);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return reply.status(400).send({
+          error: `${body.data.format.toUpperCase()} parse failed`,
+          detail: msg,
+        });
+      }
+
+      // Step 2: canonicalize to JSON string. Ensures deterministic sha256 across
+      // yaml/json input for the same logical manifest — apply endpoint uses sha256 lookup.
+      const canonicalJson = JSON.stringify(parsedObject);
+      const sha256 = createHash('sha256').update(canonicalJson).digest('hex');
+
+      // Step 3: reuse validate + diff pipeline (v1/v2 dispatched inside).
+      const validation = await validateManifest(canonicalJson, dbApp.slug);
+      if (!validation.ok) {
+        return reply.status(400).send({ error: 'Manifest validation failed', errors: validation.errors });
+      }
+
+      const cache: CachedManifest = {
+        sha256,
+        service: validation.manifest.service,
+        raw: canonicalJson,
+        fetched_at: Date.now(),
+      };
+      await redis.setex(`manifest:cache:${sha256}`, MANIFEST_CACHE_TTL_SEC, JSON.stringify(cache));
+
+      const diff = await computeDiff(validation.manifest);
+
+      // Auto-wire default_roles → role_permissions (same behavior as HTTP-fetched sync).
+      const rolePermsWired = await autoWireDefaultRoles(validation.manifest, dbApp.id);
+
+      await writeAuditLog(request, {
+        action: 'manifest.sync.inline',
+        target_type: 'app',
+        target_id: dbApp.id,
+        after_state: {
+          sha256,
+          format: body.data.format,
+          counts: diff.counts,
+          role_perms_wired: rolePermsWired,
+        },
+      });
+
+      return reply.send({
+        status: 'fetched',
+        manifest_sha256: sha256,
+        service: validation.manifest.service,
+        version: validation.manifest.version,
+        schema: validation.manifest.schema,
+        diff: { items: diff.items, counts: diff.counts },
+      });
     },
   );
 

@@ -92,6 +92,7 @@ export async function assignRoleToUser(
   userId: string,
   roleKey: string,
   correlationId?: string,
+  grantorSub?: string,
 ): Promise<AssignRoleResult> {
   // Migration 011+012 — resolve target Zitadel {projectId, orgId} from role.app_id.
   // Legacy roles (app_id NULL) fall back to env ZITADEL_PROJECT_ID + ZITADEL_ORG_ID.
@@ -112,10 +113,13 @@ export async function assignRoleToUser(
     timeBucket,
   );
 
+  // grantorSub threaded from HTTP handler (request.jwtClaims.sub) so worker
+  // can record accurate audit trail in rbac.user_grants.granted_by_sub.
+  // Falls back to 'system' in worker if undefined (backfill flow).
   const outbox = await enqueueOutbox(
     writerPool,
     'add_or_update_user_grant',
-    { userId, orgId, projectId, roleKey },
+    { userId, orgId, projectId, roleKey, grantorSub: grantorSub ?? null },
     idemKey,
     correlationId,
   );
@@ -154,6 +158,7 @@ export async function removeRoleFromUser(
   grantId: string,
   targetRoleKeys?: string[],
   correlationId?: string,
+  grantorSub?: string,
 ): Promise<RevokeRoleResult> {
   // Cross-org lookup: find the grant across all known project-owner orgs so the
   // subsequent enqueue uses the correct orgId. Env fallback still applies if the
@@ -186,7 +191,14 @@ export async function removeRoleFromUser(
       const outbox = await enqueueOutbox(
         writerPool,
         'remove_user_grant',
-        { userId, orgId, grantId },
+        {
+          userId,
+          orgId,
+          grantId,
+          projectId: grantProjectId ?? null,
+          previousRoleKeys: currentRoles,
+          grantorSub: grantorSub ?? null,
+        },
         idemKey,
         correlationId,
       );
@@ -208,7 +220,15 @@ export async function removeRoleFromUser(
     const outbox = await enqueueOutbox(
       writerPool,
       'update_user_grant',
-      { userId, orgId, grantId, roleKeys: updatedRoles },
+      {
+        userId,
+        orgId,
+        grantId,
+        roleKeys: updatedRoles,
+        projectId: grantProjectId ?? null,
+        previousRoleKeys: currentRoles,
+        grantorSub: grantorSub ?? null,
+      },
       idemKey,
       correlationId,
     );
@@ -225,7 +245,14 @@ export async function removeRoleFromUser(
   const outbox = await enqueueOutbox(
     writerPool,
     'remove_user_grant',
-    { userId, orgId, grantId },
+    {
+      userId,
+      orgId,
+      grantId,
+      projectId: grantProjectId ?? null,
+      previousRoleKeys: found?.roleKeys ?? [],
+      grantorSub: grantorSub ?? null,
+    },
     idemKey,
     correlationId,
   );

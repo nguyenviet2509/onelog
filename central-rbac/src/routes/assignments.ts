@@ -91,10 +91,11 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { user_id, role_key } = parsed.data;
+    const grantorSub = request.jwtClaims?.sub;
 
     let result;
     try {
-      result = await assignRoleToUser(user_id, role_key, request.id);
+      result = await assignRoleToUser(user_id, role_key, request.id, grantorSub);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, user_id, role_key }, 'assignments: assignRoleToUser failed');
@@ -148,9 +149,11 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
         ? [query.data.role_key]
         : undefined;
 
+    const grantorSub = request.jwtClaims?.sub;
+
     let result;
     try {
-      result = await removeRoleFromUser(userId, grantId, targetRoleKeys, request.id);
+      result = await removeRoleFromUser(userId, grantId, targetRoleKeys, request.id, grantorSub);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err: msg, userId, grantId }, 'assignments: removeRoleFromUser failed');

@@ -50,6 +50,121 @@ function requireStringArray(args: Record<string, unknown>, key: string): string[
   return val as string[];
 }
 
+function optionalString(args: Record<string, unknown>, key: string): string | null {
+  const val = args[key];
+  return typeof val === 'string' && val.length > 0 ? val : null;
+}
+
+function optionalStringArray(args: Record<string, unknown>, key: string): string[] {
+  const val = args[key];
+  if (!Array.isArray(val)) return [];
+  return val.filter((v): v is string => typeof v === 'string');
+}
+
+/**
+ * Fix cho grant sync gap (plan 260915-1615 phase 1):
+ * Central UI POST /v1/assignments enqueue outbox → worker sync Zitadel only.
+ * SDK POST /v2/resolve đọc rbac.user_grants exclusively → grant qua UI không reach SDK.
+ *
+ * Sau khi Zitadel call thành công, mirror grant vào rbac.user_grants.
+ *
+ * Idempotent: schema `UNIQUE (user_sub, app_id, role_key, tenant_id)` — nhưng Postgres
+ * treat NULLs distinct → dùng `WHERE NOT EXISTS` filter tenant_id IS NULL để tránh dup.
+ *
+ * Skip conditions (log warn, không fail):
+ *   - projectId không có app tương ứng trong rbac.apps (legacy Zitadel-only apps)
+ *   - roleKey không tồn tại trong rbac.roles (legacy Zitadel-only roles)
+ *
+ * Rationale: Zitadel đã sync, không cần retry vô hạn cho legacy state. Backfill script
+ * xử lý migration legacy grants riêng.
+ */
+async function mirrorGrantInsert(
+  client: import('pg').PoolClient | import('pg').Pool,
+  params: { userId: string; projectId: string; roleKey: string; grantorSub: string | null },
+): Promise<void> {
+  const { userId, projectId, roleKey, grantorSub } = params;
+  const grantor = grantorSub ?? 'system';
+
+  const appRes = await client.query<{ id: string }>(
+    `SELECT id FROM rbac.apps WHERE zitadel_project_id = $1 LIMIT 1`,
+    [projectId],
+  );
+  const appId = appRes.rows[0]?.id;
+  if (!appId) {
+    logger.warn(
+      { projectId, userId, roleKey },
+      'outbox-processor: mirrorGrantInsert skipped — no app row for projectId (legacy)',
+    );
+    return;
+  }
+
+  const roleRes = await client.query<{ key: string }>(
+    `SELECT key FROM rbac.roles WHERE key = $1 LIMIT 1`,
+    [roleKey],
+  );
+  if (roleRes.rows.length === 0) {
+    logger.warn(
+      { roleKey, userId, appId },
+      'outbox-processor: mirrorGrantInsert skipped — role not in rbac.roles (legacy)',
+    );
+    return;
+  }
+
+  const insertRes = await client.query(
+    `INSERT INTO rbac.user_grants (user_sub, app_id, role_key, tenant_id, granted_by_sub)
+     SELECT $1, $2, $3, NULL, $4
+     WHERE NOT EXISTS (
+       SELECT 1 FROM rbac.user_grants
+        WHERE user_sub = $1 AND app_id = $2 AND role_key = $3 AND tenant_id IS NULL
+     )`,
+    [userId, appId, roleKey, grantor],
+  );
+  logger.info(
+    { userId, appId, roleKey, grantor, inserted: insertRes.rowCount ?? 0 },
+    'outbox-processor: mirrorGrantInsert done',
+  );
+}
+
+async function mirrorGrantDelete(
+  client: import('pg').PoolClient | import('pg').Pool,
+  params: { userId: string; projectId: string | null; roleKeys: string[] },
+): Promise<void> {
+  const { userId, projectId, roleKeys } = params;
+  if (!projectId || roleKeys.length === 0) {
+    logger.info(
+      { userId, projectId, roleKeys },
+      'outbox-processor: mirrorGrantDelete skipped — missing projectId or empty roleKeys',
+    );
+    return;
+  }
+
+  const appRes = await client.query<{ id: string }>(
+    `SELECT id FROM rbac.apps WHERE zitadel_project_id = $1 LIMIT 1`,
+    [projectId],
+  );
+  const appId = appRes.rows[0]?.id;
+  if (!appId) {
+    logger.warn(
+      { projectId, userId, roleKeys },
+      'outbox-processor: mirrorGrantDelete skipped — no app row for projectId (legacy)',
+    );
+    return;
+  }
+
+  const delRes = await client.query(
+    `DELETE FROM rbac.user_grants
+      WHERE user_sub = $1
+        AND app_id = $2
+        AND role_key = ANY($3::text[])
+        AND tenant_id IS NULL`,
+    [userId, appId, roleKeys],
+  );
+  logger.info(
+    { userId, appId, roleKeys, deleted: delRes.rowCount ?? 0 },
+    'outbox-processor: mirrorGrantDelete done',
+  );
+}
+
 function getOrgId(args: Record<string, unknown>): string {
   // orgId can be overridden per-event; falls back to global default
   const val = args['orgId'];
@@ -119,30 +234,72 @@ export async function addUserGrant(args: Record<string, unknown>): Promise<strin
 }
 
 /**
- * update_user_grant — args: { userId, orgId?, grantId, roleKeys[] }
+ * update_user_grant — args: { userId, orgId?, grantId, roleKeys[], projectId?, previousRoleKeys?[], grantorSub? }
  * REPLACES full role set — caller must provide complete desired list.
+ *
+ * Mirror plan 260915-1615 phase 1: sau khi Zitadel PUT thành công, sync rbac.user_grants:
+ *   - DELETE removed = previousRoleKeys - roleKeys
+ *   - INSERT added = roleKeys - previousRoleKeys
+ * projectId + previousRoleKeys optional cho backward compat với events cũ trong queue.
  */
 export async function updateUserGrant(args: Record<string, unknown>): Promise<void> {
   const userId = requireString(args, 'userId');
   const orgId = getOrgId(args);
   const grantId = requireString(args, 'grantId');
   const roleKeys = requireStringArray(args, 'roleKeys');
+  const projectId = optionalString(args, 'projectId');
+  const previousRoleKeys = optionalStringArray(args, 'previousRoleKeys');
+  const grantorSub = optionalString(args, 'grantorSub');
 
   logger.info({ userId, grantId, roleCount: roleKeys.length }, 'outbox-processor: update_user_grant');
   await clientUpdateUserGrant(userId, orgId, grantId, roleKeys);
+
+  // Mirror rbac.user_grants sync — surgical diff
+  if (!projectId) {
+    logger.warn(
+      { userId, grantId },
+      'outbox-processor: update_user_grant DB mirror skipped — projectId missing (legacy queued event)',
+    );
+    return;
+  }
+  const currentSet = new Set(previousRoleKeys);
+  const targetSet = new Set(roleKeys);
+  const removed = previousRoleKeys.filter((k) => !targetSet.has(k));
+  const added = roleKeys.filter((k) => !currentSet.has(k));
+  if (removed.length > 0) {
+    await mirrorGrantDelete(writerPool, { userId, projectId, roleKeys: removed });
+  }
+  for (const roleKey of added) {
+    await mirrorGrantInsert(writerPool, { userId, projectId, roleKey, grantorSub });
+  }
 }
 
 /**
- * remove_user_grant — args: { userId, orgId?, grantId }
+ * remove_user_grant — args: { userId, orgId?, grantId, projectId?, previousRoleKeys?[], grantorSub? }
  * 404 from Zitadel is treated as success in client layer.
+ *
+ * Mirror plan 260915-1615 phase 1: sau khi Zitadel DELETE thành công, DELETE rbac.user_grants
+ * matching (userSub, appId, previousRoleKeys, tenant_id IS NULL).
+ * projectId + previousRoleKeys optional cho backward compat.
  */
 export async function removeUserGrant(args: Record<string, unknown>): Promise<void> {
   const userId = requireString(args, 'userId');
   const orgId = getOrgId(args);
   const grantId = requireString(args, 'grantId');
+  const projectId = optionalString(args, 'projectId');
+  const previousRoleKeys = optionalStringArray(args, 'previousRoleKeys');
 
   logger.info({ userId, grantId }, 'outbox-processor: remove_user_grant');
   await clientRemoveUserGrant(userId, orgId, grantId);
+
+  if (!projectId || previousRoleKeys.length === 0) {
+    logger.warn(
+      { userId, grantId, projectId, previousRoleKeys },
+      'outbox-processor: remove_user_grant DB mirror skipped — missing projectId or previousRoleKeys',
+    );
+    return;
+  }
+  await mirrorGrantDelete(writerPool, { userId, projectId, roleKeys: previousRoleKeys });
 }
 
 /**
@@ -166,6 +323,7 @@ export async function addOrUpdateUserGrant(args: Record<string, unknown>): Promi
   const orgId = getOrgId(args);
   const projectId = requireString(args, 'projectId');
   const roleKey = requireString(args, 'roleKey');
+  const grantorSub = optionalString(args, 'grantorSub');
 
   logger.info({ userId, projectId, roleKey }, 'outbox-processor: add_or_update_user_grant');
 
@@ -225,6 +383,11 @@ export async function addOrUpdateUserGrant(args: Record<string, unknown>): Promi
       );
       await clientAddUserGrant(userId, orgId, projectId, expandedRoles);
     }
+
+    // Mirror DIRECT grant to rbac.user_grants inside advisory lock txn (plan 260915-1615 phase 1).
+    // Chỉ mirror roleKey được cấp trực tiếp (không mirror expandedRoles hierarchy parents —
+    // resolve-v2 recursive CTE tự expand khi query). Idempotent qua WHERE NOT EXISTS.
+    await mirrorGrantInsert(client, { userId, projectId, roleKey, grantorSub });
 
     // COMMIT releases the advisory lock
     await client.query('COMMIT');

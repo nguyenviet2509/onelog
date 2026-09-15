@@ -12,6 +12,7 @@
     "bootstrap-dev": "tsx scripts/bootstrap-dev.ts",
     "bootstrap": "tsx scripts/bootstrap.ts",
     "bootstrap-operators": "tsx scripts/019-bootstrap-operators.ts",
+    "backfill-user-grants": "tsx scripts/backfill-user-grants-from-zitadel.ts",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:integration": "vitest run tests/integration --coverage"
@@ -23,6 +24,7 @@
     "fastify": "^4.29.0",
     "ioredis": "^5.4.1",
     "jose": "^5.9.6",
+    "js-yaml": "4.1.0",
     "lru-cache": "^11.5.2",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
@@ -32,6 +34,7 @@
   },
   "devDependencies": {
     "@types/ioredis": "^5.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.7.0",
     "@types/pg": "^8.11.10",
     "@vitest/coverage-v8": "^2.1.1",

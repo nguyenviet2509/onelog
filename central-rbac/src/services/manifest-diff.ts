@@ -2,22 +2,31 @@
  * services/manifest-diff.ts — Manifest validation + diff computation.
  * Phase 08 Red Team Fixes #9 (implicit deprecate), #13 (namespace exact-segment), #14 (sha256 TOCTOU).
  *
+ * Phase 2 plan 260915-1615 (v2 support): switched from manifestSchemaV1 hardcode
+ * → manifestSchemaAny discriminated union. v2 semantic checks delegate to
+ * validateManifestV2 (existing, plan 260910-1334 phase 09).
+ *
  * validateManifest: parses + validates against schema, then enforces namespace ownership
  *   (Fix #13): every permission.id first segment MUST equal manifest.service EXACTLY.
  *   Case-insensitive. Rejects `startsWith` collisions.
  *
- * computeDiff: 4 categories per Fix #9:
+ * computeDiff: 4 categories per Fix #9. Same for v1/v2 (permissions shape identical).
  *   - add             (in manifest, not in DB active)
  *   - update-desc     (in both, description differs; semantic-key unchanged per immutability)
  *   - explicit-deprecate (manifest declares status: soft-deleted OR alias_of; safe default CHECKED)
  *   - implicit-deprecate (in DB active, missing from manifest — unexpected removal; default UNCHECKED)
  */
-import { manifestSchema, type Manifest, type PermissionEntry } from './manifest-schema.js';
+import {
+  manifestSchemaAny,
+  type ManifestAny,
+  type PermissionEntry,
+} from './manifest-schema.js';
+import { validateManifestV2 } from './manifest-validator-v2.js';
 import { writerPool } from '../db/writer-pool.js';
 
 export interface ValidateResult {
   ok: true;
-  manifest: Manifest;
+  manifest: ManifestAny;
 }
 
 export interface ValidateError {
@@ -28,8 +37,18 @@ export interface ValidateError {
 /**
  * Validate manifest JSON string against schema + namespace ownership.
  * appSlug = the app.slug this manifest is claimed to belong to (from URL context).
+ *
+ * Async since v2 branch does SSRF DNS check on tenant_lookup_url. v1 path returns
+ * synchronously-resolved Promise.
+ *
+ * Options:
+ *   - skipSsrfCheck: pass through to v2 validator (unit test contexts).
  */
-export function validateManifest(rawJson: string, appSlug: string): ValidateResult | ValidateError {
+export async function validateManifest(
+  rawJson: string,
+  appSlug: string,
+  opts: { skipSsrfCheck?: boolean } = {},
+): Promise<ValidateResult | ValidateError> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawJson);
@@ -37,7 +56,7 @@ export function validateManifest(rawJson: string, appSlug: string): ValidateResu
     return { ok: false, errors: [{ path: '$', message: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` }] };
   }
 
-  const parseResult = manifestSchema.safeParse(parsed);
+  const parseResult = manifestSchemaAny.safeParse(parsed);
   if (!parseResult.success) {
     return {
       ok: false,
@@ -50,7 +69,13 @@ export function validateManifest(rawJson: string, appSlug: string): ValidateResu
 
   const manifest = parseResult.data;
 
-  // Namespace ownership: manifest.service MUST equal appSlug exactly (case-insensitive)
+  // v2: full semantic check delegated (namespace + permission ID + parent_key cycle
+  //     + can_grant escalation + SSRF tenant_lookup_url).
+  if (manifest.schema === '2') {
+    return validateManifestV2(rawJson, appSlug, opts);
+  }
+
+  // v1 path — preserve existing checks exactly (no behavior change for existing apps).
   if (manifest.service.toLowerCase() !== appSlug.toLowerCase()) {
     return {
       ok: false,
@@ -61,7 +86,6 @@ export function validateManifest(rawJson: string, appSlug: string): ValidateResu
     };
   }
 
-  // Exact-segment match for every permission.id: first ':' segment must equal manifest.service
   const errors: Array<{ path: string; message: string }> = [];
   manifest.permissions.forEach((p: PermissionEntry, i) => {
     const idx = p.id.indexOf(':');
@@ -110,7 +134,7 @@ interface DbPermRow {
  * Compute diff between manifest and DB state for a namespace.
  * `namespacePrefix` = `${service}:` — used in DB WHERE.
  */
-export async function computeDiff(manifest: Manifest): Promise<DiffResult> {
+export async function computeDiff(manifest: ManifestAny): Promise<DiffResult> {
   const namespacePrefix = `${manifest.service}:`;
 
   const { rows: dbRows } = await writerPool.query<DbPermRow>(

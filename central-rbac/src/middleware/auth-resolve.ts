@@ -16,6 +16,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { constantTimeCompare } from '../lib/constant-time-compare.js';
+import { verifyPerAppToken } from '../lib/verify-per-app-token.js';
 
 // HMAC signature replay window: 5 minutes past
 const HMAC_WINDOW_MS = 5 * 60 * 1000;
@@ -111,11 +112,29 @@ export async function verifyResolveAuth(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  // Mode 1: shared token via X-Rbac-Token
+  // Mode 1: X-Rbac-Token — per-app token first, legacy shared token fallback.
   const rbacToken = request.headers['x-rbac-token'];
   if (typeof rbacToken === 'string') {
+    // Try per-app token format `rbac_<8prefix>_<24secret>` first.
+    if (rbacToken.startsWith('rbac_')) {
+      const verified = await verifyPerAppToken(rbacToken);
+      if (verified) {
+        (request as FastifyRequest & { appId?: string; tokenId?: string }).appId = verified.appId;
+        (request as FastifyRequest & { appId?: string; tokenId?: string }).tokenId = verified.tokenId;
+        return;
+      }
+      // Format matched but hash mismatch → hard reject (no legacy fallthrough).
+      logger.warn({ prefix: rbacToken.slice(0, 13) }, 'auth-resolve: per-app token verify failed');
+      return reply.status(401).send({ error: 'Invalid X-Rbac-Token' });
+    }
+
+    // Legacy shared token fallback (grace period until 2028-01-01).
     if (constantTimeCompare(rbacToken, config.CENTRAL_RBAC_RESOLVE_TOKEN)) {
-      return; // authorized
+      logger.warn(
+        'auth-resolve: LEGACY shared token used — migrate to per-app token via Central Admin UI',
+      );
+      // No appId attached — audit + rate limit downstream detect legacy via absence.
+      return;
     }
     logger.warn('auth-resolve: X-Rbac-Token mismatch');
     return reply.status(401).send({ error: 'Invalid X-Rbac-Token' });

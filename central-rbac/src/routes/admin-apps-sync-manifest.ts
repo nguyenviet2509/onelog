@@ -50,11 +50,12 @@ async function upsertManifestRole(
   appId: string,
   projectId: string,
   role: { key: string; description?: string; parent_key?: string | null; can_grant?: string[] },
+  schemaVersion: '1' | '2',
 ): Promise<{ isNewRole: boolean }> {
   const description = role.description ?? `Role ${role.key} (from manifest)`;
-  // v2 fields: parent_key + can_grant. v1 manifests don't declare these — leave existing
-  // DB state untouched via defined? checks below. Only apply on v2 sync.
-  const isV2 = role.parent_key !== undefined || role.can_grant !== undefined;
+  // Discriminated schemaVersion from parsed manifest (audit B2 fix 2026-09-15): thay
+  // heuristic isV2 = field-presence check (fragile nếu v1 payload lỡ có v2 fields).
+  const isV2 = schemaVersion === '2';
   const parentKey = role.parent_key ?? null;
   const canGrant = role.can_grant ?? [];
 
@@ -147,6 +148,7 @@ async function persistEtag(appId: string, etag: string | null): Promise<void> {
  */
 async function autoWireDefaultRoles(
   manifest: {
+    schema: '1' | '2';
     default_roles?: Array<{
       key: string;
       description?: string;
@@ -171,7 +173,7 @@ async function autoWireDefaultRoles(
     for (const role of manifest.default_roles) {
       // Ensure role row exists + linked to this app + source=manifest + Zitadel role synced
       // (2026-09-09 bug fix: was missing source + Zitadel sync → qlts.user assignment failed 400)
-      await upsertManifestRole(client, appId, projectId, role);
+      await upsertManifestRole(client, appId, projectId, role, manifest.schema);
       for (const permKey of role.permissions) {
         const result = await client.query(
           `INSERT INTO rbac.role_permissions (role_key, permission_key)
@@ -374,7 +376,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
           const projectId = appRows[0]?.zitadel_project_id ?? config.ZITADEL_PROJECT_ID;
           for (const role of manifest.default_roles) {
             // Ensure role row + source=manifest + Zitadel role sync (2026-09-09 fix — was missing).
-            await upsertManifestRole(client, dbApp.id, projectId, role);
+            await upsertManifestRole(client, dbApp.id, projectId, role, manifest.schema);
             for (const permKey of role.permissions) {
               const result = await client.query(
                 `INSERT INTO rbac.role_permissions (role_key, permission_key)

@@ -316,9 +316,46 @@ export async function listUserGrantsAllOrgs(userId: string): Promise<UserGrantSu
 }
 
 /**
- * List current user grants from Zitadel (live, cached by caller if needed).
- * Re-exports for use in route handlers.
+ * List current user grants từ rbac.user_grants (Central là source of truth).
+ *
+ * Đổi từ Zitadel-read → DB-read 2026-09-15 (audit B1, plan 260915-1615 followup):
+ * SDK `/v2/resolve` đọc rbac.user_grants; UI grant list phải cùng source để tránh
+ * divergence khi Zitadel state drift (VD outbox retry, manual DB edit).
+ *
+ * Aggregate role_keys per (user_sub, app_id) — 1 row per app.
+ * grantId synthesized as first user_grants.id trong (user_sub, app_id) group để giữ shape
+ * compatible với UI (UI dùng grantId cho revoke DELETE call — hiện DELETE flow đi qua
+ * removeRoleFromUser với Zitadel grantId thật, nhưng UI list chỉ display thôi).
  */
 export async function getUserGrants(userId: string): Promise<UserGrantSummary[]> {
-  return listUserGrantsAllOrgs(userId);
+  const { rows } = await writerPool.query<{
+    grant_id: string;
+    zitadel_project_id: string | null;
+    project_name: string;
+    zitadel_org_id: string | null;
+    role_keys: string[];
+  }>(
+    `SELECT
+       (array_agg(ug.id::text ORDER BY ug.created_at))[1] AS grant_id,
+       a.zitadel_project_id,
+       a.name AS project_name,
+       a.zitadel_org_id,
+       array_agg(DISTINCT ug.role_key) AS role_keys
+       FROM rbac.user_grants ug
+       JOIN rbac.apps a ON a.id = ug.app_id
+      WHERE ug.user_sub = $1
+      GROUP BY a.id, a.zitadel_project_id, a.name, a.zitadel_org_id
+      ORDER BY a.name`,
+    [userId],
+  );
+
+  return rows
+    .filter((r) => r.zitadel_project_id !== null)
+    .map((r) => ({
+      grantId: r.grant_id,
+      projectId: r.zitadel_project_id!,
+      projectName: r.project_name,
+      orgId: r.zitadel_org_id ?? '',
+      roleKeys: r.role_keys,
+    }));
 }

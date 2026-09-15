@@ -72,5 +72,13 @@ class Settings(BaseSettings):
     # Alert dedupe — same fingerprint won't re-push within this window.
     alert_dedupe_ttl_s: int = 3600
 
+    # Central RBAC — feature-flagged (default off = keep sysadmin stub).
+    # Enable in prod: RBAC_ENABLE=true + CENTRAL_URL/APP_SLUG/CENTRAL_RBAC_TOKEN.
+    # See plans/reports/pilot-python-sdk-agent.md for rollout playbook.
+    rbac_enable: bool = False
+    central_url: str = ""
+    app_slug: str = "onelog-agent"
+    central_rbac_token: str = ""
+
 
 settings = Settings()

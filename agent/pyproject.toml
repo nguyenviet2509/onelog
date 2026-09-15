@@ -16,6 +16,7 @@ dependencies = [
     "structlog>=24.4.0",
     "tenacity>=8.5.0",
     "sse-starlette>=2.1.0",
+    "onelog-central-rbac-client[fastapi]>=0.2.0",
 ]
 
 [project.optional-dependencies]

@@ -57,9 +57,11 @@ export interface AppToken {
   label: string;
   created_at: string;
   created_by: string;
+  created_by_name?: string | null;
   last_used_at: string | null;
   revoked_at: string | null;
   revoked_by: string | null;
+  revoked_by_name?: string | null;
   status: 'active' | 'revoked';
 }
 

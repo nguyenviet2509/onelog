@@ -22,6 +22,7 @@ const USER_CACHE_TTL_SEC = 24 * 60 * 60;
 
 const APP_KEY = (clientId: string): string => `zitadel-app:v1:${clientId}`;
 const USER_KEY = (userId: string): string => `zitadel-user-email:v1:${userId}`;
+const USER_NAME_KEY = (userId: string): string => `zitadel-user-name:v1:${userId}`;
 const NEGATIVE_SENTINEL = '__none__';
 
 export async function resolveAppSlug(clientId: string | undefined): Promise<string | undefined> {
@@ -81,4 +82,58 @@ export async function resolveUserEmail(
     logger.warn({ userId, orgId, err: msg }, 'zitadel-event-enrichment: user email lookup failed');
     return undefined;
   }
+}
+
+/**
+ * Zitadel user ID → display_name (fallback: username, then userId).
+ * Redis cache TTL 24h. Failures don't propagate (best-effort UX).
+ * Used for audit/UI to show human-readable names instead of numeric subs.
+ */
+export async function resolveUserDisplayName(
+  userId: string | undefined,
+  orgId: string | undefined,
+): Promise<string | undefined> {
+  if (!userId || userId === 'SYSTEM' || userId === 'unknown' || !orgId) return undefined;
+  const key = USER_NAME_KEY(userId);
+
+  try {
+    const cached = await redis.get(key);
+    if (cached === NEGATIVE_SENTINEL) return undefined;
+    if (cached) return cached;
+  } catch {
+    // Redis miss — proceed to API
+  }
+
+  try {
+    const user = await getUserById(userId, orgId);
+    const name = user?.display_name || user?.username || undefined;
+    await redis
+      .set(key, name ?? NEGATIVE_SENTINEL, 'EX', USER_CACHE_TTL_SEC)
+      .catch(() => {});
+    return name;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ userId, orgId, err: msg }, 'zitadel-event-enrichment: user name lookup failed');
+    return undefined;
+  }
+}
+
+/**
+ * Batch resolve display names — used for tokens list UI enrichment.
+ * Returns Map<userId, displayName>. Missing users omitted.
+ */
+export async function resolveUserDisplayNames(
+  userIds: readonly string[],
+  orgId: string | undefined,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!orgId) return out;
+  const unique = Array.from(new Set(userIds)).filter((id) => id && id !== 'SYSTEM' && id !== 'unknown');
+  const results = await Promise.all(
+    unique.map(async (id) => ({ id, name: await resolveUserDisplayName(id, orgId) })),
+  );
+  for (const { id, name } of results) {
+    if (name) out.set(id, name);
+  }
+  return out;
 }

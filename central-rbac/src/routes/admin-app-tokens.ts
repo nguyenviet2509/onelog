@@ -14,6 +14,8 @@ import { requireAdmin } from '../middleware/require-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { createAppToken, listAppTokens, revokeAppToken } from '../services/app-token-service.js';
+import { resolveUserDisplayNames } from '../lib/zitadel-event-enrichment.js';
+import { config } from '../config.js';
 
 const createBody = z.object({
   label: z
@@ -106,6 +108,9 @@ export async function registerAdminAppTokensRoutes(app: FastifyInstance): Promis
       if (!appId) return reply.status(404).send({ error: 'app_not_found' });
 
       const tokens = await listAppTokens(appId);
+      // Enrich created_by / revoked_by with Zitadel display_name (Redis-cached 24h).
+      const userIds = tokens.flatMap((t) => [t.created_by, t.revoked_by].filter((x): x is string => !!x));
+      const nameMap = await resolveUserDisplayNames(userIds, config.ZITADEL_ORG_ID);
       return reply.send({
         tokens: tokens.map((t) => ({
           id: t.id,
@@ -113,9 +118,11 @@ export async function registerAdminAppTokensRoutes(app: FastifyInstance): Promis
           label: t.label,
           created_at: t.created_at,
           created_by: t.created_by,
+          created_by_name: nameMap.get(t.created_by) ?? null,
           last_used_at: t.last_used_at,
           revoked_at: t.revoked_at,
           revoked_by: t.revoked_by,
+          revoked_by_name: t.revoked_by ? (nameMap.get(t.revoked_by) ?? null) : null,
           status: t.revoked_at ? 'revoked' : 'active',
         })),
       });

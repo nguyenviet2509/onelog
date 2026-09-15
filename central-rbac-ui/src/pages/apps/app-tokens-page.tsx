@@ -96,7 +96,9 @@ export function AppTokensPage() {
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-600">
                     {new Date(t.created_at).toLocaleString()}
-                    <div className="text-gray-400">by {t.created_by}</div>
+                    <div className="text-gray-400" title={t.created_by}>
+                      by {t.created_by_name ?? t.created_by}
+                    </div>
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-600">
                     {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '—'}

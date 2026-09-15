@@ -43,6 +43,46 @@ export interface CreateAppResult {
   client_secret?: string;
   warning?: string;
   note?: string;
+  /** Per-app token for SDK integration. Present when auto-gen succeeds. */
+  rbac_token?: string;
+  rbac_token_id?: string;
+  rbac_token_prefix?: string;
+  rbac_token_warning?: string;
+  skip_default_roles_warning?: string;
+}
+
+export interface AppToken {
+  id: string;
+  prefix: string;
+  label: string;
+  created_at: string;
+  created_by: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  status: 'active' | 'revoked';
+}
+
+export interface CreateTokenResult {
+  id: string;
+  prefix: string;
+  label: string;
+  token: string;
+  warning: string;
+}
+
+export async function listAppTokens(slug: string): Promise<AppToken[]> {
+  const res = await apiClient.get<{ tokens: AppToken[] }>(`/admin/apps/${slug}/tokens`);
+  return res.data.tokens;
+}
+
+export async function createAppToken(slug: string, label: string): Promise<CreateTokenResult> {
+  const res = await apiClient.post<CreateTokenResult>(`/admin/apps/${slug}/tokens`, { label });
+  return res.data;
+}
+
+export async function revokeAppToken(slug: string, tokenId: string): Promise<void> {
+  await apiClient.delete(`/admin/apps/${slug}/tokens/${tokenId}`);
 }
 
 export type DiffAction = 'add' | 'update-desc' | 'explicit-deprecate' | 'implicit-deprecate';

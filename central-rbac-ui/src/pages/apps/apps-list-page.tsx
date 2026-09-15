@@ -58,6 +58,11 @@ function AppRowActions({ app, onEditManifest, onDelete }: AppRowActionsProps) {
             Sửa OIDC
           </DropdownMenuItem>
         )}
+        {app.slug && (
+          <DropdownMenuItem onSelect={() => navigate(`/apps/${app.slug}/tokens`)}>
+            Quản lý tokens
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={() => navigate(`/apps/${app.id}/manifest`)}>
           Đồng bộ manifest
         </DropdownMenuItem>

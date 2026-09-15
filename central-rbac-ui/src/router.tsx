@@ -16,6 +16,7 @@ import { AppsListPage } from '@/pages/apps/apps-list-page';
 import { NewAppWizardPage } from '@/pages/apps/new-app-wizard-page';
 import { EditAppPage } from '@/pages/apps/edit-app-page';
 import { ManifestSyncPage } from '@/pages/apps/manifest-sync-page';
+import { AppTokensPage } from '@/pages/apps/app-tokens-page';
 import { AuditLogPage } from '@/pages/audit/audit-log-page';
 import { RolesListPage } from '@/pages/roles/roles-list-page';
 
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
           { path: 'apps', element: <AppsListPage /> },
           { path: 'apps/new', element: <NewAppWizardPage /> },
           { path: 'apps/:slug/edit', element: <EditAppPage /> },
+          { path: 'apps/:slug/tokens', element: <AppTokensPage /> },
           { path: 'apps/:id/manifest', element: <ManifestSyncPage /> },
           { path: 'audit', element: <AuditLogPage /> },
           { path: 'roles', element: <RolesListPage /> },

@@ -380,7 +380,9 @@ services:
   # 260701-1544). Talks to LLM providers directly via LiteLLM SDK, not through
   # litellm-proxy — that keeps latency low and avoids a second network hop.
   agent:
-    build: ../agent
+    build:
+      context: ..                        # project root — Dockerfile reaches central-rbac-client/python
+      dockerfile: agent/Dockerfile
     container_name: ragstack-agent
     restart: unless-stopped
     profiles: [agent]

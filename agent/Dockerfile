@@ -1,12 +1,20 @@
 # Multi-stage build — runtime image carries only wheels, no build tools.
+# Build context = project root (compose sets context: ..) so we can reach
+# central-rbac-client/python for the RBAC SDK dep.
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
 RUN pip install --no-cache-dir --upgrade pip build
-COPY pyproject.toml ./
-COPY src ./src
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels . \
-    && pip wheel --no-cache-dir --wheel-dir /wheels .
+
+# 1. Wheel Central RBAC SDK first (agent depends on it)
+COPY central-rbac-client/python /build/rbac-client
+RUN pip wheel --no-cache-dir --wheel-dir /wheels /build/rbac-client
+
+# 2. Wheel agent + transitive deps (find-links picks up the SDK wheel above)
+COPY agent/pyproject.toml /build/agent/pyproject.toml
+COPY agent/src /build/agent/src
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /build/agent \
+    && pip wheel --no-cache-dir --find-links=/wheels --wheel-dir /wheels /build/agent
 
 FROM python:3.12-slim AS runtime
 

@@ -14,6 +14,9 @@ import {
   useSyncManifestMutation,
 } from '@/hooks/use-apps-query';
 import type { DiffAction, DiffItem, SyncResult } from '@/api/apps';
+import { ManifestImportInlineTab } from './manifest-import-inline-tab';
+
+type SourceTab = 'url' | 'inline';
 
 const CATEGORIES: {
   key: DiffAction;
@@ -46,25 +49,31 @@ export function ManifestSyncPage() {
   const app = apps.find((a) => a.id === id);
   const syncMutation = useSyncManifestMutation(id ?? '');
   const applyMutation = useApplyManifestDiffMutation(id ?? '');
+  const [tab, setTab] = useState<SourceTab>('url');
   const [result, setResult] = useState<SyncResult | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applyResult, setApplyResult] = useState<{ counts: Record<DiffAction, number> } | null>(null);
+
+  /** Both tabs feed vào cùng SyncResult → diff review UI shared. */
+  function acceptResult(r: SyncResult) {
+    setResult(r);
+    setApplyResult(null);
+    if (r.status === 'fetched' && r.diff) {
+      const next = new Set<string>();
+      for (const item of r.diff.items) {
+        const cat = CATEGORIES.find((c) => c.key === item.action);
+        if (cat?.defaultChecked) next.add(`${item.action}:${item.id}`);
+      }
+      setSelected(next);
+    }
+  }
 
   async function handleSync() {
     setResult(null);
     setApplyResult(null);
     try {
       const r = await syncMutation.mutateAsync();
-      setResult(r);
-      // Initialize checkbox state based on category defaults
-      if (r.status === 'fetched' && r.diff) {
-        const next = new Set<string>();
-        for (const item of r.diff.items) {
-          const cat = CATEGORIES.find((c) => c.key === item.action);
-          if (cat?.defaultChecked) next.add(`${item.action}:${item.id}`);
-        }
-        setSelected(next);
-      }
+      acceptResult(r);
     } catch (err) {
       setResult(null);
       alert(`Sync thất bại: ${err instanceof Error ? err.message : String(err)}`);
@@ -126,14 +135,50 @@ export function ManifestSyncPage() {
       <div>
         <Link to="/apps" className="text-blue-600 text-sm hover:underline">← Ứng dụng</Link>
         <h1 className="text-2xl font-semibold text-gray-900 mt-2">Sync Manifest — {app.name}</h1>
-        <p className="text-sm text-gray-500 mt-1 font-mono">{app.manifest_url ?? '(chưa cấu hình manifest_url)'}</p>
       </div>
 
-      <div className="flex gap-2">
-        <Button onClick={handleSync} disabled={syncMutation.isPending || !app.manifest_url}>
-          {syncMutation.isPending ? 'Đang fetch...' : 'Fetch + Diff'}
-        </Button>
+      {/* Tabs container — Phase 3 plan 260915-1615: 2 source options share diff review UI */}
+      <div className="border-b border-gray-200 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setTab('url')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === 'url'
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Fetch từ URL
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('inline')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === 'inline'
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Import inline (JSON/YAML)
+        </button>
       </div>
+
+      {tab === 'url' && (
+        <div className="space-y-2">
+          <p className="text-sm text-gray-500 font-mono">
+            {app.manifest_url ?? '(chưa cấu hình manifest_url)'}
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={handleSync} disabled={syncMutation.isPending || !app.manifest_url}>
+              {syncMutation.isPending ? 'Đang fetch...' : 'Fetch + Diff'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'inline' && id && (
+        <ManifestImportInlineTab appId={id} onResult={acceptResult} />
+      )}
 
       {result?.status === 'not-modified' && (
         <div className="bg-blue-50 border border-blue-200 text-blue-900 text-sm rounded-md p-3">

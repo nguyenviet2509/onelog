@@ -10,6 +10,7 @@ import {
   listApps,
   patchApp,
   syncManifest,
+  syncManifestInline,
   updateManifestUrl,
   type CreateAppInput,
   type DiffAction,
@@ -40,6 +41,13 @@ export function useCreateAppMutation() {
 export function useSyncManifestMutation(appId: string) {
   return useMutation({
     mutationFn: () => syncManifest(appId),
+  });
+}
+
+export function useSyncManifestInlineMutation(appId: string) {
+  return useMutation({
+    mutationFn: (input: { format: 'json' | 'yaml'; content: string }) =>
+      syncManifestInline(appId, input.format, input.content),
   });
 }
 

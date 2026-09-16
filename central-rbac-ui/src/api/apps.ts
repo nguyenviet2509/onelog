@@ -128,6 +128,20 @@ export async function syncManifest(appId: string): Promise<SyncResult> {
   return res.data;
 }
 
+/** Phase 3 plan 260915-1615: paste manifest JSON/YAML trực tiếp thay HTTP fetch.
+ *  Returns cùng shape SyncResult — apply endpoint dùng sha256-pinned identical URL flow. */
+export async function syncManifestInline(
+  appId: string,
+  format: 'json' | 'yaml',
+  content: string,
+): Promise<SyncResult> {
+  const res = await apiClient.post<SyncResult>(
+    `/admin/apps/${appId}/sync-manifest-inline`,
+    { format, content },
+  );
+  return res.data;
+}
+
 export async function applyManifestDiff(
   appId: string,
   manifest_sha256: string,

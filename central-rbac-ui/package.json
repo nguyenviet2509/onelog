@@ -20,6 +20,7 @@
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.19.0",
     "clsx": "^2.1.1",
+    "js-yaml": "4.1.0",
     "oidc-client-ts": "^3.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -30,6 +31,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

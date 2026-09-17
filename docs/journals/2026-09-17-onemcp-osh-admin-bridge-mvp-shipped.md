@@ -137,6 +137,14 @@ Sau khi MVP shipped, user request full E2E qua Claude Desktop → OneMCP local �
 - ✅ Bearer confidentiality: chỉ decrypt at proxy boundary, never logged
 - ✅ Path C guard fixed (opaque token now carries zitadelSub from DB lookup)
 
+**Negative test (2026-09-17 20:05)** — persona `test-user-partial` (chỉ có `osh_admin:tool.query_access_log`):
+- Test setup: `UPDATE users SET zitadel_sub='test-user-partial'` + rebuild mock (xoá wildcard `'*'` entry — earlier dev bypass override RBAC gate)
+- ✅ Prompt `Chặn IP 5.6.7.8 trên foo.com` → Claude header: **"1 failed"** → LLM echo `missing_permission: osh_admin:tool.create_waf` + suggest "cần cấp quyền admin"
+- ✅ Prompt `Xem access log của foo.com` → **200** — 20 log entries returned (user CÓ perm query)
+- ✅ Cross-tool granularity: cùng user, mixed permissions per-tool → distributed check per-permission works
+- ✅ Mock stdout: 2 events `outcome:"deny"|"allow"` với correlation_id đầy đủ (traceability chain complete)
+- ✅ Backfill restored về `test-user-x` sau khi test xong
+
 **Files touched post-MVP**:
 - `backend/src/oauth/bearer-auth.middleware.ts` + `zitadel-jwt.middleware.ts` (E2E fix)
 - `backend/src/oauth/oauth.service.ts` + `oauth.controller.ts` + `access/trust-user.middleware.ts` (dev bypasses)

@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneMCP → osh_admin bridge — Workflow tổng hợp</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --border: #e5e7eb;
+    --text: #111827;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  header {
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+    color: white;
+    padding: 3rem 2rem 2rem;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0 0 0.5rem;
+    font-size: 2rem;
+    font-weight: 700;
+  }
+  header .subtitle {
+    opacity: 0.9;
+    font-size: 1rem;
+  }
+  header .meta {
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    opacity: 0.75;
+  }
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  section h2 {
+    margin: 0 0 1rem;
+    font-size: 1.4rem;
+    color: var(--primary);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.5rem;
+  }
+  section h2 .badge {
+    display: inline-block;
+    background: var(--code-bg);
+    color: var(--muted);
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+    font-weight: 500;
+  }
+  .tldr {
+    background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%);
+    border: none;
+  }
+  .tldr h2 { color: #1e3a8a; border: none; padding: 0; }
+  .tldr ol {
+    margin: 0.5rem 0 0;
+    padding-left: 1.5rem;
+    font-size: 1rem;
+  }
+  .tldr li { margin-bottom: 0.5rem; }
+  .tldr code {
+    background: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    border: 1px solid var(--border);
+  }
+  .mermaid {
+    background: white;
+    text-align: center;
+    padding: 1rem 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--code-bg);
+    font-weight: 600;
+    color: var(--text);
+  }
+  tr:hover td { background: #fafafa; }
+  .persona {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .p-actor { background: #ede9fe; color: #6d28d9; }
+  .p-onemcp { background: #dcfce7; color: #15803d; }
+  .p-central { background: #dbeafe; color: #1e40af; }
+  .p-osh { background: #fef3c7; color: #b45309; }
+  .p-oncall { background: #fee2e2; color: #b91c1c; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  .card {
+    background: var(--code-bg);
+    padding: 1rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary);
+  }
+  .card.setup { border-color: var(--warning); }
+  .card.runtime { border-color: var(--success); }
+  .card.fail { border-color: var(--danger); }
+  .card h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+  }
+  .card p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .card .count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+  footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    margin-top: 2rem;
+  }
+  footer a {
+    color: var(--primary);
+    text-decoration: none;
+    margin: 0 8px;
+  }
+  footer a:hover { text-decoration: underline; }
+  .callout {
+    background: #fef3c7;
+    border-left: 4px solid var(--warning);
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+  }
+  .callout strong { color: #92400e; }
+  code.inline {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .status-badge {
+    display: inline-block;
+    background: #10b981;
+    color: white;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin: 0 4px;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+  @media (max-width: 800px) { .status-grid { grid-template-columns: 1fr; } }
+  .status-col {
+    padding: 1.25rem;
+    border-radius: 8px;
+    border: 2px solid;
+  }
+  .status-col.done {
+    background: #f0fdf4;
+    border-color: #10b981;
+  }
+  .status-col.pending {
+    background: #fffbeb;
+    border-color: #f59e0b;
+  }
+  .status-col h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-col.done h3 { color: #047857; }
+  .status-col.pending h3 { color: #b45309; }
+  .status-col ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    list-style: none;
+  }
+  .status-col li {
+    margin-bottom: 0.5rem;
+    font-size: 0.88rem;
+    position: relative;
+    padding-left: 1.25rem;
+  }
+  .status-col.done li::before {
+    content: "✅";
+    position: absolute;
+    left: -1rem;
+    font-size: 0.85em;
+  }
+  .status-col.pending li::before {
+    content: "⏸";
+    position: absolute;
+    left: -1rem;
+  }
+  .status-col li .tag {
+    display: inline-block;
+    background: white;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-family: "SF Mono", Consolas, monospace;
+    color: var(--muted);
+    margin-left: 4px;
+    border: 1px solid var(--border);
+  }
+  .checklist-section {
+    background: linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%);
+    border-color: #f59e0b;
+  }
+  .checklist-section h2 { color: #92400e; }
+  .checklist-item {
+    background: white;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    border-left: 4px solid #f59e0b;
+  }
+  .checklist-item h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+    color: #78350f;
+  }
+  .checklist-item .why {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+  .checklist-item .example {
+    font-size: 0.8rem;
+    background: var(--code-bg);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-family: "SF Mono", Consolas, monospace;
+    color: var(--text);
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .st-done { color: #047857; font-weight: 600; }
+  .st-pending { color: #b45309; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OneMCP → osh_admin bridge</h1>
+  <div class="subtitle">Workflow tổng hợp — <span class="status-badge">MVP shipped + E2E verified</span> · chờ osh_admin để P5d prod swap</div>
+  <div class="meta">Plan: <code>plans/260917-0902-onemcp-osh-admin-bridge</code> · Effort: 7.5d MVP · Updated: 2026-09-17</div>
+</header>
+
+<main>
+
+<section class="tldr">
+  <h2>⚡ TL;DR — Đâu đã ready, đâu chờ</h2>
+  <ol>
+    <li><strong>OneMCP-side READY</strong>: bridge framework shipped + E2E verified qua mock (positive user X 3 tools pass + negative user_partial mixed permission — screenshot proof). Chạy được với BẤT KỲ external HTTP API tương lai, không riêng osh_admin.</li>
+    <li><strong>osh_admin-side CHỜ</strong>: dev osh_admin cần integrate SDK Central RBAC, publish manifest <code>.well-known/rbac-permissions.json</code>, expose endpoint prod, cấp bearer service-to-service.</li>
+    <li><strong>P5d prod swap</strong>: chỉ 1 SQL update <code>tool_upstreams</code> record (mock URL → prod URL, dev bearer → real encrypted) + smoke happy path. Ước tính 0.5d khi osh_admin ready.</li>
+  </ol>
+  <div class="callout" style="margin-top: 1rem;">
+    <strong>Distributed check pattern (verified 2026-09-17):</strong> OneMCP = pure proxy. Forward <code class="inline">X-Onemcp-User-Sub</code> (Zitadel sub) + Bearer + Correlation-Id. osh_admin backend owns RBAC gate (SDK Central resolve). Mock hiện tại simulate RBAC gate với 3 personas (test-user-x/y/partial) — behavior identical với prod flow.
+  </div>
+</section>
+
+<section>
+  <h2>🎯 Trạng thái hiện tại <span class="badge">2026-09-17</span></h2>
+  <div class="status-grid">
+    <div class="status-col done">
+      <h3>OneMCP-side — 12 items DONE</h3>
+      <ul>
+        <li>Registry DB (<code class="inline">tool_upstreams</code> + <code class="inline">tool_bridges</code>) + migration<span class="tag">be8ce76</span></li>
+        <li>Admin CRUD API + Zod DTO + bearer encryption (AES-256-GCM)<span class="tag">be8ce76</span></li>
+        <li>HTTP proxy client + timeout/retry/response-cap 1MB<span class="tag">0da56e5</span></li>
+        <li>MCP dispatch: <code class="inline">tools/list</code> merge + <code class="inline">tools/call</code> forward + Path C guard<span class="tag">0da56e5</span></li>
+        <li>Admin UI portal <code class="inline">/admin/tool-bridges</code> + dry-run test modal<span class="tag">f6fe4ce</span></li>
+        <li>Mock osh_admin server (3 endpoints + 3 personas RBAC gate + 4 scenarios)<span class="tag">3784785</span></li>
+        <li>Prometheus metrics (4 series) + Alertmanager rule (success &lt;90%)<span class="tag">c92bb7b</span></li>
+        <li>Review fixes (audit Path C denial + schema errors + reserved names)<span class="tag">1087e10</span></li>
+        <li>zitadelSub DB lookup (opaque OAuth token → sub) + prod self-heal<span class="tag">760cb2d</span></li>
+        <li>E2E positive verified: 3 tools qua Claude Desktop, test-user-x<span class="tag">screenshot 16:56</span></li>
+        <li>E2E negative verified: test-user-partial → 403 create_waf + 200 query_log<span class="tag">screenshot 20:05</span></li>
+        <li>Docs: guideline + runbook + smoke plan + E2E guide + journal<span class="tag">8d3497d + ef92636 + 78b07d6 + 3eee124</span></li>
+      </ul>
+    </div>
+    <div class="status-col pending">
+      <h3>osh_admin-side — 6 items TODO (block P5d)</h3>
+      <ul>
+        <li>Register app <code class="inline">osh_admin</code> trên Central RBAC portal (wizard tạo app + get token)</li>
+        <li>Publish manifest <code class="inline">.well-known/rbac-permissions.json</code> với 3 permissions (<code class="inline">osh_admin:tool.create_waf</code>, <code class="inline">create_rate_limit</code>, <code class="inline">query_access_log</code>) + <code class="inline">default_roles</code></li>
+        <li>Integrate <code class="inline">central-rbac-client</code> SDK trong backend osh_admin (init với <code class="inline">appSlug=osh_admin</code> + token + cache 60s + circuit breaker built-in)</li>
+        <li>Backend middleware: verify header <code class="inline">X-Onemcp-User-Sub</code> → gọi <code class="inline">sdk.resolve(sub, tenant)</code> → gate per-endpoint theo <code class="inline">routePerm</code> mapping</li>
+        <li>Expose prod endpoint URL (VD <code class="inline">https://gateway.onepanel.vn:8443/osh_admin</code>) + cấp bearer token service-to-service cho OneMCP</li>
+        <li>Confirm exposure model: LAN-only (IP whitelist đủ) vs Public (cần promote HMAC signed header) — decides M1 security mechanism</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout" style="margin-top: 1.25rem;">
+    <strong>Ownership boundary:</strong> Contract giữa 2 systems = HTTP header (<code class="inline">X-Onemcp-User-Sub</code> + <code class="inline">Authorization: Bearer</code> + <code class="inline">X-Onemcp-Correlation-Id</code>). Không code dependency giữa 2 repos. OneMCP không đụng Central RBAC (không init SDK, không apply manifest). osh_admin làm hết phần RBAC — OneMCP chỉ chuyển tiếp identity.
+  </div>
+</section>
+
+<section>
+  <h2>🔀 Split ownership OneMCP ↔ osh_admin</h2>
+  <div class="mermaid">
+flowchart LR
+    subgraph done["🟢 OneMCP-side — DONE (MVP shipped)"]
+        direction TB
+        D1[Bridge Registry DB<br/>tool_upstreams + bridges]
+        D2[Admin UI Portal<br/>/admin/tool-bridges]
+        D3[HTTP Proxy Client<br/>timeout + retry + cap]
+        D4[MCP Dispatch<br/>tools/list + tools/call]
+        D5[Path C Guard<br/>Zitadel sub required]
+        D6[Audit + Metrics<br/>Prometheus + Alertmanager]
+        D7[Mock osh_admin<br/>3 personas RBAC gate]
+        D1 --> D4
+        D2 --> D1
+        D3 --> D4
+        D4 --> D5
+        D4 --> D6
+        D3 -.->|current| D7
+    end
+
+    subgraph pending["🟡 osh_admin-side — PENDING (block P5d)"]
+        direction TB
+        P1[Register app osh_admin<br/>trên Central RBAC]
+        P2[Publish manifest<br/>.well-known/rbac-permissions.json]
+        P3[Integrate SDK<br/>central-rbac-client]
+        P4[Middleware verify<br/>X-Onemcp-User-Sub]
+        P5[Expose prod endpoint<br/>+ cấp bearer S2S]
+        P6[Confirm exposure model<br/>LAN vs Public]
+        P1 --> P2
+        P2 --> P3
+        P3 --> P4
+        P4 --> P5
+        P5 --> P6
+    end
+
+    subgraph contract["📋 Boundary contract (immutable)"]
+        C1[HTTP headers only<br/>X-Onemcp-User-Sub + Bearer + Correlation-Id]
+    end
+
+    done ==>|"P5d swap: mock URL → prod URL"| pending
+    contract -.->|"defines"| done
+    contract -.->|"defines"| pending
+
+    classDef doneNode fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#065f46
+    classDef pendingNode fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef contractNode fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3
+    class D1,D2,D3,D4,D5,D6,D7 doneNode
+    class P1,P2,P3,P4,P5,P6 pendingNode
+    class C1 contractNode
+  </div>
+  <div class="callout" style="margin-top: 1rem;">
+    <strong>Zero code coupling:</strong> 2 repos hoàn toàn độc lập. OneMCP không import gì từ osh_admin, không share DB, không share config. Chỉ HTTP header contract. Nghĩa là dev osh_admin có thể chọn stack bất kỳ (Go/Node/Python/Java) miễn implement được `X-Onemcp-User-Sub` header verify + SDK Central RBAC integration.
+  </div>
+</section>
+
+<section>
+  <h2>📊 Tổng quan — Setup + Runtime + Failure</h2>
+  <div class="cards">
+    <div class="card setup">
+      <span class="count">5</span>
+      <h3>Setup bước</h3>
+      <p>Làm 1 lần / tool mới</p>
+    </div>
+    <div class="card runtime">
+      <span class="count">~50ms</span>
+      <h3>Runtime latency</h3>
+      <p>Cache hit / tool call</p>
+    </div>
+    <div class="card runtime">
+      <span class="count">≤10s</span>
+      <h3>Revoke visible</h3>
+      <p>SDK epoch poller</p>
+    </div>
+    <div class="card fail">
+      <span class="count">4</span>
+      <h3>Failure modes</h3>
+      <p>403 · 503 · 504 · truncate</p>
+    </div>
+  </div>
+
+  <div class="mermaid">
+flowchart TB
+    subgraph setup["🔧 SETUP — 1 lần / tool mới"]
+        direction LR
+        S1[Dev osh_admin<br/>viết endpoint<br/>+ publish manifest] --> S2[Admin OneMCP<br/>register bridge]
+        S1 --> S3[Admin Central RBAC<br/>apply manifest<br/>app osh_admin]
+        S3 --> S4[Admin Central RBAC<br/>assign role<br/>osh_admin.* cho user]
+    end
+
+    subgraph runtime["⚡ RUNTIME — mỗi lần chat (distributed check)"]
+        direction LR
+        R1(["👤 Actor"]) -->|prompt| R2[Claude Desktop]
+        R2 -->|MCP call| R3[OneMCP<br/>pure proxy]
+        R3 -->|Bearer + X-User-Sub| R5[osh_admin]
+        R5 -->|resolve cache 60s| R4[Central RBAC]
+        R4 -->|permissions| R5
+        R5 -->|response hoặc 403| R3
+        R3 --> R2
+        R2 -->|kết quả| R1
+    end
+
+    subgraph fail["⚠️ FAILURE MODES"]
+        direction LR
+        F1[User không quyền] -.->|"403"| R1
+        F2[Central down<br/>circuit open] -.->|"503 + alert"| R1
+        F3[osh_admin timeout] -.->|"504"| R1
+        F4[Response &gt; 1MB] -.->|"truncate"| R1
+    end
+
+    setup ==>|"tools available"| runtime
+    runtime -.->|"edge cases"| fail
+
+    classDef setupNode fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef runtimeNode fill:#d1fae5,stroke:#059669,stroke-width:2px
+    classDef failNode fill:#fee2e2,stroke:#dc2626,stroke-width:2px
+    class S1,S2,S3,S4 setupNode
+    class R1,R2,R3,R4,R5 runtimeNode
+    class F1,F2,F3,F4 failNode
+  </div>
+</section>
+
+<section>
+  <h2>🔄 Runtime chi tiết <span class="badge">1 tool call</span></h2>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Actor
+    participant CD as Claude Desktop
+    participant MCP as OneMCP (proxy)
+    participant Osh as osh_admin backend
+    participant Central as Central RBAC
+
+    Actor->>CD: chặn IP 1.2.3.4 cho foo.com
+    CD->>MCP: tools/call create_waf
+    MCP->>MCP: verify OAuth + extract Zitadel sub
+    MCP->>MCP: validate args vs param_schema
+    MCP->>Osh: POST /waf/rules — Bearer + X-Onemcp-User-Sub + X-CorrID
+    Osh->>Central: resolve(user_sub, appSlug=osh_admin)
+    alt cache hit under 60s
+      Central-->>Osh: permissions ~1ms
+    else cache miss
+      Central-->>Osh: fetch /v2/resolve ~500ms
+    end
+    alt user có quyền osh_admin:tool.create_waf
+      Osh->>Osh: execute business logic
+      Osh-->>MCP: 200 waf_id
+    else user không quyền
+      Osh-->>MCP: 403 permission_denied
+    end
+    MCP->>MCP: audit publish async
+    MCP-->>CD: forward response
+    CD-->>Actor: kết quả hoặc thông báo lỗi
+  </div>
+</section>
+
+<section>
+  <h2>🚀 Setup — Thêm tool mới <span class="badge">5 bước · ~10 phút</span></h2>
+  <div class="mermaid">
+flowchart LR
+    A["⏸ PENDING<br/>Dev osh_admin<br/>expose endpoint<br/>+ publish manifest<br/>osh_admin:*"] --> B["✅ DONE<br/>OneMCP admin<br/>register bridge<br/>/admin/tool-bridges<br/>(mock URL now)"]
+    A --> D["⏸ PENDING<br/>Central admin<br/>Fetch + Diff + Apply<br/>app osh_admin"]
+    D --> E["⏸ PENDING<br/>Central admin<br/>assign role<br/>osh_admin.* cho user"]
+    B --> F(["🟡 PARTIAL<br/>LLM thấy tool + gọi được<br/>hiện mock, prod khi osh_admin ready"])
+    E --> F
+
+    style A fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style B fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style D fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style E fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style F fill:#ede9fe,stroke:#7c3aed,stroke-width:2px
+  </div>
+  <div class="callout">
+    <strong>Ownership split:</strong> Dev osh_admin sở hữu app <code class="inline">osh_admin</code> trên Central (manifest + SDK integrate). OneMCP chỉ register bridge (upstream URL + bearer + param_schema) — không đụng Central RBAC. Auto-wire <code class="inline">default_roles</code> vẫn áp dụng cho app osh_admin.
+  </div>
+</section>
+
+<section>
+  <h2>🗺️ System boundaries — 4 systems (hiện tại vs P5d prod)</h2>
+  <div class="mermaid">
+flowchart LR
+    subgraph U["👤 User side ✅ READY"]
+        A(["Actor"])
+        CD[Claude Desktop<br/>onemcp-local]
+    end
+    subgraph O["🟢 OneMCP — pure proxy ✅ READY"]
+        Portal[Admin Portal<br/>/admin/tool-bridges]
+        DB[(tool_bridges + upstreams<br/>base_url=mock now,<br/>swap to prod at P5d)]
+        Proxy[HttpProxyClient<br/>+ Path C guard<br/>+ metrics]
+    end
+    subgraph MOCK["🟠 mock-osh-admin — DEV NOW (docker-compose.dev)"]
+        MockApi[Express server<br/>3 endpoints]
+        MockGate[fakeRbacGate<br/>3 personas hardcoded<br/>test-user-x/y/partial]
+    end
+    subgraph X["🟡 osh_admin REAL — ⏸ PENDING (block P5d)"]
+        Api[HTTP API prod<br/>WAF · rate limit · logs]
+        SDK[central-rbac-client SDK<br/>appSlug=osh_admin<br/>cache 60s + epoch 10s]
+    end
+    subgraph C["🔵 Central RBAC ✅ ready to serve"]
+        CApi[/v2/resolve API<br/>+ epoch/]
+        CPortal[Manifest apply UI<br/>Role Management<br/>app osh_admin<br/>⏸ chưa register]
+    end
+
+    A --> CD
+    CD -->|OAuth + MCP| Proxy
+    Portal -->|manages| DB
+    DB --> Proxy
+    Proxy -->|Bearer + X-User-Sub| MockApi
+    MockApi --> MockGate
+    Proxy -.->|"P5d swap →<br/>real endpoint"| Api
+    Api -.-> SDK
+    SDK -.->|resolve| CApi
+    CPortal -.-> CApi
+
+    style U fill:#ede9fe,stroke:#7c3aed,stroke-width:2px
+    style O fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style MOCK fill:#fed7aa,stroke:#ea580c,stroke-width:2px
+    style C fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+    style X fill:#fef3c7,stroke:#d97706,stroke-width:3px,stroke-dasharray:5 5
+  </div>
+  <div class="callout" style="margin-top: 1rem;">
+    <strong>Đường liền = active flow (hiện tại):</strong> OneMCP → mock-osh-admin. <strong>Đường đứt = P5d flow (pending):</strong> OneMCP → osh_admin thật → Central RBAC resolve. Swap chỉ update <code class="inline">tool_upstreams.osh_admin.base_url + bearer_ciphertext</code>, không cần rebuild/redeploy.
+  </div>
+</section>
+
+<section>
+  <h2>👥 Ai làm gì <span class="badge">Status tracked</span></h2>
+  <table>
+    <thead>
+      <tr><th>Persona</th><th>Việc phải làm</th><th>Status</th><th>Ở đâu</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="persona p-actor">Actor</span></td>
+        <td>Chat với Claude Desktop</td>
+        <td><span class="st-done">✅ Ready</span> — E2E verified qua mock</td>
+        <td>Claude Desktop <code class="inline">onemcp-local</code></td>
+      </tr>
+      <tr>
+        <td><span class="persona p-onemcp">Admin OneMCP</span></td>
+        <td>Register bridge (upstream + tool + param_schema)</td>
+        <td><span class="st-done">✅ Done</span> — 3 bridges seeded (mock URL)</td>
+        <td><code class="inline">/admin/tool-bridges</code></td>
+      </tr>
+      <tr>
+        <td><span class="persona p-osh">Dev osh_admin</span></td>
+        <td>Endpoint + bearer + schema + <strong>SDK Central integrate</strong> + publish manifest</td>
+        <td><span class="st-pending">⏸ Pending</span> — block P5d prod swap</td>
+        <td>osh_admin repo (owner của app RBAC)</td>
+      </tr>
+      <tr>
+        <td><span class="persona p-central">Admin Central RBAC</span></td>
+        <td>Apply manifest app <code class="inline">osh_admin</code> + assign role</td>
+        <td><span class="st-pending">⏸ Pending</span> — chờ dev osh_admin publish manifest trước</td>
+        <td><code class="inline">/apps/&lt;osh_admin&gt;/manifest</code> + Role Management</td>
+      </tr>
+      <tr>
+        <td><span class="persona p-oncall">On-call</span></td>
+        <td>Check circuit + rotate bearer</td>
+        <td><span class="st-done">✅ Runbook ready</span> — fire khi alert (chưa có prod traffic)</td>
+        <td>Runbook <code class="inline">onemcp-tool-bridge-runbook.md</code></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>🛡️ Failure modes — Behavior khi có sự cố</h2>
+  <table>
+    <thead>
+      <tr><th>Scenario</th><th>OneMCP behavior</th><th>User thấy</th><th>Verified?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>User không quyền</strong></td>
+        <td>Forward 403 từ upstream về Claude (không gate tại OneMCP)</td>
+        <td>Claude echo "thiếu quyền <code class="inline">osh_admin:tool.create_waf</code>"</td>
+        <td><span class="st-done">✅ Mock (test-user-partial screenshot 20:05)</span></td>
+      </tr>
+      <tr>
+        <td><strong>Central RBAC down</strong></td>
+        <td>OneMCP không đụng — osh_admin SDK circuit open → osh_admin trả 503 → forward</td>
+        <td>"Service unavailable"</td>
+        <td><span class="st-pending">⏸ P5d với osh_admin thật</span></td>
+      </tr>
+      <tr>
+        <td><strong>Path C (X-User header, no OAuth)</strong></td>
+        <td>OneMCP block bridge tools sớm (không có Zitadel sub)</td>
+        <td>"OAuth required for bridge tools"</td>
+        <td><span class="st-done">✅ Unit test coverage</span></td>
+      </tr>
+      <tr>
+        <td><strong>Upstream timeout &gt;10s</strong></td>
+        <td>Abort + audit error</td>
+        <td>504 Gateway Timeout</td>
+        <td><span class="st-done">✅ Mock <code class="inline">?scenario=slow</code></span></td>
+      </tr>
+      <tr>
+        <td><strong>Response &gt; 1MB</strong></td>
+        <td>Truncate + marker</td>
+        <td>Kết quả kèm <code class="inline">[...TRUNCATED]</code></td>
+        <td><span class="st-done">✅ Mock <code class="inline">?scenario=large</code></span></td>
+      </tr>
+      <tr>
+        <td><strong>Upstream 5xx retry (GET)</strong></td>
+        <td>Retry 1x cho GET only, POST no-retry</td>
+        <td>Error propagate hoặc success sau retry</td>
+        <td><span class="st-done">✅ Unit + Mock <code class="inline">?scenario=5xx</code></span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="checklist-section">
+  <h2>📋 osh_admin handoff checklist <span class="badge">6 items để unblock P5d</span></h2>
+  <p>Chi tiết từng bước dev osh_admin cần làm để OneMCP swap từ mock sang prod. Effort estimate ~1-2 tuần (SDK integrate là phần lớn).</p>
+
+  <div class="checklist-item">
+    <h4>1. Register app osh_admin trên Central RBAC portal</h4>
+    <div class="why">Central RBAC là source of truth cho permissions. App osh_admin phải có identity trên Central để publish manifest + assign role.</div>
+    <span class="example">1. Login https://central-rbac.inet.vn (admin role)
+2. Menu Apps → New app → tên "osh_admin", slug "osh_admin"
+3. Wizard tạo Zitadel project auto (hoặc adopt existing)
+4. Copy app token (format rbac_&lt;8&gt;_&lt;24&gt;) → env osh_admin backend</span>
+  </div>
+
+  <div class="checklist-item">
+    <h4>2. Publish manifest <code class="inline">.well-known/rbac-permissions.json</code></h4>
+    <div class="why">Central RBAC portal fetch manifest từ endpoint này để know permissions + default_roles. Auto-wire khi apply.</div>
+    <span class="example">GET https://osh_admin.domain/.well-known/rbac-permissions.json →
+{
+  "app_slug": "osh_admin",
+  "version": "1.0.0",
+  "permissions": [
+    { "id": "osh_admin:tool.create_waf", "description": "Create WAF rule blocking IP/domain" },
+    { "id": "osh_admin:tool.create_rate_limit", "description": "Set request rate limit" },
+    { "id": "osh_admin:tool.query_access_log", "description": "Query HTTP access logs" }
+  ],
+  "default_roles": [
+    { "id": "osh_admin.viewer", "permissions": ["osh_admin:tool.query_access_log"] },
+    { "id": "osh_admin.operator", "permissions": ["osh_admin:tool.create_waf", "osh_admin:tool.create_rate_limit", "osh_admin:tool.query_access_log"] }
+  ]
+}</span>
+  </div>
+
+  <div class="checklist-item">
+    <h4>3. Integrate central-rbac-client SDK trong backend osh_admin</h4>
+    <div class="why">SDK có sẵn LRU cache 60s + circuit breaker + epoch poller 10s built-in. Chỉ cần init 1 lần global instance.</div>
+    <span class="example">// Node/TypeScript example (SDK repo: d:/Vietnt/Project/onelog/central-rbac-client/nodejs)
+import { CentralRbacClient } from 'central-rbac-client';
+
+const rbac = new CentralRbacClient({
+  baseUrl: process.env.CENTRAL_RBAC_URL,        // https://central-rbac.inet.vn
+  appSlug: 'osh_admin',
+  token: process.env.CENTRAL_RBAC_TOKEN,        // rbac_xxx from step 1
+  cacheMaxAgeMs: 60_000,                        // default OK
+  circuitBreaker: { threshold: 5, resetMs: 30_000 },
+});</span>
+  </div>
+
+  <div class="checklist-item">
+    <h4>4. Middleware verify X-Onemcp-User-Sub + gate per-endpoint</h4>
+    <div class="why">Đây là RBAC gate thật — thay thế fake gate trong mock. Fail-closed: nếu SDK error → 503.</div>
+    <span class="example">// Express example — apply cho các route bridge OneMCP call
+app.use(async (req, res, next) => {
+  const sub = req.headers['x-onemcp-user-sub'];
+  if (!sub) return res.status(401).json({ error: 'missing X-Onemcp-User-Sub header' });
+
+  const routePerm = {
+    'POST /waf/rules':     'osh_admin:tool.create_waf',
+    'POST /rate-limits':   'osh_admin:tool.create_rate_limit',
+    'GET /access-logs':    'osh_admin:tool.query_access_log',
+  };
+  const requiredPerm = routePerm[`${req.method} ${req.path}`];
+  if (!requiredPerm) return next();
+
+  try {
+    const perms = await rbac.resolve({ sub, tenant: 'default' });
+    if (!perms.includes(requiredPerm)) {
+      return res.status(403).json({ error: 'forbidden', missing_permission: requiredPerm });
+    }
+    next();
+  } catch (e) {
+    // Fail-closed: circuit open hoặc Central down → deny
+    res.status(503).json({ error: 'authorization service unavailable' });
+  }
+});</span>
+  </div>
+
+  <div class="checklist-item">
+    <h4>5. Expose prod endpoint URL + cấp bearer service-to-service cho OneMCP</h4>
+    <div class="why">OneMCP cần base URL + bearer để swap mock → prod. Bearer dùng chỉ cho OneMCP (service-to-service, không phải user OAuth).</div>
+    <span class="example">Deliverables sang OneMCP admin:
+1. Base URL prod (VD https://gateway.onepanel.vn:8443/osh_admin)
+2. Bearer token dài (min 32 chars random) — deliver qua Bitwarden/1Password KHÔNG email/chat
+3. Confirm 3 endpoint paths khớp OneMCP đã register:
+   - POST /waf/rules  → body {domain, ip, rules?}
+   - POST /rate-limits → body {domain, limit_rps}
+   - GET  /access-logs → query {domain, since?, limit?}
+4. Confirm param_schema field names match (case-sensitive)</span>
+  </div>
+
+  <div class="checklist-item">
+    <h4>6. Confirm exposure model → decides security mechanism</h4>
+    <div class="why">Trust boundary OneMCP ↔ osh_admin phụ thuộc network isolation. Public exposure cần HMAC (thay plaintext trust).</div>
+    <span class="example">Trả lời 1 trong 3 options:
+
+A. LAN-only (osh_admin chỉ accept traffic từ OneMCP VPC/subnet)
+   → IP whitelist middleware trên osh_admin + firewall block internet
+   → Plaintext X-Onemcp-User-Sub header OK
+   → Chọn nếu deploy trong same VPC
+
+B. Public (osh_admin expose qua public gateway)
+   → CẤM plaintext trust — attacker cùng subnet gateway có thể spoof sub
+   → REQUIRE HMAC signed X-Onemcp-User-Sub (shared secret Vault)
+   → +1-2d scope creep MVP OneMCP cần add HMAC compute
+
+C. Hybrid (internal path + public gateway)
+   → Path-based routing: public → HMAC, internal → IP whitelist
+   → Cần document per-bridge trong metadata</span>
+  </div>
+
+  <div class="callout" style="margin-top: 1.25rem;">
+    <strong>Sau khi 6 items done:</strong> OneMCP admin thực hiện P5d (~30 phút): edit upstream <code class="inline">osh_admin</code> qua <code class="inline">/admin/tool-bridges</code> UI → change base_url + bearer → save → smoke happy path 1 prompt qua Claude Desktop → verify correlation ID chain trong logs 2 systems.
+  </div>
+</section>
+
+<section>
+  <h2>📐 Persona interaction — Mỗi persona làm gì bao lâu</h2>
+  <div class="mermaid">
+flowchart TB
+    subgraph roles["4 personas + tần suất"]
+        direction LR
+        P1["🟡 Dev osh_admin<br/>viết endpoint"]
+        P2["🟢 Admin OneMCP<br/>register bridge<br/>+ manifest"]
+        P3["🔵 Admin Central RBAC<br/>apply manifest<br/>+ assign role"]
+        P4["🟣 Actor<br/>chat Claude Desktop"]
+    end
+    P1 -->|"1 lần / tool"| P2
+    P2 -->|"1 lần / tool"| P3
+    P3 -->|"1 lần / user"| P4
+    P4 -->|"nhiều lần / ngày"| P4
+
+    style P1 fill:#fef3c7,stroke:#d97706
+    style P2 fill:#d1fae5,stroke:#059669
+    style P3 fill:#dbeafe,stroke:#2563eb
+    style P4 fill:#ede9fe,stroke:#7c3aed
+  </div>
+</section>
+
+</main>
+
+<footer>
+  Related docs:
+  <a href="../docs/onemcp-tool-bridge-workflow.md">workflow.md</a> ·
+  <a href="../docs/onemcp-tool-bridge-guideline.md">guideline.md</a> ·
+  <a href="../docs/onemcp-tool-bridge-runbook.md">runbook.md</a> ·
+  <a href="../docs/onemcp-tool-bridge-smoke-plan.md">smoke-plan.md</a> ·
+  <a href="../docs/onemcp-tool-bridge-claude-desktop-e2e-guide.md">claude-desktop-e2e-guide.md</a> ·
+  <a href="../docs/journals/2026-09-17-onemcp-osh-admin-bridge-mvp-shipped.md">journal (E2E verified)</a> ·
+  <a href="../plans/260917-0902-onemcp-osh-admin-bridge/plan.md">plan.md</a>
+  <br><br>
+  Updated 2026-09-17 20:15 · Status: MVP shipped + E2E verified positive/negative · P5d pending osh_admin handoff
+  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · 11 commits pushed (2 repos)
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#dbeafe',
+      primaryTextColor: '#111827',
+      primaryBorderColor: '#2563eb',
+      lineColor: '#6b7280',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontSize: '14px'
+    },
+    flowchart: { curve: 'basis', padding: 15 },
+    sequence: { diagramMarginX: 30, diagramMarginY: 20, actorMargin: 60, boxMargin: 10 }
+  });
+</script>
+
+</body>
+</html>

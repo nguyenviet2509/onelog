@@ -3,7 +3,10 @@ date: 2026-09-17
 type: technical
 tags: [onemcp, mcp, rbac, bridge, osh-admin]
 project: onemcp + onelog
-status: e2e-verified
+status: closed
+closedAt: 2026-09-17
+archivedTo: plans/archived/260917-0902-onemcp-osh-admin-bridge/
+followupTask: P5d prod swap (~0.5d) — trigger khi dev osh_admin ready, sẽ tạo mini-plan riêng
 ---
 
 # OneMCP → osh_admin Bridge MVP Shipped

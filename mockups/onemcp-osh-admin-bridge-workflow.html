@@ -809,6 +809,100 @@ flowchart TB
   </div>
 </section>
 
+<section>
+  <h2>🚦 Deployment lifecycle — Dev vs Prod <span class="badge">2 environments</span></h2>
+  <p>Claude Desktop config có <strong>cả 2 MCP servers</strong>: <code class="inline">onemcp-local</code> (dev/test) + <code class="inline">onemcp</code> (prod). Vai trò khác nhau, không overlap.</p>
+
+  <div class="mermaid">
+flowchart TB
+    subgraph dev["🔧 DEV environment — hiện tại (2026-09-17)"]
+        direction LR
+        CDdev(["👤 Dev/QA<br/>Claude Desktop"])
+        MCPdev["onemcp-local<br/>http://localhost:3000/api/mcp"]
+        BEdev["OneMCP backend<br/>docker-compose.smoke.yml<br/>+ 3 DEV env bypasses"]
+        DBdev[(Postgres local<br/>3 bridges seeded<br/>base_url=mock)]
+        MOCKdev["mock-osh-admin:8082<br/>Express standalone<br/>3 personas hardcoded"]
+
+        CDdev -->|OAuth + MCP| MCPdev
+        MCPdev --> BEdev
+        BEdev --> DBdev
+        BEdev -->|Bearer dev-fixed-token<br/>X-Onemcp-User-Sub| MOCKdev
+    end
+
+    subgraph prod["🌐 PROD environment — sau P5d ship"]
+        direction LR
+        CDprod(["👤 Real user<br/>Claude Desktop"])
+        MCPprod["onemcp<br/>https://oneconnector.000nethost.com/mcp/"]
+        BEprod["OneMCP backend<br/>onemcp-vps<br/>KHÔNG có DEV env bypasses<br/>+ portal consent screen thật"]
+        DBprod[(Postgres prod<br/>3 bridges seeded<br/>base_url=osh_admin thật)]
+        OSHreal["osh_admin backend<br/>prod endpoint<br/>+ SDK Central RBAC"]
+        Central["Central RBAC<br/>app osh_admin registered<br/>manifest applied"]
+
+        CDprod -->|OAuth full flow| MCPprod
+        MCPprod --> BEprod
+        BEprod --> DBprod
+        BEprod -->|Bearer real encrypted<br/>X-Onemcp-User-Sub| OSHreal
+        OSHreal -->|SDK resolve| Central
+    end
+
+    dev -.->|"deploy code +<br/>migrate DB +<br/>seed bridges +<br/>swap upstream URL"| prod
+
+    style dev fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style prod fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style CDdev fill:#ede9fe
+    style CDprod fill:#ede9fe
+    style MOCKdev fill:#fed7aa
+    style OSHreal fill:#a7f3d0
+    style Central fill:#dbeafe
+  </div>
+
+  <div class="status-grid" style="margin-top: 1.5rem;">
+    <div class="status-col done">
+      <h3>🔧 Dev env — Vai trò lâu dài</h3>
+      <ul>
+        <li>Smoke E2E test workflow bridge (mock full 4 scenarios)</li>
+        <li>Dev feature mới trước khi push prod (register bridge mới, thêm scenario)</li>
+        <li>Regression test định kỳ (VD monthly hoặc trước release)</li>
+        <li>Debug prod issue — reproduce local với mock để isolate</li>
+        <li>Onboarding dev/QA mới (không cần prod access)</li>
+      </ul>
+    </div>
+    <div class="status-col done" style="background:#eff6ff;border-color:#3b82f6;">
+      <h3 style="color:#1e40af;">🌐 Prod env — Production traffic</h3>
+      <ul>
+        <li>Users cuối cùng dùng Claude Desktop → oneconnector.000nethost.com</li>
+        <li>OAuth thật qua Zitadel + portal consent screen (KHÔNG bypass)</li>
+        <li>Bridge tools dispatch tới osh_admin thật (KHÔNG mock)</li>
+        <li>Central RBAC gate ở osh_admin side (SDK cache 60s + circuit breaker)</li>
+        <li>Metrics + Alertmanager fire khi success rate &lt;90%</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 1.25rem;">
+    <strong>P5d ship checklist (deploy dev → prod)</strong>:
+    <ol style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li>Merge onemcp code lên master (đã có 3 dev bypass commits — env-gated, safe cho prod)</li>
+      <li>Deploy backend + portal lên <code class="inline">onemcp-vps</code> (git pull + docker restart)</li>
+      <li>Run migration prod DB: <code class="inline">tool_upstreams</code> + <code class="inline">tool_bridges</code> + <code class="inline">users.zitadel_sub</code> column</li>
+      <li>Register 1 upstream <code class="inline">osh_admin</code> (prod URL + real bearer) + 3 bridges qua Admin UI prod</li>
+      <li>Test happy path qua Claude Desktop dùng <code class="inline">onemcp</code> (prod) — 1 prompt <code class="inline">Xem access log của foo.com</code></li>
+      <li>Verify prod audit + osh_admin logs correlation ID chain</li>
+      <li>Announce dev/QA: có thể remove <code class="inline">onemcp-local</code> khỏi config nếu không cần dev (hoặc keep tuỳ workflow)</li>
+    </ol>
+  </div>
+
+  <div class="callout" style="margin-top: 1rem; background:#eff6ff; border-color:#3b82f6;">
+    <strong>3 DEV env vars sẽ NOT set ở prod</strong> (env-gated, prod default = disabled):
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.88rem; color:#1e3a8a;">
+      <li><code class="inline">DEV_OAUTH_AUTHORIZE_TRUST</code> — prod dùng portal session cookie thay fake header inject</li>
+      <li><code class="inline">DEV_OAUTH_AUTO_APPROVE</code> — prod dùng portal <code class="inline">/oauth-consent</code> screen thật (user click Approve)</li>
+      <li><code class="inline">MOCK_BEARER</code> — prod dùng real bearer từ dev osh_admin (encrypted AES-256-GCM trong <code class="inline">tool_upstreams.bearer_ciphertext</code>)</li>
+    </ul>
+    Deploy prod compose không cần thay đổi code — chỉ cần KHÔNG set 3 env này trong <code class="inline">docker-compose.yml</code> prod. Bypass logic tự động disable.
+  </div>
+</section>
+
 </main>
 
 <footer>
@@ -821,8 +915,8 @@ flowchart TB
   <a href="../docs/journals/2026-09-17-onemcp-osh-admin-bridge-mvp-shipped.md">journal (E2E verified)</a> ·
   <a href="../plans/260917-0902-onemcp-osh-admin-bridge/plan.md">plan.md</a>
   <br><br>
-  Updated 2026-09-17 20:15 · Status: MVP shipped + E2E verified positive/negative · P5d pending osh_admin handoff
-  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · 11 commits pushed (2 repos)
+  Updated 2026-09-17 20:40 · Status: MVP shipped + E2E verified positive/negative + Dev/Prod lifecycle documented · P5d pending osh_admin handoff
+  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · 12 commits pushed (2 repos)
 </footer>
 
 <script>

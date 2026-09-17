@@ -680,6 +680,28 @@ groups:
           description: "Check `docker logs onemcp-backend-1 --tail=100` for exception traces."
 
   # ─────────────────────────────────────────────────────────────────────────
+  # ONEMCP BRIDGE TOOL — HTTP proxy tool success rate guard (plan 260917-0902).
+  # Metric: onemcp_bridge_tool_calls_total{tool, upstream_status, outcome}.
+  # outcome="success" = upstream status 2xx/3xx. < 90% over 5m = upstream degraded.
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: onemcp-bridge-tool
+    interval: 30s
+    rules:
+      - alert: OnemcpBridgeToolSuccessRateLow
+        expr: |
+          sum(rate(onemcp_bridge_tool_calls_total{outcome="success"}[5m])) by (tool)
+          /
+          sum(rate(onemcp_bridge_tool_calls_total[5m])) by (tool) < 0.9
+        for: 5m
+        labels:
+          severity: warning
+          cluster: onemcp
+          service: onemcp
+        annotations:
+          summary: "OneMCP bridge tool {{ $labels.tool }} success rate < 90%"
+          runbook: "docs/onemcp-tool-bridge-runbook.md#tool-success-rate-low"
+
+  # ─────────────────────────────────────────────────────────────────────────
   # NATS CAPACITY — Prevent recurrence of 2026-08-26 disk crisis (NATS 46GB
   # unbounded growth → 81% disk). max_bytes=25GB hard cap installed as
   # last-line defense; these alerts fire BEFORE cap hit + BEFORE Vector

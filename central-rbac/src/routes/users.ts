@@ -18,6 +18,7 @@ import { getOrgById, getOrgsBatch } from '../lib/zitadel-org-client.js';
 import { redis } from '../lib/redis-client.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { writerPool } from '../db/writer-pool.js';
 
 const USER_DETAIL_CACHE_TTL = 60; // seconds
 
@@ -139,9 +140,25 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     // Enrich user's home org (Zitadel resourceOwner) — cache-hot after list call.
     const organization = user.home_org_id ? await getOrgById(user.home_org_id) : null;
 
+    // (Fix 2026-09-16) UI hiển thị inherited roles như direct grants gây nhầm lẫn admin.
+    // Zitadel roleKeys expanded qua hierarchy (VD grant qlts.user → Zitadel có
+    // [qlts.user, qlts.viewer] để JWT reflect inheritance). rbac.user_grants =
+    // source of truth cho DIRECT grants. Query DB → filter Zitadel roleKeys chỉ
+    // giữ direct grants → UI show đúng những gì admin đã grant.
+    const { rows: directGrantRows } = await writerPool.query<{ role_key: string }>(
+      `SELECT role_key FROM rbac.user_grants WHERE user_sub = $1`,
+      [id],
+    );
+    const directRoleSet = new Set(directGrantRows.map((r) => r.role_key));
+
     // Filter empty-role grants: leftovers from pre-fix updates that emptied roleKeys
     // instead of DELETE. UI would show them as bare "Thu hồi" rows.
+    // Also filter each grant.roleKeys → only include direct grants (drop inherited).
     const grants = rawGrants
+      .map((g) => ({
+        ...g,
+        roleKeys: g.roleKeys.filter((rk) => directRoleSet.has(rk)),
+      }))
       .filter((g) => g.roleKeys.length > 0)
       .map((g) => ({
         id: g.grantId,

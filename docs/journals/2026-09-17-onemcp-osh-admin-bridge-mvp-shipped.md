@@ -3,7 +3,7 @@ date: 2026-09-17
 type: technical
 tags: [onemcp, mcp, rbac, bridge, osh-admin]
 project: onemcp + onelog
-status: mvp-shipped
+status: e2e-verified
 ---
 
 # OneMCP → osh_admin Bridge MVP Shipped
@@ -20,6 +20,11 @@ OneMCP tool bridge framework shipped **MVP-complete** (P1–P5c). Distributed RB
 | `f6fe4ce` | onemcp | P4 | Portal admin UI `/admin/tool-bridges` CRUD + dry-run test modal (12 files) |
 | `3784785` | onemcp | P5a-5b | Mock osh-admin server (Express), Dockerfile, docker-compose.dev integration (4 files) |
 | `8d3497d` | onelog | P5c | Guideline + runbook docs (3 files) |
+| `1087e10` | onemcp | Review | Fix H1-H3 + M1 review findings (audit Path C, schema errors, reserved names) |
+| `760cb2d` | onemcp | E2E fix | Populate zitadelSub from DB for opaque token path (P3 gap discovered during E2E setup) |
+| `5e1b5bf` | onemcp | E2E dev | Dev-only bypass trust-user for /oauth/authorize (env DEV_OAUTH_AUTHORIZE_TRUST) |
+| `d35cb8b` | onemcp | E2E dev | Dev-only auto-approve consent (env DEV_OAUTH_AUTO_APPROVE) |
+| `ef92636` | onelog | Journal | This journal file |
 
 ## Delivery Summary
 
@@ -101,6 +106,42 @@ Prod swap blocked on dev osh_admin team readiness. Requires:
 - Exposure model confirmed (LAN vs public) — informs M1 red-team fix (IP whitelist vs HMAC signing)
 
 Prod swap itself = ~0.5d: update `tool_upstreams.osh_admin` record via Portal (base_url + bearer), ratify param_schema, smoke, cleanup test artifacts.
+
+## E2E Verified (2026-09-17 16:56)
+
+Sau khi MVP shipped, user request full E2E qua Claude Desktop → OneMCP local → mock-osh-admin. **PASS all 3 tools**:
+
+| Tool | Prompt | Result |
+|---|---|---|
+| `create_waf` | "Chặn IP 1.2.3.4 trên domain foo.com" | `waf-mock-ee4fd48d` returned + rendered đúng |
+| `create_rate_limit` | "Giới hạn 100 req/s cho domain foo.com" | `rl-mock-1069e269` returned |
+| `query_access_log` | "Xem access log của foo.com 5 phút gần đây" | 6 log entries returned |
+
+**Setup issues encountered (all fixed)**:
+1. **Bug P3**: `bearer-auth.middleware.ts` không lookup `users.zitadel_sub` từ DB cho opaque OAuth token → Path C guard fire 403 → **fix `760cb2d`**. Bonus: `zitadel-jwt.middleware.ts` giờ persist sub vào DB fire-and-forget on JWT login → prod self-heal, no manual backfill.
+2. **Missing portal frontend local**: `/api/oauth/authorize` redirect `localhost:3001/oauth-consent` (portal chưa build được Windows EPERM) → 2 dev bypasses:
+   - **`5e1b5bf`**: env `DEV_OAUTH_AUTHORIZE_TRUST=admin` inject fake x-onemcp-user header cho authorize endpoint (không có portal/oauth2-proxy)
+   - **`d35cb8b`**: env `DEV_OAUTH_AUTO_APPROVE=true` skip consent screen → auto-issue code
+   - Both env-gated, prod behavior unchanged
+3. **mcp-remote zombie processes**: Claude Desktop không kill node children on quit → 15 zombies accumulate → lock port 6180 → new instances stuck "Another instance is running the sign-in" → 60s timeout. Fix: manual kill by CommandLine. Saved memory rule `mcp-remote-zombie-processes.md` cho future.
+4. **`.mcp-auth` folder** (earlier session mistake): xoá cả folder = mất session Claude account. Chỉ được xoá subfolder per-server. Saved memory rule `feedback_mcp_auth_directory.md`.
+
+**Backfill for smoke**: `UPDATE users SET zitadel_sub='test-user-x' WHERE username='admin'` — map admin user Zitadel sub tới mock allowMap `test-user-x` (full 3 perms). Prod không cần backfill vì zitadel-jwt.middleware sẽ tự populate.
+
+**What was proven end-to-end**:
+- ✅ Claude Desktop → mcp-remote bridge → OneMCP OAuth flow (DCR + PKCE + auto-approve dev)
+- ✅ tools/list merge static + 3 dynamic bridges (no permission filter — distributed check)
+- ✅ tools/call dispatch: schema validate → HttpProxyClient forward → mock RBAC gate → response
+- ✅ LLM natural language Vietnamese → correct tool selection (description quality confirmed)
+- ✅ Response rendering: JSON body → Claude formats waf_id/policy_id/log entries đẹp
+- ✅ Bearer confidentiality: chỉ decrypt at proxy boundary, never logged
+- ✅ Path C guard fixed (opaque token now carries zitadelSub from DB lookup)
+
+**Files touched post-MVP**:
+- `backend/src/oauth/bearer-auth.middleware.ts` + `zitadel-jwt.middleware.ts` (E2E fix)
+- `backend/src/oauth/oauth.service.ts` + `oauth.controller.ts` + `access/trust-user.middleware.ts` (dev bypasses)
+- `backend/src/users/entities/user.entity.ts` + `users.service.ts` (zitadelSub column)
+- `docker-compose.smoke.yml` + `.env` (env vars)
 
 ## What Went Well
 

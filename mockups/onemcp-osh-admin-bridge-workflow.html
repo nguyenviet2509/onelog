@@ -852,6 +852,136 @@ C. Hybrid (internal path + public gateway)
 </section>
 
 <section>
+  <h2>🧭 When to sync Central manifest <span class="badge">Runtime decision matrix</span></h2>
+  <p>Sau khi onboarding done (7 items checklist), dev osh_admin cần biết <strong>khi nào phải re-sync manifest lên Central</strong> và khi nào chỉ cần deploy osh_admin code.</p>
+
+  <div class="callout" style="background:#f0fdf4; border-color:#10b981;">
+    <strong>Rule of thumb:</strong> "Thay đổi có touching <code class="inline">permission_id</code> hoặc <code class="inline">default_roles</code> trong <code class="inline">.well-known/rbac-permissions.json</code> không?"
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li><strong>CÓ</strong> → phải publish manifest mới + Central admin apply</li>
+      <li><strong>KHÔNG</strong> → chỉ cần deploy osh_admin code, bridges auto-refresh qua <code class="inline">/tools/list</code> (≤60s)</li>
+    </ul>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Loại thay đổi</th>
+        <th>Dev osh_admin làm gì</th>
+        <th>Central admin làm gì</th>
+        <th>OneMCP admin làm gì</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Endpoint mới (permission cũ)</strong><br/><span class="persona p-osh">common case</span></td>
+        <td>Deploy osh_admin + endpoint auto vào <code class="inline">/tools/list</code></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Sửa endpoint (path/method/schema)</strong>, permission cũ</td>
+        <td>Deploy osh_admin + <code class="inline">/tools/list</code> auto-update</td>
+        <td><span class="st-done">❌ Không cần</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Endpoint mới cần permission MỚI</strong></td>
+        <td>Deploy osh_admin + publish manifest v mới</td>
+        <td><span class="st-pending">✅ Apply manifest</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Xoá endpoint</strong> (permission còn active ở endpoint khác)</td>
+        <td>Deploy osh_admin, endpoint drop khỏi <code class="inline">/tools/list</code></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Xoá permission cũ</strong> (không endpoint nào dùng)</td>
+        <td>Publish manifest mới (không include perm đó)</td>
+        <td><span class="st-pending">✅ Apply → soft-delete + cleanup role refs</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Rename permission_id</strong><br/><em>(breaking change)</em></td>
+        <td>Publish manifest (cũ removed + mới added) + note breaking</td>
+        <td><span class="st-pending">✅ Apply + re-assign roles cho users (manual)</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Đổi permission description</strong></td>
+        <td>Publish manifest (không critical, có thể defer)</td>
+        <td><span class="st-pending">✅ Apply (nếu muốn UI update)</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Thêm/sửa/xoá default_roles</strong></td>
+        <td>Publish manifest mới</td>
+        <td><span class="st-pending">✅ Apply → auto-provision role cho users mới (users cũ không auto-migrate)</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Assign role cho user cụ thể</strong></td>
+        <td><span class="st-done">❌ Không phải việc dev</span></td>
+        <td><span class="st-pending">✅ Central portal (orthogonal với manifest)</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Rotate osh_admin app token</strong></td>
+        <td><span class="st-done">❌ Không phải việc dev</span></td>
+        <td><span class="st-pending">✅ Central portal + báo dev update env</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Đổi business logic internal endpoint</strong> (contract không đổi)</td>
+        <td>Deploy osh_admin (không đụng manifest, không đụng <code class="inline">/tools/list</code>)</td>
+        <td><span class="st-done">❌ Không cần</span></td>
+        <td><span class="st-done">❌ Không cần</span></td>
+      </tr>
+      <tr>
+        <td><strong>Bump discovery version</strong> (VD breaking param_schema field rename)</td>
+        <td>Deploy osh_admin + bump <code class="inline">version</code> field trong <code class="inline">/tools/list</code> response</td>
+        <td><span class="st-done">❌ Không cần</span></td>
+        <td>⚠️ Click "Refresh cache" nếu cần thấy immediate (không đợi 60s TTL)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="status-grid" style="margin-top: 1.5rem;">
+    <div class="status-col done">
+      <h3>✅ Chỉ dev osh_admin deploy (majority cases)</h3>
+      <ul>
+        <li>Thêm/sửa/xoá endpoint dùng permission đã tồn tại</li>
+        <li>Đổi param_schema (fields, required, description)</li>
+        <li>Đổi endpoint description</li>
+        <li>Đổi business logic internal (contract giữ nguyên)</li>
+        <li>Bump version manifest (cache invalidate side)</li>
+      </ul>
+    </div>
+    <div class="status-col pending">
+      <h3>⏸ Cần Central admin apply manifest</h3>
+      <ul>
+        <li>Thêm permission_id mới</li>
+        <li>Xoá permission_id (không endpoint nào dùng)</li>
+        <li>Rename permission_id (breaking)</li>
+        <li>Đổi default_roles composition</li>
+        <li>Đổi permission description (non-critical, defer OK)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 1.25rem;">
+    <strong>Mental model 2 layers:</strong>
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li><strong>Bridges layer (endpoint shape):</strong> quản lý qua <code class="inline">GET /tools/list</code> — OneMCP tự discover ≤60s. Central không quan tâm. Dev osh_admin autonomy 100%.</li>
+      <li><strong>Permissions layer (RBAC catalog):</strong> quản lý qua <code class="inline">.well-known/rbac-permissions.json</code> — publish + Central admin apply. Đây là source of truth cho "ai được gọi tool nào".</li>
+    </ul>
+    2 layers này orthogonal — endpoint shape đổi không cần Central, permission catalog đổi mới cần.
+  </div>
+</section>
+
+<section>
   <h2>📐 Persona interaction — Mỗi persona làm gì bao lâu</h2>
   <div class="mermaid">
 flowchart TB

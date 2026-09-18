@@ -34,7 +34,11 @@ Xem [docs/central-rbac-member-onboarding-guide.md](../central-rbac-member-onboar
 - TypeScript typecheck backend + frontend: pass
 - Deploy central-rbac + central-rbac-ui container: healthy, không error startup
 - Migration 021 applied trên VPS: `rbac.member` role + 2 permissions + mapping OK
-- P6 E2E integration test: pending user action (tạo test-member@inet.vn + capture access_token)
+- **P6 E2E integration test: 21/21 backend scenarios PASS** (2026-09-18 10:45) với test user `test-member@inet.vn` (sub `391255655794606084`):
+  - Scenario A (member CRUD own app): 6/6 — POST /v1/admin/apps 201, PATCH own app 200, POST permission `e2etest.custom` 201, POST attach perm 201, list filter empty→1
+  - Scenario B (member không đụng app khác — expect 403): 7/7 — DELETE qlts, PATCH onemcp, POST perm `qlts.foo`, POST perm `system.evil`, DELETE role qlts.admin, POST self-assign qlts.admin, PATCH legacy perm `rbac.member.read`
+  - Scenario C (member không xem audit — expect 403): 3/3 — GET /v1/audit, /v1/audit/apps, /v1/drift
+  - Scenario D (admin bypass ownership — verified with pre-fix admin token): 5/5 — GET apps (thấy đầy đủ 3 apps onemcp/qlts/rbac), audit, roles, drift, assignments đều 200
 
 ## Prereq đã có
 

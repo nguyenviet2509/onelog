@@ -9,7 +9,6 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import {
   isAdmin,
   requireMember,
-  requireViewer,
   requireAdminOrRoleOwner,
 } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
@@ -33,7 +32,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
   // Ownership scope: admin returns all roles; member returns only roles thuộc app owned
   // (bỏ system/legacy roles để tránh confusion trong grant dropdown).
-  app.get('/v1/roles', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/roles', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     if (isAdmin(request)) {
       return reply.send({ data: await listRoles(writerPool) });
     }
@@ -50,7 +49,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/roles/:key
-  app.get('/v1/roles/:key', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/roles/:key', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const role = await getRoleByKey(writerPool, p.data.key);
@@ -185,7 +184,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/roles/:key/permissions
-  app.get('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const role = await getRoleByKey(writerPool, p.data.key);
@@ -239,7 +238,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/roles/:key/stats
-  app.get('/v1/roles/:key/stats', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/roles/:key/stats', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const stats = await getRoleStats(writerPool, p.data.key);

@@ -14,7 +14,6 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import {
   isAdmin,
   requireMember,
-  requireViewer,
 } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { assignRoleToUser, removeRoleFromUser, getUserGrants } from '../services/user-grant-sync.js';
@@ -272,7 +271,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/assignments?user_id=&project_id= — list grants from Zitadel (cached 60s)
   // Ownership scope (2026-09-18): admin sees all; member sees only grants on apps owned.
   // Cache stores unfiltered — filter applied per-request.
-  app.get('/v1/assignments', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/assignments', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const query = listQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.status(400).send({ error: 'Validation error', details: query.error.issues });

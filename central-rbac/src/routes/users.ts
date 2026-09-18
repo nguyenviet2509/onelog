@@ -11,7 +11,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { isAdmin, requireViewer } from '../middleware/require-admin-or-owner.js';
+import { isAdmin, requireMember } from '../middleware/require-admin-or-owner.js';
 import { listUsersQuerySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { searchUsers, getUserById } from '../lib/zitadel-user-search-client.js';
 import { listUserGrantsAllOrgs } from '../services/user-grant-sync.js';
@@ -36,7 +36,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
    *
    * grant_count is null — caller must open drawer to get accurate count (GET /v1/users/:id).
    */
-  app.get('/v1/users', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/users', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const parsed = listUsersQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -96,7 +96,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
    * Returns: { id, email, display_name, grant_count, grants: [{ project_id, grant_id, role_keys }] }
    * Redis cache 60s keyed by user id.
    */
-  app.get('/v1/users/:id', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
+  app.get('/v1/users/:id', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid user id' });

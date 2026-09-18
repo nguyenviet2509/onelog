@@ -37,11 +37,6 @@ export function usePermissions() {
     return hasRole('rbac.member') && !isAdmin();
   }
 
-  /** True nếu user có rbac.viewer (không phải admin/member) — read-only tier */
-  function isViewer(): boolean {
-    return hasRole('rbac.viewer') && !isAdmin() && !hasRole('rbac.member');
-  }
-
   /** Chỉ admin xem audit log */
   function canReadAudit(): boolean {
     return isAdmin();
@@ -73,10 +68,10 @@ export function usePermissions() {
   }
 
   /**
-   * canRead: admin OR member OR viewer (viewer read-only tier, backend enforce scope).
+   * canRead: admin OR member. 2-tier model sau khi drop rbac.viewer.
    */
   function canRead(): boolean {
-    return isAdmin() || hasRole('rbac.member') || hasRole('rbac.viewer') || hasPermission('rbac.admin.read');
+    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.read');
   }
 
   return {
@@ -89,7 +84,6 @@ export function usePermissions() {
     canRead,
     isAdmin,
     isMember,
-    isViewer,
     canReadAudit,
     canManageApp,
     canManageUsers,

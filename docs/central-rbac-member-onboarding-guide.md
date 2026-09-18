@@ -4,14 +4,15 @@ Runbook cho admin (vietnt/kienvt) khi cấp quyền cho user mới sử dụng C
 
 **Plan ref:** [plans/260918-0822-central-rbac-ownership-authz/plan.md](../plans/260918-0822-central-rbac-ownership-authz/plan.md)
 
-## Vai trò (3 tiers)
+## Vai trò (2 tiers)
 
 | Role | Read | Write own | User mgmt (create/delete/deactivate) | Audit |
 |---|---|---|---|---|
-| `rbac.admin` (hoặc `system.root`) | ✅ all | ✅ any app | ✅ | ✅ |
-| `rbac.member` | ✅ scoped (own apps) | ✅ own app | ❌ | ❌ |
-| `rbac.viewer` | ✅ scoped (own apps) | ❌ | ❌ | ❌ |
+| `rbac.admin` (hoặc `system.root`) | ✅ all | ✅ any app | ✅ | ✅ (own app: member owner cũng xem được — plan 260918-1308 Phase 03) |
+| `rbac.member` | ✅ scoped (own apps) | ✅ own app | ❌ | ✅ own app only |
 | Không grant | ❌ Không login được (Zitadel `projectRoleCheck=true` reject) | | | |
+
+> **Note (2026-09-18):** `rbac.viewer` đã được drop trong plan `260918-1308-central-rbac-authz-full-cleanup` Phase 01 — YAGNI, chưa ai được grant + scope trùng member.
 
 ## One-time setup (chỉ chạy 1 lần cho instance)
 
@@ -53,16 +54,17 @@ User → incognito browser → `https://rbacnb.000nethost.com/` → login →
 
 ## Ownership cheat sheet
 
-| Action | Admin | Member (owner) | Member (not owner) | Viewer |
-|---|---|---|---|---|
-| Tạo app mới | ✅ | ✅ (tự thành owner) | ✅ | ❌ button hidden + 403 |
-| Sửa/xoá app | ✅ | ✅ | ❌ 403 | ❌ 403 |
-| Xem app trong list | ✅ tất cả | ✅ chỉ own | ❌ ẩn khỏi list | ✅ chỉ own (nếu có; viewer thường không own) |
-| Tạo permission `{owner_slug}.*` | ✅ | ✅ | ❌ 403 | ❌ 403 |
-| Sửa/xoá role app mình | ✅ | ✅ | ❌ 403 | ❌ 403 |
-| Grant role app mình cho user khác | ✅ | ✅ | ❌ 403 | ❌ 403 |
-| **Tạo/xoá/vô hiệu hoá user** | ✅ | ❌ button hidden + 403 | ❌ | ❌ |
-| Xem audit log | ✅ | ❌ tab hidden + 403 | ❌ | ❌ |
+| Action | Admin | Member (owner) | Member (not owner) |
+|---|---|---|---|
+| Tạo app mới | ✅ | ✅ (tự thành owner) | ✅ |
+| Sửa/xoá app | ✅ | ✅ | ❌ 403 |
+| Xem app trong list | ✅ tất cả | ✅ chỉ own | ❌ ẩn khỏi list |
+| Tạo permission `{owner_slug}.*` | ✅ | ✅ | ❌ 403 |
+| Sửa/xoá role app mình | ✅ | ✅ | ❌ 403 |
+| Grant role app mình cho user khác | ✅ | ✅ | ❌ 403 |
+| **Tạo/xoá/vô hiệu hoá user** | ✅ | ❌ button hidden + 403 | ❌ |
+| Xem audit log (own app) | ✅ tất cả | ✅ own app only | ❌ 403 |
+| Xem audit log (cross-app) | ✅ | ❌ | ❌ |
 
 ## Gotcha
 

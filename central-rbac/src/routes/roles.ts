@@ -30,8 +30,22 @@ import { createRoleWithSync, updateRoleWithSync, deleteRoleWithSync } from '../s
 
 export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
-  app.get('/v1/roles', { preHandler: [verifyJwt, requireMember] }, async (_req, reply) => {
-    return reply.send({ data: await listRoles(writerPool) });
+  // Ownership scope: admin returns all roles; member returns only roles thuộc app owned
+  // (bỏ system/legacy roles để tránh confusion trong grant dropdown).
+  app.get('/v1/roles', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+    if (isAdmin(request)) {
+      return reply.send({ data: await listRoles(writerPool) });
+    }
+    const sub = request.jwtClaims?.sub;
+    const { rows } = await writerPool.query(
+      `SELECT r.*
+         FROM rbac.roles r
+         JOIN rbac.apps a ON a.id = r.app_id
+        WHERE a.created_by = $1
+        ORDER BY r.key`,
+      [sub],
+    );
+    return reply.send({ data: rows });
   });
 
   // GET /v1/roles/:key

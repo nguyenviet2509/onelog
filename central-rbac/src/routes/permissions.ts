@@ -28,9 +28,24 @@ import {
 
 export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/permissions
-  app.get('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (_req, reply) => {
-    const perms = await listPermissions(writerPool);
-    return reply.send({ data: perms });
+  // Ownership scope: admin sees all; member sees only permissions with key prefix
+  // matching owned app slug (e.g. member of app `foo` sees `foo.*`).
+  app.get('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+    if (isAdmin(request)) {
+      const perms = await listPermissions(writerPool);
+      return reply.send({ data: perms });
+    }
+    const sub = request.jwtClaims?.sub;
+    const { rows } = await writerPool.query(
+      `SELECT p.*
+         FROM rbac.permissions p
+        WHERE split_part(p.key, '.', 1) IN (
+                SELECT slug FROM rbac.apps WHERE created_by = $1
+              )
+        ORDER BY p.key`,
+      [sub],
+    );
+    return reply.send({ data: rows });
   });
 
   // GET /v1/permissions/:key

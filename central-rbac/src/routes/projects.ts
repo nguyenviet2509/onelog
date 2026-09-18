@@ -14,7 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireMember } from '../middleware/require-admin-or-owner.js';
+import { isAdmin, requireMember, listOwnedAppsWhere } from '../middleware/require-admin-or-owner.js';
 import { config } from '../config.js';
 import { writerPool } from '../db/writer-pool.js';
 import { getOrgsBatch } from '../lib/zitadel-org-client.js';
@@ -30,24 +30,28 @@ interface AppRow {
 }
 
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/v1/projects', { preHandler: [verifyJwt, requireMember] }, async (_request, reply) => {
-    // 1. Local rbac.apps → map by zitadel_project_id for app_id lookup
+  app.get('/v1/projects', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+    // Ownership scope: admin sees all; member sees only own apps.
+    const ownerFilter = listOwnedAppsWhere(request);
     const { rows: appRows } = await writerPool.query<AppRow>(
       `SELECT id, slug, name, zitadel_project_id, zitadel_org_id
          FROM rbac.apps
-        WHERE zitadel_project_id IS NOT NULL`,
+        WHERE zitadel_project_id IS NOT NULL AND ${ownerFilter.where}`,
+      ownerFilter.params,
     );
     const appByProject = new Map(appRows.map((r) => [r.zitadel_project_id!, r]));
 
-    // 2. Live Zitadel across all orgs
+    // Member: skip Zitadel cross-org fetch — chỉ trả apps owned, không leak project existence.
     let projectsFromZitadel: Awaited<ReturnType<typeof listAllProjectsAcrossOrgs>> = [];
-    try {
-      projectsFromZitadel = await listAllProjectsAcrossOrgs();
-    } catch (err) {
-      logger.warn({ err }, '/v1/projects: Zitadel cross-org fetch failed → falling back to rbac.apps');
+    if (isAdmin(request)) {
+      try {
+        projectsFromZitadel = await listAllProjectsAcrossOrgs();
+      } catch (err) {
+        logger.warn({ err }, '/v1/projects: Zitadel cross-org fetch failed → falling back to rbac.apps');
+      }
     }
 
-    // 3. Build response — prefer Zitadel source when available
+    // Build response — prefer Zitadel source when available (admin only)
     let data: Array<{
       id: string;
       name: string;
@@ -77,7 +81,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         return a.name.localeCompare(b.name);
       });
     } else {
-      // Fallback: rbac.apps only
+      // Fallback (member always, admin when Zitadel fetch fails): rbac.apps only
       const orgMap = await getOrgsBatch(appRows.map((r) => r.zitadel_org_id));
       data = appRows
         .filter((r) => !!r.zitadel_project_id)
@@ -90,8 +94,8 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
         }));
     }
 
-    // Legacy env-only fallback for cold-start / first setup
-    if (data.length === 0 && config.ZITADEL_PROJECT_ID) {
+    // Legacy env-only fallback for cold-start / first setup (admin only)
+    if (data.length === 0 && isAdmin(request) && config.ZITADEL_PROJECT_ID) {
       data.push({
         id: config.ZITADEL_PROJECT_ID,
         name: 'central-rbac',

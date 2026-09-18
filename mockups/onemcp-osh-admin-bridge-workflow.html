@@ -539,6 +539,163 @@ sequenceDiagram
 </section>
 
 <section>
+  <h2>🤖 Làm sao Claude biết có tool gì để chọn? <span class="badge">MCP + LLM function calling</span></h2>
+
+  <div class="callout" style="background:#fef3c7; border-color:#f59e0b;">
+    <strong>⚠️ Clarify — 2 layer <code class="inline">tools/list</code> khác nhau (đừng nhầm):</strong>
+    <table style="margin-top:0.5rem; font-size:0.85rem;">
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Protocol</th>
+          <th>Direction</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>MCP <code class="inline">tools/list</code></strong></td>
+          <td>JSON-RPC 2.0 (MCP standard)</td>
+          <td>Claude Desktop → OneMCP</td>
+          <td>Client discover tools available từ MCP server</td>
+        </tr>
+        <tr>
+          <td><strong>HTTP <code class="inline">GET /tools/list</code></strong></td>
+          <td>REST HTTPS</td>
+          <td>OneMCP → osh_admin</td>
+          <td>OneMCP live-discover bridges catalog</td>
+        </tr>
+      </tbody>
+    </table>
+    OneMCP đứng <strong>giữa</strong> 2 layers — nhận MCP request, gọi HTTP osh_admin, merge kết quả, trả lại Claude.
+  </div>
+
+  <h3 style="margin-top:1.5rem; color:#1e40af;">📞 Full flow: từ Claude Desktop startup → user chat → tool call</h3>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor User
+    participant CD as Claude Desktop
+    participant LLM as Claude API<br/>(Anthropic)
+    participant MCP as OneMCP<br/>(bridge proxy)
+    participant Disc as BridgeDiscovery<br/>Service
+    participant Osh as osh_admin<br/>backend
+
+    Note over CD,Osh: ─── STARTUP (1 lần per session) ───
+    CD->>MCP: MCP initialize (handshake)
+    CD->>MCP: MCP tools/list (JSON-RPC)
+    MCP->>MCP: listDefinitions()
+    Note right of MCP: merge:<br/>+ 8 static tools<br/>+ legacy DB bridges<br/>+ live-discovered
+    MCP->>Disc: getTools(upstreamId)
+    alt cache hit (&lt;60s)
+      Disc-->>MCP: cached tools[]
+    else cache miss
+      Disc->>Osh: HTTP GET /tools/list<br/>+ Bearer
+      Osh-->>Disc: JSON {app_slug, version, tools[]}
+      Disc->>Disc: Zod validate + cache 60s
+      Disc-->>MCP: fresh tools[]
+    end
+    MCP-->>CD: tools = [{name, description, inputSchema}, ...]
+    CD->>CD: cache tools list (per session)
+
+    Note over CD,Osh: ─── USER CHAT ───
+    User->>CD: "Chặn IP 5.6.7.8 truy cập foo.com"
+    CD->>LLM: POST /v1/messages<br/>+ user message<br/>+ tools[] array
+    Note right of LLM: LLM đọc:<br/>- user prompt<br/>- tools descriptions<br/>- input schemas
+    LLM->>LLM: semantic match:<br/>"chặn IP + domain"<br/>→ create_waf<br/>(desc: "blocking IP/domain")
+    LLM->>LLM: extract params:<br/>domain="foo.com"<br/>ip="5.6.7.8"
+    LLM-->>CD: {type:"tool_use",<br/>name:"create_waf",<br/>input:{domain, ip}}
+    CD->>MCP: MCP tools/call<br/>{name, arguments}
+    MCP->>MCP: dispatch lookup:<br/>1. static? No<br/>2. legacy DB? No<br/>3. live-discovered? YES
+
+    MCP->>Osh: POST /waf/rules<br/>+ Bearer<br/>+ X-Onemcp-User-Sub<br/>+ X-Onemcp-Correlation-Id<br/>+ body {domain, ip}
+    Osh->>Osh: RBAC gate (SDK Central resolve)
+    alt user có quyền
+      Osh-->>MCP: 201 {waf_id, domain, ip}
+    else user không quyền
+      Osh-->>MCP: 403 {missing_permission}
+    end
+    MCP-->>CD: tool_result content
+    CD->>LLM: tool_result + previous context
+    LLM-->>CD: "Đã chặn IP 5.6.7.8 cho foo.com. WAF ID: waf-abc"
+    CD-->>User: hiển thị kết quả
+  </div>
+
+  <h3 style="margin-top:1.5rem; color:#1e40af;">🧠 Cơ chế LLM chọn tool — "function calling"</h3>
+  <p style="font-size:0.9rem;">
+    LLM (Claude/GPT/Gemini) đã được train để hiểu <strong>tool selection pattern</strong>. Khi API request có <code class="inline">tools[]</code> array, LLM đọc <strong>4 fields</strong> để quyết định:
+  </p>
+  <ol style="font-size:0.9rem; padding-left:1.5rem;">
+    <li><code class="inline">name</code> — tool identifier (VD <code class="inline">create_waf</code>)</li>
+    <li><strong><code class="inline">description</code></strong> — natural language explanation → <span style="color:#dc2626;">CRITICAL</span>, đây là thứ LLM dùng chủ yếu để match intent</li>
+    <li><code class="inline">input_schema.properties</code> — hiểu params cần điền</li>
+    <li><code class="inline">input_schema.required</code> — hiểu param nào bắt buộc</li>
+  </ol>
+
+  <div class="callout" style="background:#f0fdf4; border-color:#10b981; margin-top:1rem;">
+    <strong>Ví dụ LLM reasoning (simplified) cho "Chặn IP 5.6.7.8 truy cập foo.com":</strong>
+    <pre style="background:var(--code-bg); padding:0.75rem; border-radius:4px; font-size:0.82rem; margin-top:0.5rem; overflow-x:auto;">Scan tools[] descriptions:
+  ✗ "Search full-text + semantic..."       → không liên quan
+  ✓ "Create WAF rule blocking IP/domain"   ← MATCH (blocking, IP, domain)
+  ✗ "List existing WAF rules"              → verb sai (list vs create)
+  ✗ "Query recent HTTP access logs"        → không liên quan
+  ✗ "Create rate-limit policy"             → không hoàn toàn match
+
+Best match: create_waf (semantic + keyword)
+
+Extract params từ user prompt vs input_schema:
+  domain: "foo.com" (required ✓)
+  ip: "5.6.7.8"    (optional, có trong prompt → include)
+
+Emit tool_use { name: "create_waf",
+  input: { domain: "foo.com", ip: "5.6.7.8" } }</pre>
+  </div>
+
+  <h3 style="margin-top:1.5rem; color:#1e40af;">✍️ Best practices — viết description để LLM chọn đúng</h3>
+  <div class="status-grid">
+    <div class="status-col" style="background:#fee2e2; border-color:#dc2626;">
+      <h3 style="color:#b91c1c;">❌ Bad descriptions</h3>
+      <ul style="list-style:none; padding-left:0;">
+        <li><code class="inline">"Create WAF"</code> — quá ngắn, thiếu context</li>
+        <li><code class="inline">"WAF endpoint"</code> — chỉ loại, thiếu action verb</li>
+        <li><code class="inline">"POST /waf/rules"</code> — technical, không natural language</li>
+        <li><code class="inline">"Handles WAF operations"</code> — vague verb "handle"</li>
+      </ul>
+    </div>
+    <div class="status-col" style="background:#f0fdf4; border-color:#10b981;">
+      <h3 style="color:#047857;">✅ Good descriptions</h3>
+      <ul style="list-style:none; padding-left:0;">
+        <li><code class="inline">"Create WAF rule blocking IP/domain"</code> — verb + noun + purpose</li>
+        <li><code class="inline">"Query HTTP access logs for a domain — useful when investigating suspicious traffic or debugging 404 errors"</code> — thêm use case hints</li>
+        <li><code class="inline">"List active WAF rules with optional filter by domain"</code> — mô tả params + output</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top:1rem;">
+    <strong>Rules quan trọng:</strong>
+    <ol style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li><strong>Verb + Noun + Purpose</strong> structure — LLM parse dễ (VD "Create WAF rule blocking IP/domain")</li>
+      <li><strong>Include use case hints</strong> — "useful when...", "call this to..." → LLM biết khi nào trigger</li>
+      <li><strong>Distinguish similar tools</strong> — <code class="inline">create_waf</code> vs <code class="inline">create_rate_limit</code> description phải khác rõ ràng</li>
+      <li><strong>Match user vocabulary</strong> — user Việt gõ "chặn IP", description Anh "blocking IP" là đủ (LLM cross-lingual OK)</li>
+      <li><strong>Include triggers</strong> — VD static tool <code class="inline">load_runbook</code> có "Ưu tiên gọi khi user mô tả sự cố production" → LLM tự trigger đúng cảnh</li>
+      <li><strong>Param descriptions cũng critical</strong> — thêm format hints ("VD: foo.com, not full URL") và behavior hints ("Omit to block all IPs") giúp LLM extract params đúng</li>
+    </ol>
+  </div>
+
+  <div class="callout" style="margin-top:1rem; background:#fef2f2; border-color:#dc2626;">
+    <strong>⚠️ Limitation hiện tại — tools/list refresh timing:</strong>
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li>Claude Desktop <strong>chỉ gọi <code class="inline">tools/list</code> 1 lần đầu session</strong> (startup). Cache tools per session.</li>
+      <li>Nếu dev osh_admin thêm endpoint mới trong khi user đang chat: OneMCP cache expire ≤60s → OneMCP nhận endpoint mới, <strong>NHƯNG</strong> Claude Desktop chưa refresh danh sách trong session hiện tại → LLM không biết tool mới cho tới khi user restart Claude Desktop hoặc bắt đầu new chat.</li>
+      <li>MCP protocol có <code class="inline">notifications/tools/list_changed</code> để server push notify client refetch — currently OneMCP <strong>KHÔNG</strong> emit (out of scope Option D MVP). Future enhancement nếu cần dynamic tool discovery within session.</li>
+      <li><strong>Workaround thực tế:</strong> user bắt đầu new chat sau khi dev deploy endpoint mới → LLM auto refetch tools/list → thấy tool mới.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
   <h2>🚀 Setup — Thêm tool mới <span class="badge">Post Option D · ~3 bước</span></h2>
   <div class="mermaid">
 flowchart LR

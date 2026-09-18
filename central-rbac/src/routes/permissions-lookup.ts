@@ -16,7 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireMember } from '../middleware/require-admin-or-owner.js';
+import { requireViewer } from '../middleware/require-admin-or-owner.js';
 import { redis } from '../lib/redis-client.js';
 import { logger } from '../lib/logger.js';
 
@@ -29,7 +29,7 @@ export async function permissionsLookupRoutes(app: FastifyInstance): Promise<voi
     hash: z.string().regex(/^[0-9a-f]{64}$/, 'hash must be 64-char hex (SHA-256)'),
   });
 
-  app.get('/v1/permissions-lookup', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.get('/v1/permissions-lookup', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
     const parsed = hashQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });

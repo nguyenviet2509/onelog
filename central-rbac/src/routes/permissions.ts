@@ -8,6 +8,7 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import {
   isAdmin,
   requireMember,
+  requireViewer,
   requireAdminOrPermOwner,
 } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
@@ -30,7 +31,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/permissions
   // Ownership scope: admin sees all; member sees only permissions with key prefix
   // matching owned app slug (e.g. member of app `foo` sees `foo.*`).
-  app.get('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.get('/v1/permissions', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
     if (isAdmin(request)) {
       const perms = await listPermissions(writerPool);
       return reply.send({ data: perms });
@@ -49,7 +50,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/permissions/:key
-  app.get('/v1/permissions/:key', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.get('/v1/permissions/:key', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -157,7 +158,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/permissions/:key/stats
-  app.get('/v1/permissions/:key/stats', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.get('/v1/permissions/:key/stats', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 

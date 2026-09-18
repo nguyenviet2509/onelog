@@ -31,7 +31,7 @@ export function UsersListPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const { data: users = [], isLoading, error, refetch } = useUsersQuery(debouncedQ);
-  const { canWrite } = usePermissions();
+  const { canWrite, canManageUsers } = usePermissions();
   const { page, setPage, pageSize, setPageSize, totalPages, total, paged } = usePagination(users, 20);
 
   // Reset về trang 1 khi search thay đổi (kể cả khi tổng số trang vẫn ≥ page hiện tại).
@@ -140,21 +140,25 @@ export function UsersListPage() {
         <h1 className="text-xl font-semibold text-gray-900">Người dùng</h1>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {canWrite() && selectedRows.size > 0 && (
+          {selectedRows.size > 0 && (
             <>
-              <Button onClick={() => setBulkOpen(true)} size="sm">
-                Cấp quyền ({selectedRows.size})
-              </Button>
-              <Button
-                onClick={() => setBulkDeleteOpen(true)}
-                size="sm"
-                variant="destructive"
-              >
-                Xoá ({selectedRows.size})
-              </Button>
+              {canWrite() && (
+                <Button onClick={() => setBulkOpen(true)} size="sm">
+                  Cấp quyền ({selectedRows.size})
+                </Button>
+              )}
+              {canManageUsers() && (
+                <Button
+                  onClick={() => setBulkDeleteOpen(true)}
+                  size="sm"
+                  variant="destructive"
+                >
+                  Xoá ({selectedRows.size})
+                </Button>
+              )}
             </>
           )}
-          {canWrite() && (
+          {canManageUsers() && (
             <Button onClick={() => setCreateOpen(true)} size="sm" variant="outline">
               + Tạo người dùng
             </Button>

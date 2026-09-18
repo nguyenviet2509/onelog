@@ -14,7 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { isAdmin, requireMember, listOwnedAppsWhere } from '../middleware/require-admin-or-owner.js';
+import { isAdmin, requireViewer, listOwnedAppsWhere } from '../middleware/require-admin-or-owner.js';
 import { config } from '../config.js';
 import { writerPool } from '../db/writer-pool.js';
 import { getOrgsBatch } from '../lib/zitadel-org-client.js';
@@ -30,7 +30,7 @@ interface AppRow {
 }
 
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/v1/projects', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.get('/v1/projects', { preHandler: [verifyJwt, requireViewer] }, async (request, reply) => {
     // Ownership scope: admin sees all; member sees only own apps.
     const ownerFilter = listOwnedAppsWhere(request);
     const { rows: appRows } = await writerPool.query<AppRow>(

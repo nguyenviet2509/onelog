@@ -37,8 +37,18 @@ export function usePermissions() {
     return hasRole('rbac.member') && !isAdmin();
   }
 
+  /** True nếu user có rbac.viewer (không phải admin/member) — read-only tier */
+  function isViewer(): boolean {
+    return hasRole('rbac.viewer') && !isAdmin() && !hasRole('rbac.member');
+  }
+
   /** Chỉ admin xem audit log */
   function canReadAudit(): boolean {
+    return isAdmin();
+  }
+
+  /** Create/deactivate/delete user — admin-only (Zitadel user lifecycle) */
+  function canManageUsers(): boolean {
     return isAdmin();
   }
 
@@ -54,8 +64,8 @@ export function usePermissions() {
   }
 
   /**
-   * canWrite: admin OR member (scope theo ownership check ở button-level qua canManageApp), không bị degraded.
-   * Falls back to rbac.admin.write permission for system.root accounts that skip role injection.
+   * canWrite: admin OR member (scope theo ownership check ở button-level qua canManageApp).
+   * Viewer EXCLUDED — read-only tier.
    */
   function canWrite(): boolean {
     if (isDegraded) return false;
@@ -63,11 +73,10 @@ export function usePermissions() {
   }
 
   /**
-   * canRead: admin OR member (member cũng vào UI được, scope check ở list filter backend).
-   * Falls back to rbac.admin.read permission.
+   * canRead: admin OR member OR viewer (viewer read-only tier, backend enforce scope).
    */
   function canRead(): boolean {
-    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.read');
+    return isAdmin() || hasRole('rbac.member') || hasRole('rbac.viewer') || hasPermission('rbac.admin.read');
   }
 
   return {
@@ -80,7 +89,9 @@ export function usePermissions() {
     canRead,
     isAdmin,
     isMember,
+    isViewer,
     canReadAudit,
     canManageApp,
+    canManageUsers,
   };
 }

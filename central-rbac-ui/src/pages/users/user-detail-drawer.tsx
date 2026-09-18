@@ -42,7 +42,7 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
 
   const { data: user, isLoading, error } = useUserDetailQuery(userId);
-  const { canWrite } = usePermissions();
+  const { canWrite, canManageUsers } = usePermissions();
   const deactivateMutation = useDeactivateUserMutation();
   const reactivateMutation = useReactivateUserMutation();
   const deleteMutation = useDeleteUserMutation();
@@ -107,7 +107,7 @@ export function UserDetailDrawer({ userId, onClose }: UserDetailDrawerProps) {
                       Tổ chức: <span className="font-medium">{user.organization.name}</span>
                     </p>
                   )}
-                  {canWrite() && (
+                  {canManageUsers() && (
                     <div className="mt-2 flex gap-2">
                       {user.state === 'inactive' ? (
                         <Button

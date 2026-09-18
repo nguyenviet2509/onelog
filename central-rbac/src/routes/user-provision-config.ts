@@ -9,14 +9,14 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireMember } from '../middleware/require-admin-or-owner.js';
+import { requireViewer } from '../middleware/require-admin-or-owner.js';
 import { getPasswordPolicy } from '../lib/zitadel-password-policy-client.js';
 import { config } from '../config.js';
 
 export async function userProvisionConfigRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/v1/users/config',
-    { preHandler: [verifyJwt, requireMember] },
+    { preHandler: [verifyJwt, requireViewer] },
     async (request, reply) => {
       const rawQuery = request.query as Record<string, string> | undefined;
       const orgId = rawQuery?.['org_id'] ?? config.ZITADEL_ORG_ID;

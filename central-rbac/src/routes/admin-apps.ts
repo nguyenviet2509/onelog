@@ -25,6 +25,7 @@ import { verifyJwt } from '../middleware/auth-jwt.js';
 import {
   isAdmin,
   requireMember,
+  requireViewer,
   requireAdminOrAppOwner,
   listOwnedAppsWhere,
 } from '../middleware/require-admin-or-owner.js';
@@ -418,7 +419,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // response degrades to rbac.apps only — same behaviour as pre-multi-org.
   app.get(
     '/v1/admin/apps',
-    { preHandler: [verifyJwt, requireMember] },
+    { preHandler: [verifyJwt, requireViewer] },
     async (request, reply) => {
       interface AppOut {
         id: string | null;

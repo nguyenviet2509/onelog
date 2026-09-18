@@ -24,6 +24,7 @@ import { config } from '../config.js';
 
 const ADMIN_ROLES = new Set(['rbac.admin', 'system.root']);
 const MEMBER_ROLE = 'rbac.member';
+const VIEWER_ROLE = 'rbac.viewer';
 
 /** True if JWT carries admin role (rbac.admin or system.root). */
 export function isAdmin(request: FastifyRequest): boolean {
@@ -38,9 +39,9 @@ export function isBreakGlass(request: FastifyRequest): boolean {
 }
 
 /**
- * Basic gate — allow admin OR member OR break-glass.
- * Use for routes that both admin + member can hit (individual handler enforces
- * ownership scope via body/param checks).
+ * Write-tier gate — allow admin OR member OR break-glass. VIEWER REJECTED.
+ * Use for routes that mutate state (POST/PATCH/DELETE) or read sensitive data
+ * that viewer should not see (e.g. write-only endpoints).
  */
 export async function requireMember(
   request: FastifyRequest,
@@ -59,6 +60,30 @@ export async function requireMember(
       'require-member: rejected (missing rbac.admin/rbac.member)',
     );
     return reply.status(403).send({ error: 'Forbidden — rbac.member or rbac.admin required' });
+  }
+}
+
+/**
+ * Read-tier gate — allow admin OR member OR viewer OR break-glass.
+ * Use for read-only endpoints (GET). Viewer sees scoped data (same filter as member).
+ */
+export async function requireViewer(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const claims = request.jwtClaims;
+  if (!claims) {
+    return reply.status(401).send({ error: 'Not authenticated' });
+  }
+  if (isBreakGlass(request) || isAdmin(request)) return;
+
+  const roles = Array.isArray(claims.roles) ? claims.roles : [];
+  if (!roles.includes(MEMBER_ROLE) && !roles.includes(VIEWER_ROLE)) {
+    logger.warn(
+      { sub: claims.sub, path: request.url, roles },
+      'require-viewer: rejected (missing rbac.admin/rbac.member/rbac.viewer)',
+    );
+    return reply.status(403).send({ error: 'Forbidden — rbac.viewer or higher required' });
   }
 }
 

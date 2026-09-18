@@ -10,6 +10,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { emitBreakGlassBypass } from '../lib/break-glass.js';
 
 const ADMIN_ROLE = 'rbac.admin';
 
@@ -22,8 +23,9 @@ export async function requireAdmin(
     return reply.status(401).send({ error: 'Not authenticated' });
   }
 
-  // Break-glass: env-configured sub bypasses role check.
+  // Break-glass: env-configured sub bypasses role check. Emit audit event.
   if (config.BREAK_GLASS_USER_ID && claims.sub === config.BREAK_GLASS_USER_ID) {
+    emitBreakGlassBypass(claims.sub, request.id, request.method, request.url);
     return;
   }
 

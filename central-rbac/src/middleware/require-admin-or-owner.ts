@@ -21,6 +21,7 @@ import type { FastifyRequest, FastifyReply, preHandlerHookHandler } from 'fastif
 import { writerPool } from '../db/writer-pool.js';
 import { logger } from '../lib/logger.js';
 import { config } from '../config.js';
+import { emitBreakGlassBypass } from '../lib/break-glass.js';
 
 const ADMIN_ROLES = new Set(['rbac.admin', 'system.root']);
 const MEMBER_ROLE = 'rbac.member';
@@ -39,6 +40,22 @@ export function isBreakGlass(request: FastifyRequest): boolean {
 }
 
 /**
+ * Break-glass bypass with audit. Returns true if request is break-glass; caller
+ * should short-circuit authz check. Emits [BREAK-GLASS-USED] log for VL alert.
+ * Use in place of bare `isBreakGlass(request)` in ownership check paths.
+ */
+export function bypassAndAudit(request: FastifyRequest): boolean {
+  if (!isBreakGlass(request)) return false;
+  emitBreakGlassBypass(
+    request.jwtClaims?.sub ?? 'unknown',
+    request.id,
+    request.method,
+    request.url,
+  );
+  return true;
+}
+
+/**
  * Write-tier gate — allow admin OR member OR break-glass. VIEWER REJECTED.
  * Use for routes that mutate state (POST/PATCH/DELETE) or read sensitive data
  * that viewer should not see (e.g. write-only endpoints).
@@ -51,7 +68,7 @@ export async function requireMember(
   if (!claims) {
     return reply.status(401).send({ error: 'Not authenticated' });
   }
-  if (isBreakGlass(request) || isAdmin(request)) return;
+  if (bypassAndAudit(request) || isAdmin(request)) return;
 
   const roles = Array.isArray(claims.roles) ? claims.roles : [];
   if (!roles.includes(MEMBER_ROLE)) {
@@ -75,7 +92,7 @@ export async function requireViewer(
   if (!claims) {
     return reply.status(401).send({ error: 'Not authenticated' });
   }
-  if (isBreakGlass(request) || isAdmin(request)) return;
+  if (bypassAndAudit(request) || isAdmin(request)) return;
 
   const roles = Array.isArray(claims.roles) ? claims.roles : [];
   if (!roles.includes(MEMBER_ROLE) && !roles.includes(VIEWER_ROLE)) {
@@ -95,7 +112,7 @@ export function requireAdminOrAppOwner(
   paramName: 'slug' | 'id' = 'slug',
 ): preHandlerHookHandler {
   return async (request, reply) => {
-    if (isBreakGlass(request) || isAdmin(request)) return;
+    if (bypassAndAudit(request) || isAdmin(request)) return;
 
     const params = request.params as Record<string, string>;
     const paramValue = params[paramName];
@@ -132,7 +149,7 @@ export function requireAdminOrRoleOwner(
   paramName: 'key' = 'key',
 ): preHandlerHookHandler {
   return async (request, reply) => {
-    if (isBreakGlass(request) || isAdmin(request)) return;
+    if (bypassAndAudit(request) || isAdmin(request)) return;
 
     const params = request.params as Record<string, string>;
     const roleKey = params[paramName];
@@ -184,7 +201,7 @@ export function requireAdminOrPermOwner(
   paramName: 'key' = 'key',
 ): preHandlerHookHandler {
   return async (request, reply) => {
-    if (isBreakGlass(request) || isAdmin(request)) return;
+    if (bypassAndAudit(request) || isAdmin(request)) return;
 
     const params = request.params as Record<string, string>;
     const permKey = params[paramName];
@@ -236,7 +253,7 @@ export function listOwnedAppsWhere(
   request: FastifyRequest,
   paramOffset: number = 0,
 ): { where: string; params: string[] } {
-  if (isBreakGlass(request) || isAdmin(request)) {
+  if (bypassAndAudit(request) || isAdmin(request)) {
     return { where: 'TRUE', params: [] };
   }
   const sub = request.jwtClaims?.sub;

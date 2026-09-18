@@ -104,3 +104,28 @@ export function emitBreakGlassAlert(
     `[BREAK-GLASS-USED] event=${event} userId=${userId} app=${appId} correlationId=${correlationId}`,
   );
 }
+
+/**
+ * Emit break-glass audit for middleware ownership bypass.
+ * Fires whenever isBreakGlass()=true short-circuits an authz gate outside of
+ * pre-token issuance. Same [BREAK-GLASS-USED] tag → picked up by VL alert rule.
+ */
+export function emitBreakGlassBypass(
+  userId: string,
+  correlationId: string,
+  method: string,
+  path: string,
+): void {
+  logger.warn(
+    {
+      tag: '[BREAK-GLASS-USED]',
+      event: 'break-glass-middleware-bypass',
+      userId,
+      correlationId,
+      method,
+      path,
+      ts: new Date().toISOString(),
+    },
+    `[BREAK-GLASS-USED] event=middleware-bypass user=${userId} ${method} ${path} correlationId=${correlationId}`,
+  );
+}

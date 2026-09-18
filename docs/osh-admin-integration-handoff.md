@@ -1,27 +1,26 @@
-# osh_admin integration handoff — OneMCP
+# osh_admin integration handoff — OneMCP + Central RBAC
 
-**Mục đích:** hướng dẫn dev osh_admin implement các phần cần thiết để osh_admin backend expose tools cho **OneMCP** (MCP server cho Claude Desktop).
+**Mục đích:** hướng dẫn dev osh_admin implement các phần cần thiết để osh_admin backend integrate với **OneMCP** (MCP server cho Claude Desktop) và **Central RBAC** (per-user permission check).
 
 **Audience:** dev osh_admin.
 
-**Effort estimate:** ~2-4 giờ tổng cộng (MVP không cần RBAC integration).
+**Effort estimate:** ~1-2 tuần (SDK integrate + middleware là phần lớn).
 
 **Trạng thái phía OneMCP:** ✅ shipped 2026-09-18 — hoàn toàn sẵn sàng. Chờ osh_admin done các item bên dưới.
 
+**⚠️ RBAC bắt buộc — không defer:** tools osh_admin (WAF, rate limit, ...) impact production hạ tầng thật → phải phân quyền per-user để ngăn user vô ý/malicious gọi destructive tools.
+
 ---
 
-## 1. TL;DR — cần deliver 4 thứ
+## 1. TL;DR — 3 groups deliverables
 
-| # | Item | Effort |
+| Group | Items | Effort |
 |---|---|---|
-| A | Expose `GET /tools/list` endpoint (bearer-protected) | ~30 phút |
-| B | Verify bearer S2S trên các endpoint tool call | ~15 phút |
-| C | Deploy osh_admin lên prod endpoint URL | tùy setup |
-| D | Cấp base URL prod + bearer token cho OneMCP admin | ~5 phút |
+| **A. Discovery** | Expose `GET /tools/list` (bearer-protected) | ~30 phút |
+| **B. RBAC** | Publish `.well-known/rbac-permissions.json` + SDK integrate + middleware verify user permissions | ~1 tuần |
+| **C. Ops** | Deploy prod endpoint + cấp bearer S2S cho OneMCP admin + confirm exposure model | ~2 giờ |
 
-Sau khi done → OneMCP admin register upstream ~15 phút → tools live trong Claude Desktop.
-
-**Note MVP:** phần RBAC per-user (SDK Central RBAC + middleware verify user permissions) **DEFER Phase 2**. MVP tin cậy tất cả users authenticated qua OneMCP có full access osh_admin tools (users hiện tại = admins nội bộ INET, số lượng ít).
+Sau khi 3 groups done → OneMCP admin register upstream ~15 phút → tools live trong Claude Desktop.
 
 ---
 
@@ -31,34 +30,77 @@ Sau khi done → OneMCP admin register upstream ~15 phút → tools live trong C
 ┌─────────────────┐     MCP tools/call      ┌──────────────┐    HTTP+Bearer     ┌──────────────┐
 │ Claude Desktop  │ ──────────────────────► │   OneMCP     │ ─────────────────► │  osh_admin   │
 │ (LLM agent)     │     with Bearer         │ (pure proxy) │  + X-User-Sub      │  (BẠN đây)   │
-└─────────────────┘                         └──────────────┘                     └──────────────┘
-                                                    │
-                                                    │ live-fetch (mỗi 60s)
-                                                    │ GET /tools/list
-                                                    ▼
-                                            ┌──────────────┐
-                                            │  osh_admin   │
-                                            │  /tools/list │
-                                            └──────────────┘
+└─────────────────┘                         └──────────────┘                     └──────┬───────┘
+                                                    │                                    │
+                                                    │ live-fetch                         │ SDK.resolve
+                                                    │ GET /tools/list                    │ (user perms)
+                                                    ▼                                    ▼
+                                            ┌──────────────┐                     ┌──────────────┐
+                                            │  osh_admin   │                     │ Central RBAC │
+                                            │  /tools/list │                     │  /v2/resolve │
+                                            └──────────────┘                     └──────────────┘
 ```
 
 **Nguyên tắc:**
 - OneMCP = **pure proxy** — forward `X-Onemcp-User-Sub` (Zitadel sub) + `Authorization: Bearer` + `X-Onemcp-Correlation-Id`
-- osh_admin = **tool executor** — verify bearer S2S + thực hiện business logic + log audit
-- Không share DB/library giữa 2 systems, chỉ HTTP contract
+- osh_admin = **RBAC gate owner** — verify user có quyền không (SDK `central-rbac-client`) + thực hiện business logic
+- Central RBAC = **permissions source of truth** — dev osh_admin publish manifest → Central admin apply → users assigned role → SDK resolve khi có request
 
-**Trust model MVP:** bất kỳ user nào authenticate qua Claude Desktop OAuth (Zitadel) đều gọi được tất cả tools osh_admin. Bearer S2S check giữa OneMCP ↔ osh_admin đảm bảo request đến từ OneMCP hợp lệ.
+**Zero code coupling:** không share DB/library giữa 3 systems, chỉ HTTP contract (bearer S2S + header identity).
 
 ---
 
-## 3. Việc cần làm — chi tiết
+## 3. 2 files/endpoints cần expose — KHÔNG PHẢI 1
 
-### Item A: Expose `GET /tools/list` endpoint
+### File 1: `.well-known/rbac-permissions.json` (RBAC permissions catalog)
+
+**Purpose:** declare permissions + default_roles cho app `osh_admin`. Central RBAC portal fetch để know "app này có permissions gì".
+
+**Serving:** static file OK (Nginx/Express static route). Không cần backend logic.
+
+**Auth:** public OK (theo design Central RBAC hiện tại). Nếu muốn bảo mật, có thể bearer-protect.
+
+**Update pattern:** dev osh_admin publish version mới → Central admin click "Fetch + Diff + Apply" trong Central portal.
+
+**Schema:**
+
+```json
+{
+  "app_slug": "osh_admin",
+  "version": "1.0.0",
+  "permissions": [
+    { "id": "osh_admin:tool.create_waf", "description": "Create WAF rule blocking IP/domain" },
+    { "id": "osh_admin:tool.create_rate_limit", "description": "Set request rate limit" },
+    { "id": "osh_admin:tool.query_access_log", "description": "Query HTTP access logs" }
+  ],
+  "default_roles": [
+    { "id": "osh_admin.viewer", "permissions": ["osh_admin:tool.query_access_log"] },
+    {
+      "id": "osh_admin.operator",
+      "permissions": [
+        "osh_admin:tool.create_waf",
+        "osh_admin:tool.create_rate_limit",
+        "osh_admin:tool.query_access_log"
+      ]
+    }
+  ]
+}
+```
+
+**Field rules:**
+- `app_slug` = `osh_admin` (fixed, match app đã register trên Central)
+- `version` = semver `x.y.z` — bump khi có change
+- `permission.id` = format `${app_slug}:${resource}.${action}` (VD `osh_admin:tool.create_waf`)
+- `default_roles[].id` = format `${app_slug}.${role_name}` (VD `osh_admin.viewer`)
+
+---
+
+### File 2: `GET /tools/list` (bridges/tools catalog)
 
 **Purpose:** OneMCP fetch endpoint này mỗi 60s (cache TTL) để auto-discover tools mới. Dev osh_admin thêm/sửa endpoint → auto visible trong Claude Desktop ≤60s.
 
 **Contract:**
-- URL: `GET ${base_url}/tools/list` (path có thể tùy chọn khác nếu cần, config OneMCP-side)
+- URL: `GET ${base_url}/tools/list` (path có thể tùy chọn khác, config OneMCP-side)
 - Auth: `Authorization: Bearer <shared-token>` — verify trước khi trả JSON
 - Response body: max 100KB
 - Response time: OneMCP timeout 10s
@@ -111,17 +153,44 @@ Sau khi done → OneMCP admin register upstream ~15 phút → tools live trong C
 - `tools[].name` = snake_case `[a-z_][a-z0-9_]*`, max 64 chars — LLM sẽ gọi bằng name này
 - `tools[].method` = `GET|POST|PUT|DELETE`
 - `tools[].path` = path relative bắt đầu bằng `/`, max 512 chars
-- `tools[].description` = mô tả **cho LLM đọc** để biết khi nào dùng tool (xem best practice cuối doc)
-- `tools[].permission_id` = format `${app_slug}:${resource}.${action}` — MVP không dùng gate nhưng vẫn phải cung cấp (structure cho Phase 2)
+- `tools[].description` = mô tả **cho LLM đọc** để biết khi nào dùng tool (xem best practice section 6)
+- `tools[].permission_id` = **PHẢI match 1 entry trong `permissions[]` của File 1** (FK reference — middleware dùng để gate)
 - `tools[].param_schema` = JSON Schema (type=object, properties, required, additionalProperties=false)
 - Tools array: **max 100 items**
 
 **Best practice:** build tools list dynamic từ router registry (không hardcode). Khi dev thêm endpoint mới có metadata `@Tool({...})` decorator → tự động append vào `/tools/list` response → không cần update thủ công.
 
+---
+
+### Relationship 2 files: FK reference
+
+```
+.well-known/rbac-permissions.json           GET /tools/list
+├─ permissions[]                            ├─ tools[]
+│   ├─ id: "osh_admin:tool.create_waf" ◄────┼─── permission_id (FK)
+│   ├─ id: "osh_admin:tool.create_rate..."◄─┼─── permission_id (FK)
+│   └─ id: "osh_admin:tool.query_log"   ◄───┼─── permission_id (FK)
+└─ default_roles[]                          └─ ...
+```
+
+**Ordering khi thêm tool mới cần permission mới:**
+1. Publish `rbac-permissions.json` version mới (thêm permission)
+2. Central admin apply manifest → permission active trong Central DB
+3. Deploy osh_admin code (endpoint mới + auto vào `/tools/list`)
+4. OneMCP discover endpoint ≤60s (cache TTL) hoặc admin click "Refresh cache" trong OneMCP portal
+5. User có role chứa perm mới → gọi được tool
+
+**Nếu skip bước 1-2:** user gọi tool sẽ nhận 403 vì Central không biết permission đó tồn tại → SDK resolve trả `[]` → middleware deny.
+
+---
+
+## 4. Việc cần dev osh_admin làm — chi tiết
+
+### Item 1: Expose `GET /tools/list`
+
 **Example — Express (Node.js):**
 
 ```javascript
-// tools-list-route.js
 const TOOLS = [
   {
     name: 'create_waf',
@@ -154,118 +223,216 @@ app.get('/tools/list', requireOneMcpBearer, (req, res) => {
 
 **Verify:**
 ```bash
-# Không bearer → 401
-curl -i https://osh-admin.your-domain/tools/list
-
-# Với bearer → 200
 curl -H "Authorization: Bearer $ONEMCP_BEARER" \
      https://osh-admin.your-domain/tools/list | jq .
 ```
 
 ---
 
-### Item B: Verify bearer S2S trên tool endpoints
+### Item 2: Register app osh_admin trên Central RBAC portal
 
-**Purpose:** đảm bảo requests đến tool endpoints (VD `POST /waf/rules`) chỉ được accept nếu đến từ OneMCP (không public).
+**Steps:**
+1. Login `https://central-rbac.inet.vn` (admin role)
+2. Menu **Apps** → **New app**
+3. Tên: `osh_admin`, slug: `osh_admin`
+4. Wizard tạo Zitadel project auto (hoặc adopt existing nếu đã có)
+5. Copy app token format `rbac_<8chars>_<24chars>` → save vào env osh_admin backend (VD `CENTRAL_RBAC_TOKEN`)
 
-**Middleware apply cho tất cả tool endpoints** (áp dụng chung với `/tools/list`):
+---
 
+### Item 3: Publish `.well-known/rbac-permissions.json`
+
+Schema xem [Section 3, File 1](#file-1-well-knownrbac-permissionsjson-rbac-permissions-catalog).
+
+**Serving example (Express):**
 ```javascript
-// Middleware verify bearer (reuse cho tất cả endpoints)
-app.use('/waf/rules', requireOneMcpBearer);
-app.use('/rate-limits', requireOneMcpBearer);
-app.use('/access-logs', requireOneMcpBearer);
-// hoặc apply global middleware nếu tất cả endpoints đều behind bearer
+app.get('/.well-known/rbac-permissions.json', (req, res) => {
+  res.json({
+    app_slug: 'osh_admin',
+    version: '1.0.0',
+    permissions: [...],
+    default_roles: [...],
+  });
+});
 ```
 
-**Log audit** — header `X-Onemcp-Correlation-Id` để trace cross-system:
+Hoặc serve static file nếu deploy qua Nginx:
+```nginx
+location /.well-known/rbac-permissions.json {
+    alias /var/www/osh_admin/rbac-permissions.json;
+    default_type application/json;
+}
+```
+
+**Sau khi publish:** báo Central admin (anh Trí) fetch + apply manifest.
+
+---
+
+### Item 4: Integrate `central-rbac-client` SDK
+
+**SDK repo:** `d:/Vietnt/Project/onelog/central-rbac-client/nodejs` (hoặc `python`, `go` — tùy stack)
+
+**SDK features (built-in):**
+- LRU cache 60s per user_sub (giảm QPS gọi Central)
+- Circuit breaker (5 fail → open 30s → auto-recover)
+- Epoch poller 10s (revocation visible ≤10s)
+- Fail-closed on error (deny by default)
+
+**Node/TypeScript example:**
+```typescript
+import { CentralRbacClient } from 'central-rbac-client';
+
+export const rbac = new CentralRbacClient({
+  baseUrl: process.env.CENTRAL_RBAC_URL,        // https://central-rbac.inet.vn
+  appSlug: 'osh_admin',
+  token: process.env.CENTRAL_RBAC_TOKEN,        // rbac_xxx từ Item 2
+  cacheMaxAgeMs: 60_000,                        // default OK
+  circuitBreaker: { threshold: 5, resetMs: 30_000 },
+});
+```
+
+Init 1 lần global instance, dùng cho tất cả requests.
+
+---
+
+### Item 5: Middleware verify `X-Onemcp-User-Sub` + gate per-endpoint
+
+**Purpose:** RBAC gate thật — verify user có quyền gọi tool không. Fail-closed: SDK error → 503.
+
+**Express example:**
+```javascript
+const routePerm = {
+  'POST /waf/rules':     'osh_admin:tool.create_waf',
+  'POST /rate-limits':   'osh_admin:tool.create_rate_limit',
+  'GET /access-logs':    'osh_admin:tool.query_access_log',
+};
+
+// Middleware 1: verify bearer S2S (áp dụng chung cho tất cả endpoints)
+app.use(requireOneMcpBearer);
+
+// Middleware 2: RBAC gate per-endpoint
+app.use(async (req, res, next) => {
+  const sub = req.headers['x-onemcp-user-sub'];
+  if (!sub) return res.status(401).json({ error: 'missing X-Onemcp-User-Sub' });
+
+  const key = `${req.method} ${req.path}`;
+  const requiredPerm = routePerm[key];
+  if (!requiredPerm) return next();  // route không cần permission (VD /health, /tools/list)
+
+  try {
+    const perms = await rbac.resolve({ sub, tenant: 'default' });
+    if (!perms.includes(requiredPerm)) {
+      return res.status(403).json({
+        error: 'forbidden',
+        missing_permission: requiredPerm,
+      });
+    }
+    next();
+  } catch (e) {
+    // Fail-closed: circuit open hoặc Central down → deny
+    res.status(503).json({ error: 'authorization service unavailable' });
+  }
+});
+```
+
+**Log correlation:** log `X-Onemcp-Correlation-Id` header vào application log → debug cross-system trace.
+
 ```javascript
 app.use((req, res, next) => {
   const correlationId = req.headers['x-onemcp-correlation-id'] || 'no-corr-id';
-  const userSub = req.headers['x-onemcp-user-sub'] || 'no-user-sub';
   console.log(JSON.stringify({
     ts: new Date().toISOString(),
     method: req.method,
     path: req.path,
     correlation_id: correlationId,
-    user_sub: userSub,
+    user_sub: req.headers['x-onemcp-user-sub'],
   }));
   next();
 });
 ```
 
-MVP không dùng `user_sub` để gate — chỉ log cho trace. Phase 2 mới thêm SDK Central RBAC gate.
-
 ---
 
-### Item C: Deploy prod endpoint
+### Item 6: Deploy prod + deliver credentials cho OneMCP admin
 
-Tùy setup team osh_admin (docker/k8s/systemd). Deliverables cho OneMCP:
-- Base URL prod (VD `https://gateway.inet.vn:8443/osh_admin`)
-- Đảm bảo endpoint có thể reach từ OneMCP prod (network reachability check)
-- Nếu behind firewall/gateway → whitelist OneMCP IP hoặc allow qua public
+**Deliverables sang OneMCP admin (anh Trí):**
+1. Base URL prod (VD `https://gateway.inet.vn:8443/osh_admin`)
+2. Bearer token dài (**min 32 chars random**) — cùng bearer cho `/tools/list` và tool call endpoints
+3. Confirm exposure model (A/B/C bên dưới)
+4. Confirm endpoint paths khớp `/tools/list` response
 
-**Exposure model:** MVP có thể chọn 1 trong 2:
+**⚠️ Bảo mật:** deliver bearer qua **Bitwarden/1Password vault**, KHÔNG email/Slack/chat.
+
+**Exposure model — chọn 1 trong 3:**
 
 **A. LAN-only** (recommended nếu deploy same VPC với OneMCP)
 - IP whitelist middleware osh_admin: chỉ accept từ OneMCP subnet
 - Firewall block internet
-- Bearer S2S là đủ security
+- Plaintext `X-Onemcp-User-Sub` header OK
 
 **B. Public** (nếu deploy khác VPC/DC)
-- Bearer S2S + HTTPS bắt buộc
-- Nên rotate bearer định kỳ (~3-6 tháng)
-- Consider IP whitelist tại gateway (VD chỉ allow OneMCP prod IP)
+- **CẤM plaintext trust** — attacker cùng subnet gateway có thể spoof sub
+- REQUIRE HMAC signed `X-Onemcp-User-Sub` (shared secret Vault)
+- +1-2d scope cho OneMCP thêm HMAC compute → cần discuss với anh Trí trước
+
+**C. Hybrid** (internal path + public gateway)
+- Path-based routing: public → HMAC, internal → IP whitelist
+- Document per-bridge trong metadata
 
 ---
 
-### Item D: Deliver credentials cho OneMCP admin (anh Trí)
+## 5. E2E workflow
 
-**Deliverables:**
-1. Base URL prod
-2. Bearer token dài (**min 32 chars random**) — cùng bearer cho `/tools/list` và tool call endpoints
-3. Confirm exposure model (A hay B)
-4. Confirm 3 endpoint paths khớp `/tools/list` response bạn expose
-
-**⚠️ Bảo mật:** deliver bearer qua **Bitwarden/1Password vault**, KHÔNG email/Slack/chat.
-
----
-
-## 4. E2E workflow — happy path
-
-### Setup once
+### Setup once (6 items checklist trong Section 4)
 
 ```
-Dev osh_admin                                           OneMCP admin
-──────────────                                          ────────────
-1. Expose GET /tools/list
-2. Verify bearer trên tool endpoints
-3. Deploy prod endpoint
-4. Deliver base URL + bearer ──────────────────────►  Register upstream (~15 phút)
-                                                        (base_url + bearer + discovery_url)
-                                                        ↓
-                                                        OneMCP auto-load bridges (≤60s)
-                                                        ↓
-                                                        Tools visible trong Claude Desktop
+Dev osh_admin                          Central admin                OneMCP admin
+──────────────                         ─────────────                ────────────
+1. Expose /tools/list
+2. Register app osh_admin
+3. Publish rbac-perms.json ────►fetch + apply
+4. Integrate SDK
+5. Add middleware
+6. Deploy prod + deliver credentials ─────────────────────────►  Register upstream (~15 phút)
+                                                                  (base_url + bearer + discovery_url)
+                                                                  ↓
+                                                                  OneMCP auto-load bridges (≤60s)
+                                                                  ↓
+                                                                  Central admin assign role cho users
+                                                                  ↓
+                                                                  Tools visible + callable trong Claude Desktop
 ```
 
 ### Iterate freely (post-setup)
 
+**Case A — Thêm endpoint dùng permission ĐÃ CÓ (majority case):**
 ```
-Dev viết endpoint code mới
+Dev viết endpoint code
     ↓
-Endpoint auto-append vào GET /tools/list (nếu build dynamic router)
+Endpoint auto-append vào /tools/list (dynamic router)
     ↓
 Deploy osh_admin
     ↓
-OneMCP cache TTL expire (≤60s) HOẶC admin click "Refresh cache" trong portal
+OneMCP cache TTL expire (≤60s) HOẶC admin click "Refresh cache"
     ↓
 Tool visible trong Claude Desktop → LLM gọi ngay
 ```
 
-**Không cần đụng ai khác** — dev osh_admin autonomy 100% với endpoint changes.
+**Case B — Thêm endpoint cần permission MỚI:**
+```
+1. Publish rbac-perms.json v mới (add permission)
+2. Central admin apply manifest
+3. Deploy osh_admin (endpoint + tools/list update)
+4. OneMCP discover ≤60s
+5. Ensure users có role chứa perm mới (Central admin assign)
+6. User gọi tool → OK
+```
 
-### Runtime: mỗi tool call
+**Rule of thumb:** "Thay đổi có touching `permission_id` hoặc `default_roles` trong manifest không?"
+- **CÓ** → publish manifest + Central admin apply
+- **KHÔNG** → chỉ deploy osh_admin, bridges auto-refresh qua `/tools/list` (≤60s)
+
+### Runtime: mỗi tool call (distributed check)
 
 ```
 User: "Chặn IP 5.6.7.8 cho foo.com"
@@ -273,8 +440,8 @@ User: "Chặn IP 5.6.7.8 cho foo.com"
 Claude Desktop (LLM chọn tool create_waf từ description)
     ↓
 OneMCP nhận tools/call
-    ├─ verify OAuth user
-    ├─ validate args vs param_schema (từ /tools/list)
+    ├─ verify OAuth user → extract Zitadel sub
+    ├─ validate args vs param_schema
     └─ forward: POST /waf/rules
          + Authorization: Bearer <S2S>
          + X-Onemcp-User-Sub: <zitadel_sub>
@@ -283,7 +450,8 @@ OneMCP nhận tools/call
     ↓
 osh_admin
     ├─ verify bearer ✓
-    ├─ (MVP: skip user permission check)
+    ├─ SDK.resolve(sub, tenant) — cache hit ~1ms / cache miss → Central /v2/resolve ~500ms
+    ├─ if user có osh_admin:tool.create_waf → next, else 403
     ├─ execute business logic
     └─ return 201 { waf_id, domain, ip }
     ↓
@@ -292,51 +460,7 @@ OneMCP forward response
 Claude Desktop trả cho user: "Đã chặn IP..."
 ```
 
-**Latency:** ~50-100ms (không có SDK gate).
-
----
-
-## 5. Testing checklist
-
-### 5.1. Verify `GET /tools/list`
-
-```bash
-# Không bearer → 401
-curl -i https://osh-admin.your-domain/tools/list
-
-# Với bearer → 200 + valid JSON
-curl -H "Authorization: Bearer $ONEMCP_BEARER" \
-     https://osh-admin.your-domain/tools/list | jq .
-```
-
-Verify:
-- `app_slug` = `osh_admin`
-- `version` = semver `x.y.z`
-- Mỗi tool: `name` snake_case, `method` in [GET,POST,PUT,DELETE], `path` starts `/`, `param_schema` valid JSON Schema
-
-### 5.2. Verify tool endpoints bearer check
-
-```bash
-# Không bearer → 401
-curl -X POST https://osh-admin.your-domain/waf/rules
-
-# Với bearer → 200 (nếu request hợp lệ)
-curl -X POST \
-     -H "Authorization: Bearer $ONEMCP_BEARER" \
-     -H "X-Onemcp-User-Sub: test-user-abc" \
-     -H "X-Onemcp-Correlation-Id: test-uuid-123" \
-     -H "Content-Type: application/json" \
-     -d '{"domain":"foo.com"}' \
-     https://osh-admin.your-domain/waf/rules
-```
-
-### 5.3. Verify E2E qua Claude Desktop (sync với anh Trí)
-
-1. OneMCP admin register upstream `osh_admin` prod
-2. User test đăng nhập Claude Desktop, chọn MCP server `onemcp`
-3. Chat: "Chặn IP 5.6.7.8 cho foo.com"
-4. Expect: Claude gọi `create_waf` → osh_admin trả `waf_id` → Claude echo kết quả
-5. Verify correlation ID chain trong logs 2 systems: OneMCP audit + osh_admin log
+**Latency:** ~50ms (cache hit) — ~600ms (cache miss).
 
 ---
 
@@ -363,38 +487,78 @@ curl -X POST \
 
 ---
 
-## 7. Phase 2 — RBAC integration (DEFER)
+## 7. Testing checklist
 
-Khi nào cần add:
-- Số users OneMCP tăng > 10 hoặc có users external (không phải admins nội bộ)
-- Tools osh_admin có tools sensitive/destructive cần phân quyền (VD delete-only cho super-admin)
-- Compliance/audit yêu cầu per-user permission check
+### 7.1. Verify `/tools/list`
 
-**Effort estimate Phase 2:** ~1 tuần.
+```bash
+# Không bearer → 401
+curl -i https://osh-admin.your-domain/tools/list
 
-**Sẽ thêm:**
-1. Publish `.well-known/rbac-permissions.json` (permissions catalog + default_roles)
-2. Register app `osh_admin` trên Central RBAC portal
-3. Integrate `central-rbac-client` SDK
-4. Middleware verify `X-Onemcp-User-Sub` per-endpoint → gate qua SDK
+# Với bearer → 200 + valid JSON
+curl -H "Authorization: Bearer $ONEMCP_BEARER" \
+     https://osh-admin.your-domain/tools/list | jq .
+```
 
-**Không cần thay đổi:** endpoint contract, `/tools/list`, bearer S2S — Phase 2 chỉ **thêm** layer RBAC gate, không phá cấu trúc MVP.
+Verify: `app_slug=osh_admin`, `version` semver, mỗi tool đúng schema.
 
-**Đã có sẵn:** `permission_id` field trong `/tools/list` — Phase 2 sẽ dùng field này match với Central RBAC catalog.
+### 7.2. Verify `.well-known/rbac-permissions.json`
+
+```bash
+curl https://osh-admin.your-domain/.well-known/rbac-permissions.json | jq .
+```
+
+Expect: valid JSON với `permissions[]` + `default_roles[]`. Yêu cầu Central admin apply.
+
+### 7.3. Verify RBAC middleware
+
+```bash
+# Missing X-Onemcp-User-Sub → 401
+curl -X POST -H "Authorization: Bearer $ONEMCP_BEARER" \
+     https://osh-admin.your-domain/waf/rules
+# Expect: 401 "missing X-Onemcp-User-Sub"
+
+# User KHÔNG có permission → 403
+curl -X POST \
+     -H "Authorization: Bearer $ONEMCP_BEARER" \
+     -H "X-Onemcp-User-Sub: user-without-perm" \
+     -d '{"domain":"foo.com"}' \
+     https://osh-admin.your-domain/waf/rules
+# Expect: 403 "forbidden, missing_permission: osh_admin:tool.create_waf"
+
+# User CÓ permission → 200
+curl -X POST \
+     -H "Authorization: Bearer $ONEMCP_BEARER" \
+     -H "X-Onemcp-User-Sub: user-with-operator-role" \
+     -d '{"domain":"foo.com"}' \
+     https://osh-admin.your-domain/waf/rules
+# Expect: 200 { waf_id: '...' }
+```
+
+### 7.4. Verify E2E qua Claude Desktop (sync với anh Trí)
+
+1. OneMCP admin register upstream `osh_admin` prod
+2. Central admin assign role `osh_admin.operator` cho user test
+3. User test đăng nhập Claude Desktop, chọn MCP server `onemcp`
+4. Chat: "Chặn IP 5.6.7.8 cho foo.com"
+5. Expect: Claude gọi `create_waf` → osh_admin RBAC pass → trả `waf_id` → Claude echo kết quả
+6. Test negative: assign role `osh_admin.viewer` (chỉ có `query_access_log`) → gọi `create_waf` → expect 403 forbidden
+7. Verify correlation ID chain trong logs 3 systems: OneMCP audit + osh_admin log + Central RBAC log
 
 ---
 
 ## 8. References
 
 - **OneMCP bridge discovery spec (full):** [`onemcp-bridge-discovery-spec.md`](./onemcp-bridge-discovery-spec.md) — 509 lines, chi tiết endpoint contract + 4 code examples (Express/NestJS/Go/Python)
-- **Workflow mockup HTML:** [`mockups/onemcp-osh-admin-bridge-workflow.html`](../mockups/onemcp-osh-admin-bridge-workflow.html) — visual overview
+- **Workflow mockup HTML:** [`mockups/onemcp-osh-admin-bridge-workflow.html`](../mockups/onemcp-osh-admin-bridge-workflow.html) — visual overview 2 systems
+- **Central RBAC client SDK:** `d:/Vietnt/Project/onelog/central-rbac-client/nodejs`
 
 ## Contact
 
-- **OneMCP owner:** trihd@inet.vn (anh Trí)
+- **OneMCP owner + Central RBAC owner:** trihd@inet.vn (anh Trí)
 - **Deliver credentials qua:** Bitwarden/1Password vault (không email/chat)
 
 ## Unresolved / open questions
 
-- Exposure model (LAN vs Public) — chờ dev osh_admin confirm để OneMCP quyết định có cần whitelist IP không
-- Timeline dev osh_admin done 4 items — estimate ~2-4 giờ, cần confirm để OneMCP schedule P5d prod swap
+- Exposure model (LAN vs Public vs Hybrid) — chờ dev osh_admin confirm để OneMCP quyết định có cần HMAC signed header không (nếu Public → +1-2d cả 2 sides)
+- Timeline dev osh_admin done 6 items — estimate ~1-2 tuần, cần confirm để OneMCP schedule P5d prod swap

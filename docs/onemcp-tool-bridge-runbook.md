@@ -37,6 +37,61 @@ docker exec onemcp-backend-1 psql -U postgres onemcp -c \
 
 ---
 
+## Tool visible in OneMCP but not in Claude Desktop session {#claude-session-stale}
+
+Symptom: after dev deploys new tool, OneMCP `/api/admin/tool-bridges/discovered` shows the new tool, but Claude Desktop chat doesn't offer it — LLM doesn't know it exists.
+
+**Root cause**: Claude Desktop calls MCP `tools/list` **once at session startup** and caches the tools list for the rest of that session. New tools added mid-session are not picked up. This is a client-side design limitation of the MCP client, not an OneMCP bug.
+
+**Two-layer cache flow**:
+
+```
+Dev deploys new endpoint
+    ↓
+osh_admin /tools/list now returns new tool
+    ↓
+OneMCP cache TTL expires (≤60s) OR admin clicks Refresh cache
+    ↓
+OneMCP McpToolsService.listDefinitions() now includes new tool ✓
+    ↓
+BUT — Claude Desktop already has tools list from session startup ✗
+    ↓
+User must trigger new tools/list call from Claude Desktop side
+```
+
+**User workaround** (2 options, both instant):
+
+1. **Open new chat** (Ctrl+N in Claude Desktop) — starts new MCP session → Claude Desktop calls tools/list again → LLM sees new tool.
+2. **Restart Claude Desktop** — System tray → Quit → reopen. Slower (~5s) but forces full re-init.
+
+**Verify tool is server-side ready** (before telling user to workaround):
+```bash
+# Verify OneMCP knows about the tool
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://oneconnector.000nethost.com/api/admin/tool-bridges/discovered | \
+  jq '.[] | .name'
+
+# Should list new tool. If not:
+#   - Cache stale? → click "Refresh cache" in portal
+#   - osh_admin /tools/list broken? → see "Discovery fetch failed troubleshoot" above
+```
+
+**When to consider fixing server-side** (currently deferred):
+- Users complain ≥3 times/month about missing new tools mid-session
+- osh_admin deployment frequency increases to >10/day (CI/CD auto-deploy)
+- Business need for real-time tool availability without user action
+
+**Server-side fix approach** (~1-2d effort, defer until needed):
+- OneMCP emit MCP `notifications/tools/list_changed` when `BridgeDiscoveryService` cache invalidates
+- Claude Desktop should honor this notification and refetch tools/list automatically
+- **Risk**: MCP spec allows this but Claude Desktop implementation may not honor — verify manually before committing effort. Test: send fake notification from a mock MCP server, observe Claude Desktop behavior.
+
+**Preventive practice** (recommend to dev osh_admin):
+- Deploy new tools **outside business hours** (evening/weekend) → users naturally start new session next morning → see new tool without interrupt.
+- Announce in team chat when deploying: "New tool `xxx` deployed at HH:MM — reopen your Claude Desktop chat to use it."
+
+---
+
 ## Refresh cache manually {#refresh-cache}
 
 Trigger immediate cache invalidation without waiting 60s TTL.

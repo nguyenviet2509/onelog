@@ -619,7 +619,11 @@ Yêu cầu OneMCP admin sync với anh Trí để E2E test:
 ## 8. FAQ / troubleshooting
 
 **Q: Deploy endpoint mới nhưng tool không visible trong Claude?**
-A: Chờ tối đa 60s (cache TTL) hoặc yêu cầu OneMCP admin click "Refresh cache" trong `/admin/tool-bridges` portal. Check `/tools/list` response include endpoint mới chưa (`curl` verify).
+A: 2 layers cache cần check theo thứ tự:
+1. **OneMCP-side cache (60s TTL):** chờ tối đa 60s hoặc yêu cầu OneMCP admin click "Refresh cache" trong `/admin/tool-bridges` portal. Verify bằng `curl -H "Authorization: Bearer $TOKEN" ${base_url}/tools/list | jq .` — endpoint mới đã có trong response chưa.
+2. **Claude Desktop session cache:** Claude Desktop **chỉ gọi `tools/list` 1 lần khi startup session**, sau đó cache tools list per-session. Nghĩa là sau khi OneMCP có tool mới, session đang chat vẫn dùng list cũ. **Workaround:** user mở **new chat** (Ctrl+N) hoặc restart Claude Desktop → LLM sẽ nhận tools list mới. Đây là design limitation của MCP client, không phải bug OneMCP.
+
+**Ưu tiên khắc phục:** dev osh_admin nên deploy endpoint mới **outside business hours** (VD tối/cuối tuần) để users natural start session mới sáng hôm sau đã thấy tool mới, không phải interrupt.
 
 **Q: User gọi tool nhận 403 permission_denied?**
 A: 3 nguyên nhân:

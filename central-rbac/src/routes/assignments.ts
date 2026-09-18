@@ -50,8 +50,22 @@ function assignmentsCacheKey(userId: string): string {
   return `assignments:v1:${userId}`;
 }
 
-function userDetailCacheKey(userId: string): string {
-  return `user-detail:v1:${userId}`;
+/**
+ * Bust all user-detail cache variants for a user (v2 keys are per-caller-scope,
+ * so we SCAN-delete every `user-detail:v2:${userId}:*` key).
+ */
+async function invalidateUserDetailCache(userId: string): Promise<void> {
+  const pattern = `user-detail:v2:${userId}:*`;
+  const keys: string[] = [];
+  let cursor = '0';
+  do {
+    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    keys.push(...batch);
+    cursor = nextCursor;
+  } while (cursor !== '0');
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
 }
 
 /**
@@ -81,7 +95,7 @@ async function invalidateWebhookGrantsCache(userId: string): Promise<void> {
 async function bustUserCaches(userId: string): Promise<void> {
   await Promise.all([
     redis.del(assignmentsCacheKey(userId)).catch(() => {}),
-    redis.del(userDetailCacheKey(userId)).catch(() => {}),
+    invalidateUserDetailCache(userId).catch(() => {}),
     invalidateWebhookGrantsCache(userId).catch(() => {}),
   ]);
 }
@@ -255,6 +269,8 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/assignments?user_id=&project_id= — list grants from Zitadel (cached 60s)
+  // Ownership scope (2026-09-18): admin sees all; member sees only grants on apps owned.
+  // Cache stores unfiltered — filter applied per-request.
   app.get('/v1/assignments', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const query = listQuerySchema.safeParse(request.query);
     if (!query.success) {
@@ -264,15 +280,38 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
     const { user_id, project_id } = query.data;
     const cacheKey = assignmentsCacheKey(user_id);
 
+    // Build ownership scope: null = admin (no filter), Set = allowed project_ids
+    let visibleProjectIds: Set<string> | null = null;
+    if (!isAdmin(request)) {
+      const callerSub = request.jwtClaims?.sub;
+      if (!callerSub) {
+        return reply.send({ data: [], cached: false });
+      }
+      const { rows: ownedApps } = await writerPool.query<{ zitadel_project_id: string }>(
+        `SELECT zitadel_project_id FROM rbac.apps
+          WHERE created_by = $1 AND zitadel_project_id IS NOT NULL`,
+        [callerSub],
+      );
+      visibleProjectIds = new Set(ownedApps.map((r) => r.zitadel_project_id));
+    }
+
+    const applyFilters = (grants: Array<{ projectId: string }>) => {
+      let out = grants;
+      if (visibleProjectIds) {
+        out = out.filter((g) => visibleProjectIds!.has(g.projectId));
+      }
+      if (project_id) {
+        out = out.filter((g) => g.projectId === project_id);
+      }
+      return out;
+    };
+
     // Cache read
     try {
       const cached = await redis.get(cacheKey);
       if (cached) {
-        const grants = JSON.parse(cached) as unknown[];
-        const filtered = project_id
-          ? (grants as Array<{ projectId: string }>).filter((g) => g.projectId === project_id)
-          : grants;
-        return reply.send({ data: filtered, cached: true });
+        const grants = JSON.parse(cached) as Array<{ projectId: string }>;
+        return reply.send({ data: applyFilters(grants), cached: true });
       }
     } catch {
       // Redis unavailable — fall through to live fetch
@@ -287,10 +326,9 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(502).send({ error: 'Failed to fetch grants from Zitadel', detail: msg });
     }
 
-    // Cache write (non-blocking)
+    // Cache write (non-blocking) — store unfiltered so all callers benefit
     redis.setex(cacheKey, CACHE_TTL_SEC, JSON.stringify(grants)).catch(() => {});
 
-    const filtered = project_id ? grants.filter((g) => g.projectId === project_id) : grants;
-    return reply.send({ data: filtered, cached: false });
+    return reply.send({ data: applyFilters(grants), cached: false });
   });
 }

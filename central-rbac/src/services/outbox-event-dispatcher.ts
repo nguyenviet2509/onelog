@@ -46,8 +46,22 @@ async function bustUserCachesFromArgs(
   if (!USER_GRANT_OPS.has(operation)) return;
   const userId = args['userId'];
   if (typeof userId !== 'string' || userId.length === 0) return;
+  // user-detail cache v2 = per-caller-scope keys (`user-detail:v2:${userId}:*`) →
+  // SCAN-delete all variants (admin + per-member).
+  const pattern = `user-detail:v2:${userId}:*`;
+  const keys: string[] = [];
+  let cursor = '0';
+  try {
+    do {
+      const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      keys.push(...batch);
+      cursor = nextCursor;
+    } while (cursor !== '0');
+  } catch {
+    // Redis unavailable — non-fatal
+  }
   await Promise.all([
-    redis.del(`user-detail:v1:${userId}`).catch(() => {}),
+    keys.length > 0 ? redis.del(...keys).catch(() => {}) : Promise.resolve(),
     redis.del(`assignments:v1:${userId}`).catch(() => {}),
   ]);
 }

@@ -11,7 +11,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireMember } from '../middleware/require-admin-or-owner.js';
+import { isAdmin, requireMember } from '../middleware/require-admin-or-owner.js';
 import { listUsersQuerySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { searchUsers, getUserById } from '../lib/zitadel-user-search-client.js';
 import { listUserGrantsAllOrgs } from '../services/user-grant-sync.js';
@@ -23,8 +23,9 @@ import { writerPool } from '../db/writer-pool.js';
 
 const USER_DETAIL_CACHE_TTL = 60; // seconds
 
-function userDetailCacheKey(id: string): string {
-  return `user-detail:v1:${id}`;
+/** Cache key: separate by caller scope so member/admin don't share filtered/full response. */
+function userDetailCacheKey(id: string, callerScope: string): string {
+  return `user-detail:v2:${id}:${callerScope}`;
 }
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
@@ -103,7 +104,8 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
     const { id } = params.data;
     const orgId = config.ZITADEL_ORG_ID || '';
-    const cacheKey = userDetailCacheKey(id);
+    const callerScope = isAdmin(request) ? 'admin' : `mem:${request.jwtClaims?.sub ?? 'anon'}`;
+    const cacheKey = userDetailCacheKey(id, callerScope);
 
     // fresh=1 bypasses cache — used by UI polling right after grant/revoke mutations
     // to avoid re-poisoning cache with stale Zitadel state before outbox worker commits.
@@ -156,10 +158,29 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     );
     const directRoleSet = new Set(directGrantRows.map((r) => r.role_key));
 
+    // Ownership scope filter (2026-09-18): member chỉ thấy grants của user X trên
+    // apps do member sở hữu (tránh data leak + UX hiển thị Revoke button không dùng được).
+    // Admin thấy tất cả. Build set of Zitadel project_ids the caller can manage.
+    let visibleProjectIds: Set<string> | null = null; // null = no filter (admin)
+    if (!isAdmin(request)) {
+      const callerSub = request.jwtClaims?.sub;
+      if (!callerSub) {
+        visibleProjectIds = new Set(); // fail-close
+      } else {
+        const { rows: ownedApps } = await writerPool.query<{ zitadel_project_id: string }>(
+          `SELECT zitadel_project_id FROM rbac.apps
+            WHERE created_by = $1 AND zitadel_project_id IS NOT NULL`,
+          [callerSub],
+        );
+        visibleProjectIds = new Set(ownedApps.map((r) => r.zitadel_project_id));
+      }
+    }
+
     // Filter empty-role grants: leftovers from pre-fix updates that emptied roleKeys
     // instead of DELETE. UI would show them as bare "Thu hồi" rows.
     // Also filter each grant.roleKeys → only include direct grants (drop inherited).
     const grants = rawGrants
+      .filter((g) => visibleProjectIds === null || visibleProjectIds.has(g.projectId))
       .map((g) => ({
         ...g,
         roleKeys: g.roleKeys.filter((rk) => directRoleSet.has(rk)),

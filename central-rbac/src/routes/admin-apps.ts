@@ -22,7 +22,12 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import {
+  isAdmin,
+  requireMember,
+  requireAdminOrAppOwner,
+  listOwnedAppsWhere,
+} from '../middleware/require-admin-or-owner.js';
 import { rateLimitAdmin } from '../middleware/rate-limit-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
@@ -236,7 +241,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/v1/admin/apps',
     {
-      preHandler: [verifyJwt, requireAdmin, rateLimitAdmin({ scope: 'admin_app_create' })],
+      preHandler: [verifyJwt, requireMember, rateLimitAdmin({ scope: 'admin_app_create' })],
     },
     async (request, reply) => {
       const parsed = createBodySchema.safeParse(request.body);
@@ -413,8 +418,8 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // response degrades to rbac.apps only — same behaviour as pre-multi-org.
   app.get(
     '/v1/admin/apps',
-    { preHandler: [verifyJwt, requireAdmin] },
-    async (_request, reply) => {
+    { preHandler: [verifyJwt, requireMember] },
+    async (request, reply) => {
       interface AppOut {
         id: string | null;
         slug: string | null;
@@ -430,24 +435,31 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
         registered: boolean;
       }
 
-      // Migration 019: exclude dummy 'central' platform app (system-managed,
-      // không hiển thị trong UI list để tránh admin click Manage/Sync-Manifest).
+      // Ownership scope: admin sees all; member sees only apps they own.
+      // Migration 019: exclude dummy 'central' platform app (system-managed).
+      const ownerFilter = listOwnedAppsWhere(request);
       const { rows: dbApps } = await writerPool.query<DbApp & { zitadel_org_id: string | null; client_type: ClientType }>(
         `SELECT id, slug, name, client_type, zitadel_project_id, zitadel_org_id, zitadel_client_id,
                 manifest_url, created_at, created_by
            FROM rbac.apps
-          WHERE slug != 'central'
+          WHERE slug != 'central' AND ${ownerFilter.where}
           ORDER BY created_at DESC`,
+        ownerFilter.params,
       );
       const appByProject = new Map(
         dbApps.filter((a) => !!a.zitadel_project_id).map((a) => [a.zitadel_project_id!, a]),
       );
 
+      // Ownership scope: member sees only registered apps they own (skip cross-org
+      // Zitadel discovery which would leak project existence). Admin gets full list
+      // including unregistered Zitadel projects for the single-pane view.
       let zitadelProjects: Awaited<ReturnType<typeof listAllProjectsAcrossOrgs>> = [];
-      try {
-        zitadelProjects = await listAllProjectsAcrossOrgs();
-      } catch (err) {
-        logger.warn({ err }, '/v1/admin/apps: Zitadel cross-org fetch failed → falling back to rbac.apps');
+      if (isAdmin(request)) {
+        try {
+          zitadelProjects = await listAllProjectsAcrossOrgs();
+        } catch (err) {
+          logger.warn({ err }, '/v1/admin/apps: Zitadel cross-org fetch failed → falling back to rbac.apps');
+        }
       }
 
       let apps: AppOut[];
@@ -528,7 +540,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // live in Zitadel as source of truth so we don't drift on manual edits.
   app.get(
     '/v1/admin/apps/:slug/oidc-config',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const paramsSchema = z.object({ slug: z.string().regex(SLUG_REGEX) });
       const parsedParams = paramsSchema.safeParse(request.params);
@@ -591,7 +603,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // Auto-derives additionalOrigins from final redirectUris.
   app.patch(
     '/v1/admin/apps/:slug',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const paramsSchema = z.object({ slug: z.string().regex(SLUG_REGEX) });
       const parsedParams = paramsSchema.safeParse(request.params);
@@ -714,7 +726,7 @@ export async function adminAppsRoutes(app: FastifyInstance): Promise<void> {
   // Zitadel success: orphan roles remain (harmless — roles.app_id ON DELETE SET NULL).
   app.delete(
     '/v1/admin/apps/:id',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('id')] },
     async (request, reply) => {
       const paramsSchema = z.object({ id: z.string().uuid() });
       const parsed = paramsSchema.safeParse(request.params);

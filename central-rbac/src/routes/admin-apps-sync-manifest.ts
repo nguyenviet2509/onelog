@@ -18,6 +18,7 @@ import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import yaml from 'js-yaml';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdminOrAppOwner } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { redis } from '../lib/redis-client.js';
@@ -199,7 +200,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
   // ── Sync (fetch + diff) ────────────────────────────────────────────────────
   app.post(
     '/v1/admin/apps/:id/sync-manifest',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('id')] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) return reply.status(400).send({ error: 'Invalid app id' });
@@ -288,7 +289,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
   // ── Apply (sha256-pinned) ──────────────────────────────────────────────────
   app.post(
     '/v1/admin/apps/:id/apply-manifest-diff',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('id')] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) return reply.status(400).send({ error: 'Invalid app id' });
@@ -430,7 +431,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
 
   app.post(
     '/v1/admin/apps/:id/sync-manifest-inline',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('id')] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) return reply.status(400).send({ error: 'Invalid app id' });
@@ -510,7 +511,7 @@ export async function adminAppsSyncManifestRoutes(app: FastifyInstance): Promise
   // ── Edit manifest_url (Phase 07 Fix #15 — allow admin to update after app create) ─────
   app.patch(
     '/v1/admin/apps/:id/manifest-url',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('id')] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) return reply.status(400).send({ error: 'Invalid app id' });

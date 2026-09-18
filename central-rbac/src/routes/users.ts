@@ -11,6 +11,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireMember } from '../middleware/require-admin-or-owner.js';
 import { listUsersQuerySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { searchUsers, getUserById } from '../lib/zitadel-user-search-client.js';
 import { listUserGrantsAllOrgs } from '../services/user-grant-sync.js';
@@ -34,7 +35,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
    *
    * grant_count is null — caller must open drawer to get accurate count (GET /v1/users/:id).
    */
-  app.get('/v1/users', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/users', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const parsed = listUsersQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -57,20 +58,24 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
     // Enrich each user with home org + grant count.
     // - Orgs: batch-fetched from Redis cache → 1 round-trip per unique org on miss.
-    // - Grant counts: N users × listUserGrantsAllOrgs. Acceptable at page sizes
-    //   ≤50 (default limit); if we ever page past that, revisit with a Zitadel
-    //   batch endpoint or DB-side count.
+    // - Grant count: (Fix 2026-09-16) count DIRECT grants từ rbac.user_grants (không đếm
+    //   Zitadel roleKeys expanded qua hierarchy). Trước đây count Zitadel sum → user có
+    //   qlts.user (parent viewer) hiển thị 2 → gây confusion vs UI drawer show 1 direct.
+    //   Query batch 1 lần thay vì N call Zitadel — nhanh hơn.
     const orgs = await getOrgsBatch(users.map((u) => u.home_org_id));
-    // Count = total role assignments across all grants (sum of role_keys), so
-    // Spike Tester with grants [rbac.admin] + [onemcp.viewer, onemcp.admin] = 3.
-    // Matches how "Số quyền" is interpreted by admins: total assigned permissions.
-    const grantCounts = await Promise.all(
-      users.map((u) =>
-        listUserGrantsAllOrgs(u.id)
-          .then((gs) => gs.reduce((sum, g) => sum + g.roleKeys.length, 0))
-          .catch(() => null),
-      ),
-    );
+    const userIds = users.map((u) => u.id);
+    let grantCountMap = new Map<string, number>();
+    if (userIds.length > 0) {
+      const { rows } = await writerPool.query<{ user_sub: string; cnt: string }>(
+        `SELECT user_sub, count(*)::text AS cnt
+           FROM rbac.user_grants
+          WHERE user_sub = ANY($1::text[])
+          GROUP BY user_sub`,
+        [userIds],
+      );
+      grantCountMap = new Map(rows.map((r) => [r.user_sub, parseInt(r.cnt, 10)]));
+    }
+    const grantCounts = users.map((u) => grantCountMap.get(u.id) ?? 0);
 
     const data = users.map((u, i) => ({
       id: u.id,
@@ -90,7 +95,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
    * Returns: { id, email, display_name, grant_count, grants: [{ project_id, grant_id, role_keys }] }
    * Redis cache 60s keyed by user id.
    */
-  app.get('/v1/users/:id', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/users/:id', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid user id' });

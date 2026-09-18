@@ -11,7 +11,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import {
+  isAdmin,
+  requireMember,
+} from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { assignRoleToUser, removeRoleFromUser, getUserGrants } from '../services/user-grant-sync.js';
 import { enqueueOutbox } from '../db/queries/outbox.js';
@@ -85,7 +88,7 @@ async function bustUserCaches(userId: string): Promise<void> {
 
 export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   // POST /v1/assignments — assign role to user
-  app.post('/v1/assignments', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.post('/v1/assignments', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const parsed = assignBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -93,6 +96,27 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
 
     const { user_id, role_key } = parsed.data;
     const grantorSub = request.jwtClaims?.sub;
+
+    // Ownership check: member may only grant roles of apps they own.
+    // Legacy roles (app_id=null, e.g. rbac.admin) → admin only.
+    if (!isAdmin(request)) {
+      const { rows: roleRows } = await writerPool.query<{ created_by: string | null; app_id: string | null }>(
+        `SELECT a.created_by, r.app_id
+           FROM rbac.roles r
+           LEFT JOIN rbac.apps a ON a.id = r.app_id
+          WHERE r.key = $1`,
+        [role_key],
+      );
+      if (roleRows.length === 0) {
+        return reply.status(404).send({ error: 'Role not found' });
+      }
+      if (!roleRows[0]!.app_id || !roleRows[0]!.created_by) {
+        return reply.status(403).send({ error: 'Forbidden — cannot grant legacy/system role' });
+      }
+      if (roleRows[0]!.created_by !== grantorSub) {
+        return reply.status(403).send({ error: 'Forbidden — cannot grant role of app not owned' });
+      }
+    }
 
     let result;
     try {
@@ -123,7 +147,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/assignments/:id — remove grant (or specific role from grant)
-  app.delete('/v1/assignments/:id', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.delete('/v1/assignments/:id', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const params = revokeParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid grant id' });
@@ -151,6 +175,29 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
         : undefined;
 
     const grantorSub = request.jwtClaims?.sub;
+
+    // Ownership check for member: any role being revoked must belong to owned app.
+    // Full grant DELETE (no targetRoleKeys) — member cannot revoke whole grant unless all
+    // roles belong to owned apps; we conservatively reject full-grant DELETE for member.
+    if (!isAdmin(request)) {
+      if (!targetRoleKeys || targetRoleKeys.length === 0) {
+        return reply.status(403).send({ error: 'Forbidden — member must specify role_keys to revoke (full-grant DELETE admin-only)' });
+      }
+      const { rows: roleRows } = await writerPool.query<{ role_key: string; created_by: string | null; app_id: string | null }>(
+        `SELECT r.key AS role_key, a.created_by, r.app_id
+           FROM rbac.roles r
+           LEFT JOIN rbac.apps a ON a.id = r.app_id
+          WHERE r.key = ANY($1::text[])`,
+        [targetRoleKeys],
+      );
+      const notOwned = roleRows.filter((r) => !r.app_id || !r.created_by || r.created_by !== grantorSub);
+      if (notOwned.length > 0) {
+        return reply.status(403).send({
+          error: 'Forbidden — cannot revoke role(s) of app not owned',
+          rejected_roles: notOwned.map((r) => r.role_key),
+        });
+      }
+    }
 
     let result;
     try {
@@ -208,7 +255,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/assignments?user_id=&project_id= — list grants from Zitadel (cached 60s)
-  app.get('/v1/assignments', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/assignments', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const query = listQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.status(400).send({ error: 'Validation error', details: query.error.issues });

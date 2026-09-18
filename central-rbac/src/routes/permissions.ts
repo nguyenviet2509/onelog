@@ -5,7 +5,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import {
+  isAdmin,
+  requireMember,
+  requireAdminOrPermOwner,
+} from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
@@ -24,13 +28,13 @@ import {
 
 export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/permissions
-  app.get('/v1/permissions', { preHandler: [verifyJwt] }, async (_req, reply) => {
+  app.get('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (_req, reply) => {
     const perms = await listPermissions(writerPool);
     return reply.send({ data: perms });
   });
 
   // GET /v1/permissions/:key
-  app.get('/v1/permissions/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/permissions/:key', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -40,10 +44,31 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/permissions
-  app.post('/v1/permissions', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.post('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const parsed = createPermissionSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
+    }
+
+    // Ownership check: member may only create permissions with key prefix matching owned app slug.
+    // Admin bypasses this check (can create system permissions).
+    if (!isAdmin(request)) {
+      const prefix = parsed.data.key.split('.')[0];
+      if (!prefix) {
+        return reply.status(400).send({ error: 'Invalid permission key format' });
+      }
+      const { rows: appRows } = await writerPool.query<{ created_by: string }>(
+        `SELECT created_by FROM rbac.apps WHERE slug = $1`,
+        [prefix],
+      );
+      if (appRows.length === 0) {
+        return reply.status(403).send({
+          error: `Forbidden — permission key prefix '${prefix}' must match an owned app slug`,
+        });
+      }
+      if (appRows[0]!.created_by !== request.jwtClaims?.sub) {
+        return reply.status(403).send({ error: 'Forbidden — not owner of app matching this permission prefix' });
+      }
     }
 
     // Check key uniqueness
@@ -63,7 +88,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // PATCH /v1/permissions/:key
-  app.patch('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.patch('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdminOrPermOwner('key')] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key param' });
 
@@ -96,7 +121,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/permissions/:key
-  app.delete('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.delete('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdminOrPermOwner('key')] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -117,7 +142,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/permissions/:key/stats
-  app.get('/v1/permissions/:key/stats', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/permissions/:key/stats', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 

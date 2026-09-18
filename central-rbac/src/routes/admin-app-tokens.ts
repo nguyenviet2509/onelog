@@ -10,7 +10,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import { requireAdminOrAppOwner } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { createAppToken, listAppTokens, revokeAppToken } from '../services/app-token-service.js';
@@ -45,7 +45,7 @@ export async function registerAdminAppTokensRoutes(app: FastifyInstance): Promis
   // POST /v1/admin/apps/:slug/tokens
   app.post(
     '/v1/admin/apps/:slug/tokens',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const slugCheck = slugParam.safeParse((request.params as { slug: string }).slug);
       if (!slugCheck.success) {
@@ -98,7 +98,7 @@ export async function registerAdminAppTokensRoutes(app: FastifyInstance): Promis
   // GET /v1/admin/apps/:slug/tokens
   app.get(
     '/v1/admin/apps/:slug/tokens',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const slugCheck = slugParam.safeParse((request.params as { slug: string }).slug);
       if (!slugCheck.success) {
@@ -132,7 +132,7 @@ export async function registerAdminAppTokensRoutes(app: FastifyInstance): Promis
   // DELETE /v1/admin/apps/:slug/tokens/:id
   app.delete(
     '/v1/admin/apps/:slug/tokens/:id',
-    { preHandler: [verifyJwt, requireAdmin] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const params = request.params as { slug: string; id: string };
       const slugCheck = slugParam.safeParse(params.slug);

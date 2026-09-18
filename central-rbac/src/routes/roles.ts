@@ -6,7 +6,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
-import { requireAdmin } from '../middleware/require-admin.js';
+import {
+  isAdmin,
+  requireMember,
+  requireAdminOrRoleOwner,
+} from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
@@ -26,12 +30,12 @@ import { createRoleWithSync, updateRoleWithSync, deleteRoleWithSync } from '../s
 
 export async function roleRoutes(app: FastifyInstance): Promise<void> {
   // GET /v1/roles
-  app.get('/v1/roles', { preHandler: [verifyJwt] }, async (_req, reply) => {
+  app.get('/v1/roles', { preHandler: [verifyJwt, requireMember] }, async (_req, reply) => {
     return reply.send({ data: await listRoles(writerPool) });
   });
 
   // GET /v1/roles/:key
-  app.get('/v1/roles/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/roles/:key', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const role = await getRoleByKey(writerPool, p.data.key);
@@ -40,10 +44,28 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/roles
-  app.post('/v1/roles', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.post('/v1/roles', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const parsed = createRoleSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
+    }
+
+    // Ownership check: member must specify app_id AND own that app.
+    // Admin can create legacy (app_id=null) or any-app roles.
+    if (!isAdmin(request)) {
+      if (!parsed.data.app_id) {
+        return reply.status(403).send({ error: 'Forbidden — member must specify app_id' });
+      }
+      const { rows: appRows } = await writerPool.query<{ created_by: string }>(
+        `SELECT created_by FROM rbac.apps WHERE id = $1`,
+        [parsed.data.app_id],
+      );
+      if (appRows.length === 0) {
+        return reply.status(404).send({ error: 'App not found' });
+      }
+      if (appRows[0]!.created_by !== request.jwtClaims?.sub) {
+        return reply.status(403).send({ error: 'Forbidden — not app owner' });
+      }
     }
 
     const existing = await getRoleByKey(writerPool, parsed.data.key);
@@ -75,7 +97,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // PATCH /v1/roles/:key
-  app.patch('/v1/roles/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.patch('/v1/roles/:key', { preHandler: [verifyJwt, requireAdminOrRoleOwner('key')] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -121,7 +143,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/roles/:key
-  app.delete('/v1/roles/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.delete('/v1/roles/:key', { preHandler: [verifyJwt, requireAdminOrRoleOwner('key')] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -148,7 +170,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/roles/:key/permissions
-  app.get('/v1/roles/:key/permissions', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const role = await getRoleByKey(writerPool, p.data.key);
@@ -158,7 +180,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/roles/:key/permissions
-  app.post('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.post('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireAdminOrRoleOwner('key')] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -184,7 +206,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/roles/:key/permissions/:permKey
-  app.delete('/v1/roles/:key/permissions/:permKey', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
+  app.delete('/v1/roles/:key/permissions/:permKey', { preHandler: [verifyJwt, requireAdminOrRoleOwner('key')] }, async (request, reply) => {
     const params = request.params as { key: string; permKey: string };
     const role = await getRoleByKey(writerPool, params.key);
     if (!role) return reply.status(404).send({ error: 'Role not found' });
@@ -202,7 +224,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /v1/roles/:key/stats
-  app.get('/v1/roles/:key/stats', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.get('/v1/roles/:key/stats', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
     const stats = await getRoleStats(writerPool, p.data.key);

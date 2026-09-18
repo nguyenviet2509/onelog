@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { listRoles } from '../db/queries/roles.js';
 import { writerPool } from '../db/writer-pool.js';
 import { listProjectRoles } from '../lib/zitadel-mgmt-client.js';
@@ -35,7 +36,7 @@ export interface DriftResult {
 }
 
 export async function driftRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/v1/drift', { preHandler: [verifyJwt] }, async (_request, reply) => {
+  app.get('/v1/drift', { preHandler: [verifyJwt, requireAdmin] }, async (_request, reply) => {
     const projectId = config.ZITADEL_PROJECT_ID;
     const orgId = config.ZITADEL_ORG_ID || '';
 

@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireMember } from '../middleware/require-admin-or-owner.js';
 import { config } from '../config.js';
 import { writerPool } from '../db/writer-pool.js';
 import { getOrgsBatch } from '../lib/zitadel-org-client.js';
@@ -29,7 +30,7 @@ interface AppRow {
 }
 
 export async function projectRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/v1/projects', { preHandler: [verifyJwt] }, async (_request, reply) => {
+  app.get('/v1/projects', { preHandler: [verifyJwt, requireMember] }, async (_request, reply) => {
     // 1. Local rbac.apps → map by zitadel_project_id for app_id lookup
     const { rows: appRows } = await writerPool.query<AppRow>(
       `SELECT id, slug, name, zitadel_project_id, zitadel_org_id

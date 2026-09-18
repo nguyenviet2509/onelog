@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdminOrAppOwner } from '../middleware/require-admin-or-owner.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import { enqueueOutbox } from '../db/queries/outbox.js';
@@ -45,7 +46,7 @@ export async function grantsV2Routes(app: FastifyInstance): Promise<void> {
   // ── POST /v2/apps/:slug/grants — assign role ─────────────────────────────
   app.post<{ Params: { slug: string } }>(
     '/v2/apps/:slug/grants',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const params = paramsSchema.safeParse(request.params);
       if (!params.success) {
@@ -156,7 +157,7 @@ export async function grantsV2Routes(app: FastifyInstance): Promise<void> {
   // ── DELETE /v2/apps/:slug/grants/:grant_id — revoke ──────────────────────
   app.delete<{ Params: { slug: string; grant_id: string } }>(
     '/v2/apps/:slug/grants/:grant_id',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdminOrAppOwner('slug')] },
     async (request, reply) => {
       const params = grantParamsSchema.safeParse(request.params);
       if (!params.success) {

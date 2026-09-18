@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { auditorPool } from '../db/auditor-pool.js';
 import { queryAuditLog, countAuditLog, listAuditAppFacets } from '../db/queries/audit.js';
 
@@ -22,7 +23,7 @@ const auditQuerySchema = z.object({
 export async function auditRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/v1/audit',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdmin] },
     async (request, reply) => {
       const parsed = auditQuerySchema.safeParse(request.query);
       if (!parsed.success) {
@@ -42,7 +43,7 @@ export async function auditRoutes(app: FastifyInstance): Promise<void> {
   // NULL bucket (internal rbac events) is returned as app_id=null so the UI can label it.
   app.get(
     '/v1/audit/apps',
-    { preHandler: [verifyJwt] },
+    { preHandler: [verifyJwt, requireAdmin] },
     async (_request, reply) => {
       const apps = await listAuditAppFacets(auditorPool);
       return reply.send({ apps });

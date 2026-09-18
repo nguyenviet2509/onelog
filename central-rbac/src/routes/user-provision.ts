@@ -24,6 +24,35 @@ import {
 import { createUserBodySchema, userIdParamSchema } from '../schemas/user-schemas.js';
 import { config } from '../config.js';
 import { logger } from '../lib/logger.js';
+import { writerPool } from '../db/writer-pool.js';
+import { redis } from '../lib/redis-client.js';
+
+/**
+ * Delete tất cả Central rbac.user_grants của user + bust Redis caches liên quan.
+ * Zitadel DELETE user không cascade sang Central DB — phải clean tay
+ * (bug phát hiện 2026-09-18 khi test-member để lại orphan grant).
+ */
+async function cleanupCentralUserData(userSub: string): Promise<void> {
+  const { rowCount } = await writerPool.query(
+    `DELETE FROM rbac.user_grants WHERE user_sub = $1`,
+    [userSub],
+  );
+  logger.info({ user_sub: userSub, grants_deleted: rowCount ?? 0 }, 'user-provision: cleaned central grants');
+
+  // Cache bust — best effort, non-blocking
+  const keys: string[] = [`assignments:v1:${userSub}`];
+  let cursor = '0';
+  try {
+    do {
+      const [next, batch] = await redis.scan(cursor, 'MATCH', `user-detail:v2:${userSub}:*`, 'COUNT', 100);
+      keys.push(...batch);
+      cursor = next;
+    } while (cursor !== '0');
+    if (keys.length > 0) await redis.del(...keys);
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, user_sub: userSub }, 'user-provision: cache bust failed');
+  }
+}
 
 export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
   const adminGate = { preHandler: [verifyJwt, requireAdmin] };
@@ -122,6 +151,9 @@ export async function userProvisionRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       await deleteUser(params.data.id, orgId);
+      // Fix 2026-09-18: Zitadel DELETE không cascade sang Central rbac.user_grants —
+      // phải clean local grants + Redis cache tránh orphan.
+      await cleanupCentralUserData(params.data.id);
       await writeAuditLog(request, {
         action: 'user.delete',
         target_type: 'user',

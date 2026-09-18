@@ -27,22 +27,60 @@ export function usePermissions() {
     return roles.includes(role);
   }
 
+  /** True nếu user có rbac.admin hoặc system.root */
+  function isAdmin(): boolean {
+    return hasRole('rbac.admin') || hasRole('system.root');
+  }
+
+  /** True nếu user có rbac.member (không phải admin) */
+  function isMember(): boolean {
+    return hasRole('rbac.member') && !isAdmin();
+  }
+
+  /** Chỉ admin xem audit log */
+  function canReadAudit(): boolean {
+    return isAdmin();
+  }
+
   /**
-   * canWrite: user must have rbac.admin or system.root role, and not be in degraded mode.
+   * canManageApp: admin luôn true; member chỉ khi ownerSub === self sub.
+   * @param ownerSub value của apps.created_by (từ API response)
+   * @param selfSub sub của user hiện tại — pass explicit từ useAuth() ở caller để tránh hook rule violation
+   */
+  function canManageApp(ownerSub: string | null | undefined, selfSub: string | null | undefined): boolean {
+    if (isAdmin()) return true;
+    if (!ownerSub || !selfSub) return false;
+    return ownerSub === selfSub;
+  }
+
+  /**
+   * canWrite: admin OR member (scope theo ownership check ở button-level qua canManageApp), không bị degraded.
    * Falls back to rbac.admin.write permission for system.root accounts that skip role injection.
    */
   function canWrite(): boolean {
     if (isDegraded) return false;
-    return hasRole('rbac.admin') || hasRole('system.root') || hasPermission('rbac.admin.write');
+    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.write');
   }
 
   /**
-   * canRead: user must have rbac.admin or system.root role.
+   * canRead: admin OR member (member cũng vào UI được, scope check ở list filter backend).
    * Falls back to rbac.admin.read permission.
    */
   function canRead(): boolean {
-    return hasRole('rbac.admin') || hasRole('system.root') || hasPermission('rbac.admin.read');
+    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.read');
   }
 
-  return { permissions, roles, isDegraded, hasPermission, hasRole, canWrite, canRead };
+  return {
+    permissions,
+    roles,
+    isDegraded,
+    hasPermission,
+    hasRole,
+    canWrite,
+    canRead,
+    isAdmin,
+    isMember,
+    canReadAudit,
+    canManageApp,
+  };
 }

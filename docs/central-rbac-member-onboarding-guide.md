@@ -65,6 +65,12 @@ User → incognito browser → `https://rbacnb.000nethost.com/` → login →
 
 ## Gotcha
 
+- **LUÔN grant qua UI rbacnb (`/v1/assignments`)** — KHÔNG grant qua Zitadel Console/API trực tiếp. Central RBAC có 2 grant sources phải sync (Zitadel `user_grants5` + Central `rbac.user_grants` direct-grants filter). UI/API tự sync cả 2. Grant qua Zitadel API trực tiếp → drift → UI drawer báo "Chưa có quyền" mặc dù JWT có role. Fix drift qua SQL:
+  ```sql
+  UPDATE rbac.user_grants SET role_key='rbac.member'
+    WHERE user_sub='<user_sub>' AND role_key='<old_role>';
+  ```
+  + bust Redis cache: `DEL user-detail:v1:<user_sub>` + `DEL assignments:v1:<user_sub>`
 - **Cache lag 5min:** sau khi grant `rbac.member`, user login ngay có thể vẫn 403 do pre-token webhook cache. Đợi 30s hoặc logout/login lại.
 - **Legacy apps** (onemcp, qlts, rbac) có `apps.created_by='backfill-*'` → không member nào own. Admin muốn cho member quản lý → SQL manual update:
   ```sql

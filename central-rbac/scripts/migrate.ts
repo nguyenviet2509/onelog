@@ -22,6 +22,7 @@ const MIGRATIONS = [
   { version: 5, file: '005_metadata_table.sql' }, // Phase 2: epoch counter for cache invalidation
   { version: 19, file: '019_rbac_v2_foundation.sql' }, // RBAC v2: hierarchy + tenant + delegation + epoch
   { version: 20, file: '020_app_tokens.sql' }, // Per-app tokens for /v2/resolve authentication
+  { version: 21, file: '021_seed_rbac_member.sql' }, // Ownership authz: rbac.member role
 ];
 
 async function migrate() {

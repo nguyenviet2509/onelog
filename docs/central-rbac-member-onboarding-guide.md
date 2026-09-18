@@ -12,6 +12,24 @@ Runbook cho admin (vietnt/kienvt) khi cấp quyền cho user mới sử dụng C
 | `rbac.member` | CRUD chỉ tài nguyên của app do mình tạo. **Không** xem audit |
 | Không grant | Không login được (Zitadel `projectRoleCheck=true` reject) |
 
+## One-time setup (chỉ chạy 1 lần cho instance)
+
+Role `rbac.member` phải tồn tại **cả** trong Central RBAC DB (migration 021) **và** Zitadel project `central-rbac` (grant Zitadel yêu cầu role tồn tại trên project).
+
+Migration 021 chỉ seed vào Central DB. Bootstrap Zitadel role qua Mgmt API 1 lần:
+
+```bash
+ssh authway-vps
+PAT=$(grep '^ZITADEL_SA_PAT=' /opt/central-rbac/.env | cut -d= -f2)
+curl -sS -X POST 'https://zitadel.000nethost.com/management/v1/projects/387779900762750980/roles' \
+  -H "Authorization: Bearer $PAT" \
+  -H 'x-zitadel-orgid: 387656897144029188' \
+  -H 'Content-Type: application/json' \
+  -d '{"roleKey":"rbac.member","displayName":"RBAC Member","group":""}'
+```
+
+Idempotent — chạy lại trả `AlreadyExists` (409), không hại. Đã chạy 2026-09-18.
+
 ## Onboarding 1 member mới — 3 bước
 
 ### Bước 1 — User đã tồn tại trong Zitadel

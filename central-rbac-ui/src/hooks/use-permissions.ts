@@ -60,18 +60,20 @@ export function usePermissions() {
 
   /**
    * canWrite: admin OR member (scope theo ownership check ở button-level qua canManageApp).
-   * Viewer EXCLUDED — read-only tier.
+   * Y4 fix: hasPermission('rbac.admin.write') vestigial — H6 seed không grant permission
+   * cho rbac.admin role, roles là source of truth.
    */
   function canWrite(): boolean {
     if (isDegraded) return false;
-    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.write');
+    return isAdmin() || hasRole('rbac.member');
   }
 
   /**
    * canRead: admin OR member. 2-tier model sau khi drop rbac.viewer.
+   * Y4 fix: hasPermission('rbac.admin.read') vestigial (same reason).
    */
   function canRead(): boolean {
-    return isAdmin() || hasRole('rbac.member') || hasPermission('rbac.admin.read');
+    return isAdmin() || hasRole('rbac.member');
   }
 
   return {

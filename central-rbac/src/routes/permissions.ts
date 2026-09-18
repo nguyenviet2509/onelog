@@ -10,6 +10,7 @@ import {
   requireMember,
   requireAdminOrPermOwner,
 } from '../middleware/require-admin-or-owner.js';
+import { rateLimitCreate } from '../middleware/rate-limit-create.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
@@ -59,7 +60,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/permissions
-  app.post('/v1/permissions', { preHandler: [verifyJwt, requireMember] }, async (request, reply) => {
+  app.post('/v1/permissions', { preHandler: [verifyJwt, requireMember, rateLimitCreate('perm_create')] }, async (request, reply) => {
     const parsed = createPermissionSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });

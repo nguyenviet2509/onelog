@@ -24,6 +24,36 @@ interface Props {
 
 const CONFIRM_TOKEN = 'XOA';
 
+/**
+ * Topo-sort selected roles so children (any role whose parent_key is also selected)
+ * are deleted BEFORE their parent. Prevents FK `roles_parent_key_fkey` violation on
+ * cascading hierarchies (e.g. admin.parent=member, member.parent=viewer).
+ * Fix 2026-09-18: bulk delete UX gap khi bấm xoá hierarchy → 6/8 fail.
+ */
+function topoSortForDelete(roles: Role[]): Role[] {
+  const remaining = new Map(roles.map((r) => [r.key, r]));
+  const result: Role[] = [];
+  while (remaining.size > 0) {
+    const referencedAsParent = new Set<string>();
+    for (const r of remaining.values()) {
+      if (r.parent_key && remaining.has(r.parent_key)) {
+        referencedAsParent.add(r.parent_key);
+      }
+    }
+    const leaves = [...remaining.values()].filter((r) => !referencedAsParent.has(r.key));
+    if (leaves.length === 0) {
+      // Defensive: cycle shouldn't happen (DB blocks via wouldCreateCycle) — dump rest.
+      result.push(...remaining.values());
+      break;
+    }
+    for (const l of leaves) {
+      result.push(l);
+      remaining.delete(l.key);
+    }
+  }
+  return result;
+}
+
 export function BulkDeleteRolesDialog({ open, onOpenChange, selectedRoles, onDone }: Props) {
   const [confirmInput, setConfirmInput] = useState('');
   const [showResults, setShowResults] = useState(false);
@@ -49,7 +79,9 @@ export function BulkDeleteRolesDialog({ open, onOpenChange, selectedRoles, onDon
 
   async function handleSubmit() {
     if (confirmInput !== CONFIRM_TOKEN || selectedRoles.length === 0) return;
-    const items = selectedRoles.map((r) => ({ id: r.key, label: r.key }));
+    // Topo-sort: delete leaf-first (children before parents) to avoid FK violation.
+    const ordered = topoSortForDelete(selectedRoles);
+    const items = ordered.map((r) => ({ id: r.key, label: r.key }));
     const results = await run(items);
     setFinalResults(results);
     setShowResults(true);

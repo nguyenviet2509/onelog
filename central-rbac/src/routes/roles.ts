@@ -165,6 +165,35 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
     const before = await getRoleByKey(writerPool, p.data.key);
     if (!before) return reply.status(404).send({ error: 'Role not found' });
 
+    // Pre-check FK dependencies → 409 with actionable message instead of generic 500.
+    // Fix 2026-09-18: bulk delete UX gap khi role có child hierarchy hoặc grant.
+    const [childRes, grantRes] = await Promise.all([
+      writerPool.query<{ key: string }>(
+        `SELECT key FROM rbac.roles WHERE parent_key = $1 ORDER BY key LIMIT 5`,
+        [p.data.key],
+      ),
+      writerPool.query<{ cnt: string }>(
+        `SELECT count(*)::text AS cnt FROM rbac.user_grants WHERE role_key = $1`,
+        [p.data.key],
+      ),
+    ]);
+    if (childRes.rows.length > 0) {
+      const children = childRes.rows.map((r) => r.key);
+      return reply.status(409).send({
+        error: 'Role has child roles — delete children first',
+        code: 'ROLE_HAS_CHILDREN',
+        children,
+      });
+    }
+    const grantCount = parseInt(grantRes.rows[0]?.cnt ?? '0', 10);
+    if (grantCount > 0) {
+      return reply.status(409).send({
+        error: `Role has ${grantCount} active grant(s) — revoke grants first`,
+        code: 'ROLE_HAS_GRANTS',
+        grant_count: grantCount,
+      });
+    }
+
     // Phase 3: role-sync handles DB delete + outbox enqueue (remove_project_role) atomically.
     // bumpResolveEpoch is called inside deleteRoleWithSync.
     let outboxId: string | undefined;

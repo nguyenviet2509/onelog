@@ -5,6 +5,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
@@ -39,7 +40,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/permissions
-  app.post('/v1/permissions', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.post('/v1/permissions', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const parsed = createPermissionSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -62,7 +63,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // PATCH /v1/permissions/:key
-  app.patch('/v1/permissions/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.patch('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key param' });
 
@@ -95,7 +96,7 @@ export async function permissionRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/permissions/:key
-  app.delete('/v1/permissions/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.delete('/v1/permissions/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const p = permissionKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 

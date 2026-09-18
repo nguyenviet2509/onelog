@@ -6,6 +6,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { writerPool } from '../db/writer-pool.js';
 import {
@@ -39,7 +40,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/roles
-  app.post('/v1/roles', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.post('/v1/roles', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const parsed = createRoleSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -74,7 +75,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // PATCH /v1/roles/:key
-  app.patch('/v1/roles/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.patch('/v1/roles/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -120,7 +121,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/roles/:key
-  app.delete('/v1/roles/:key', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.delete('/v1/roles/:key', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -157,7 +158,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/roles/:key/permissions
-  app.post('/v1/roles/:key/permissions', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.post('/v1/roles/:key/permissions', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const p = roleKeyParamSchema.safeParse(request.params);
     if (!p.success) return reply.status(400).send({ error: 'Invalid key' });
 
@@ -183,7 +184,7 @@ export async function roleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/roles/:key/permissions/:permKey
-  app.delete('/v1/roles/:key/permissions/:permKey', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.delete('/v1/roles/:key/permissions/:permKey', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const params = request.params as { key: string; permKey: string };
     const role = await getRoleByKey(writerPool, params.key);
     if (!role) return reply.status(404).send({ error: 'Role not found' });

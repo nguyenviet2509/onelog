@@ -11,6 +11,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJwt } from '../middleware/auth-jwt.js';
+import { requireAdmin } from '../middleware/require-admin.js';
 import { writeAuditLog } from '../middleware/audit-log.js';
 import { assignRoleToUser, removeRoleFromUser, getUserGrants } from '../services/user-grant-sync.js';
 import { enqueueOutbox } from '../db/queries/outbox.js';
@@ -84,7 +85,7 @@ async function bustUserCaches(userId: string): Promise<void> {
 
 export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   // POST /v1/assignments — assign role to user
-  app.post('/v1/assignments', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.post('/v1/assignments', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const parsed = assignBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation error', details: parsed.error.issues });
@@ -122,7 +123,7 @@ export async function assignmentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // DELETE /v1/assignments/:id — remove grant (or specific role from grant)
-  app.delete('/v1/assignments/:id', { preHandler: [verifyJwt] }, async (request, reply) => {
+  app.delete('/v1/assignments/:id', { preHandler: [verifyJwt, requireAdmin] }, async (request, reply) => {
     const params = revokeParamsSchema.safeParse(request.params);
     if (!params.success) {
       return reply.status(400).send({ error: 'Invalid grant id' });

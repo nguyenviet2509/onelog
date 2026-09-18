@@ -4,6 +4,59 @@ On-call reference for tool bridge operations. See `onemcp-tool-bridge-guideline.
 
 ---
 
+## Discovery fetch failed troubleshoot {#discovery-failed}
+
+Symptom: bridges from an upstream suddenly disappear from Claude after a few minutes.
+
+**Root causes + fixes**:
+
+| Error | Cause | Fix |
+|---|---|---|
+| Timeout (≥10s) | osh_admin down or endpoint slow | Check osh_admin health. Optimize `/tools/list` (serve static list, avoid heavy compute). OneMCP waits 10s max. |
+| HTTP 404 | Endpoint not deployed or wrong path | Dev osh_admin: verify `/tools/list` route exposed. Test: `curl -H "Authorization: Bearer $TOKEN" https://osh-admin.domain/tools/list` |
+| HTTP 401 | Bearer token mismatch | Verify bearer in OneMCP upstream config matches osh_admin's expected token. Check env var setup in osh_admin. |
+| Schema validation error | osh_admin response format incorrect | Check response vs spec (`onemcp-bridge-discovery-spec.md`). Common: missing `app_slug`, `version`, or `tools` array. Check OneMCP backend logs for Zod validation error. |
+| HTTPS mismatch | URL configured as `http://` in prod | Update upstream config → HTTPS only (unless `DEV_ALLOW_HTTP_DISCOVERY=true` env set in OneMCP — dev only). |
+| Response > 100KB | Too many tools | Reduce tools count or split across multiple app registrations. Max 100 items per response. |
+| Cache grace period expired (>5min) | Upstream down longer than grace window | Bridges disappear after 5 min stale-serve window. OneMCP stops serving old cache. When upstream recovers, manually click "Refresh cache" or wait 60s for next auto-fetch. |
+
+**Immediate recovery**:
+1. OneMCP Admin UI → Upstreams → find upstream row
+2. Click **"Refresh cache"** button → forces immediate fetch next time Claude calls tools/list
+3. Verify: Claude Desktop → MCP settings → tools/list → see bridge?
+
+**Debug**:
+```bash
+# OneMCP backend logs
+docker logs onemcp-backend-1 2>&1 | grep -E 'discovery|fetch' | tail -20
+
+# Check if bearer is configured
+docker exec onemcp-backend-1 psql -U postgres onemcp -c \
+  "SELECT name, base_url, discovery_url FROM tool_upstreams WHERE name = 'osh_admin';"
+```
+
+---
+
+## Refresh cache manually {#refresh-cache}
+
+Trigger immediate cache invalidation without waiting 60s TTL.
+
+**When to use**:
+- Dev just deployed new tool in osh_admin, need to test immediately
+- Troubleshooting: suspect cache stale, want fresh fetch
+- Admin changed discovery_url, want verify working
+
+**Steps**:
+1. Open OneMCP Admin UI: `https://oneconnector.000nethost.com/admin/tool-bridges`
+2. Upstreams tab
+3. Find upstream row (e.g. `osh_admin`)
+4. Click **🔄 Refresh cache** button (appears only if discovery_url is set)
+5. Toast notification: "Cache invalidated" → confirms triggered
+6. Next Claude tools/list call will fetch fresh from osh_admin (no cache hit)
+7. Verify: bridge appear in Claude after ≤2s (fresh fetch)
+
+---
+
 ## Register new bridge
 
 1. **Prepare upstream** — confirm: base URL, HTTP method, param schema, bearer token, timeout expectation

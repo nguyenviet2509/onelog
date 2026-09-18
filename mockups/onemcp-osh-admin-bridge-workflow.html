@@ -812,8 +812,17 @@ flowchart TB
 <section>
   <h2>⚠️ Known limitations + P2 enhancements <span class="badge">DX autonomy</span></h2>
 
+  <div class="callout" style="background:#f0fdf4; border-color:#10b981;">
+    <strong>✅ Bottleneck RESOLVED (2026-09-18):</strong> Plan
+    <code class="inline">260918-0953-onemcp-bridge-live-discovery</code> shipped Option D
+    (live discovery, symmetric với <code class="inline">load_permissions</code>).
+    Dev osh_admin có full autonomy — thêm/sửa endpoint chỉ cần code + deploy osh_admin +
+    expose <code class="inline">GET /tools/list</code>. OneMCP tự discover trong ≤60s
+    (cache TTL). Zero sync cron, zero manual bridge register.
+  </div>
+
   <div class="callout" style="background:#fef2f2; border-color:#dc2626;">
-    <strong>Bottleneck hiện tại (MVP):</strong> Mỗi lần dev osh_admin thêm/sửa endpoint → phải nhờ Admin OneMCP register/update bridge qua portal UI. Admin OneMCP = single point of failure cho velocity dev osh_admin.
+    <strong>Bottleneck cũ (MVP shipped 2026-09-17):</strong> Mỗi lần dev osh_admin thêm/sửa endpoint → phải nhờ Admin OneMCP register/update bridge qua portal UI. Admin OneMCP = single point of failure cho velocity dev osh_admin. → resolved bởi Option D.
   </div>
 
   <div class="mermaid">
@@ -825,13 +834,13 @@ flowchart LR
         A3 --> A4[Dev osh_admin<br/>test qua Claude Desktop]
     end
 
-    subgraph future["🟢 P2 Option C flow (manifest-driven, zero bottleneck)"]
+    subgraph future["✅ P2 Option D SHIPPED — live discovery (zero bottleneck)"]
         direction LR
-        B1[Dev osh_admin<br/>code + deploy endpoint<br/>+ update manifest bridges section] --> B2[OneMCP scheduled fetch<br/>manifest mỗi 5min<br/>auto diff + apply]
-        B2 --> B3[Dev osh_admin<br/>test qua Claude Desktop]
+        B1[Dev osh_admin<br/>code + deploy endpoint<br/>+ expose GET /tools/list] --> B2[OneMCP live-fetch<br/>on tools/list call<br/>60s cache + 5min stale grace]
+        B2 --> B3[Dev osh_admin<br/>test qua Claude Desktop<br/>≤60s auto discover]
     end
 
-    now -.->|"P2 enhancement<br/>~3-4d effort"| future
+    now -.->|"P2 SHIPPED 2026-09-18<br/>2d effort · plan 260918-0953"| future
 
     style now fill:#fef2f2,stroke:#dc2626,stroke-width:2px
     style future fill:#f0fdf4,stroke:#10b981,stroke-width:2px
@@ -857,28 +866,40 @@ flowchart LR
         <li><strong>Trade-off:</strong> vẫn 2-step (deploy code + call register API)</li>
       </ul>
     </div>
-    <div class="status-col" style="background:#eff6ff; border-color:#3b82f6;">
-      <h3 style="color:#1e40af;">🅒 Option C — Manifest auto-discovery (recommend long-term)</h3>
+    <div class="status-col" style="background:#eff6ff; border-color:#3b82f6; opacity:0.55;">
+      <h3 style="color:#1e40af;">🅒 Option C — Manifest sync <span style="font-size:0.7rem; background:#dc2626; color:#fff; padding:2px 6px; border-radius:4px;">CANCELLED</span></h3>
       <ul style="list-style:disc;">
         <li>Dev osh_admin publish extended manifest có section <code class="inline">bridges</code></li>
         <li>OneMCP scheduled fetch mỗi 5 phút → diff + auto-apply (idempotent)</li>
-        <li>Config-as-code trong repo osh_admin (1 nguồn truth với permissions)</li>
-        <li>Symmetric với Central RBAC apply pattern</li>
-        <li><strong>Effort:</strong> ~3-4d</li>
-        <li><strong>Trade-off:</strong> small delay 5min cho bridge mới visible</li>
+        <li><strong>Effort:</strong> ~3-4d (plan 260918-0938, archived)</li>
+        <li><strong>Cancelled reason:</strong> pivot sang Option D — simpler + real-time, không cần DB storage cho dynamic bridges</li>
+      </ul>
+    </div>
+    <div class="status-col" style="background:#f0fdf4; border-color:#10b981;">
+      <h3 style="color:#047857;">🅓 Option D — Live discovery <span style="font-size:0.7rem; background:#10b981; color:#fff; padding:2px 6px; border-radius:4px;">✅ SHIPPED 2026-09-18</span></h3>
+      <ul style="list-style:disc;">
+        <li>Dev osh_admin expose <code class="inline">GET /tools/list</code> — bearer-protected</li>
+        <li>OneMCP live fetch on-demand khi Claude gọi tools/list → 60s in-memory cache + singleflight</li>
+        <li>Stale-serve 5min grace khi upstream down</li>
+        <li>Symmetric với <code class="inline">load_permissions</code> pattern (Central RBAC)</li>
+        <li>Zero DB write cho discovered bridges — synthetic ToolBridge dispatched runtime</li>
+        <li><strong>Shipped effort:</strong> 2d thực (plan 260918-0953)</li>
+        <li><strong>Trade-off:</strong> +500ms cache miss latency, restart lose cache (acceptable — refetch ~60s)</li>
       </ul>
     </div>
   </div>
 
-  <div class="callout" style="margin-top: 1.25rem; background:#eff6ff; border-color:#3b82f6;">
-    <strong>Extended manifest schema (Option C proposal)</strong> — append vào existing <code class="inline">.well-known/rbac-permissions.json</code>:
+  <div class="callout" style="margin-top: 1.25rem; background:#f0fdf4; border-color:#10b981;">
+    <strong>Discovery endpoint contract (Option D — shipped)</strong> — dev osh_admin expose static endpoint separately (KHÔNG gộp với <code class="inline">.well-known/rbac-permissions.json</code>). Full spec: <a href="../docs/onemcp-bridge-discovery-spec.md"><code class="inline">docs/onemcp-bridge-discovery-spec.md</code></a>
   </div>
-  <pre style="background:var(--code-bg); padding:1rem; border-radius:6px; overflow-x:auto; font-size:0.82rem; margin:0.5rem 0;">{
+  <pre style="background:var(--code-bg); padding:1rem; border-radius:6px; overflow-x:auto; font-size:0.82rem; margin:0.5rem 0;">GET https://osh_admin.domain/tools/list
+Authorization: Bearer &lt;same-as-tool-call-bearer&gt;
+
+Response 200:
+{
   "app_slug": "osh_admin",
-  "version": "1.1.0",
-  "permissions": [...],
-  "default_roles": [...],
-  "bridges": [
+  "version": "1.0.0",
+  "tools": [
     {
       "name": "create_waf",
       "method": "POST",
@@ -889,8 +910,7 @@ flowchart LR
         "type": "object",
         "properties": {
           "domain": {"type":"string"},
-          "ip": {"type":"string"},
-          "rules": {"type":"array"}
+          "ip": {"type":"string"}
         },
         "required": ["domain"],
         "additionalProperties": false
@@ -900,11 +920,12 @@ flowchart LR
 }</pre>
 
   <div class="callout" style="margin-top: 1rem;">
-    <strong>Roadmap decision:</strong>
+    <strong>Roadmap resolution:</strong>
     <ul style="margin: 0.5rem 0 0; padding-left:1.5rem; font-size:0.9rem;">
-      <li><strong>MVP (hiện tại):</strong> Option A — chấp nhận bottleneck cho ownership + security tradeoff</li>
-      <li><strong>Trigger P2 Option C:</strong> khi có ≥3 tool mới cần add trong 1 tháng, HOẶC dev osh_admin explicit complain, HOẶC sau P5d có ≥2 tuần chạy prod stable</li>
-      <li><strong>Short-term workaround</strong> giữa lúc chờ Option C: dev osh_admin share <code class="inline">bridge-config.yaml</code> self-drafted trong repo → Admin OneMCP copy vào portal (~2 phút click) — reduce communication overhead</li>
+      <li><strong>MVP (2026-09-17):</strong> Option A shipped — accepted bottleneck cho ownership + security tradeoff</li>
+      <li><strong>P2 (2026-09-18):</strong> Option D shipped — pivot khỏi Option C (archived) vì đơn giản hơn (2d vs 3-4d effort) + real-time (60s vs 5min) + zero DB storage</li>
+      <li><strong>Bottleneck fully resolved:</strong> dev osh_admin autonomy achieved. Admin OneMCP chỉ cần register upstream 1 lần với <code class="inline">discovery_url</code>, sau đó không đụng gì nữa.</li>
+      <li><strong>Coordinate:</strong> gửi <a href="../docs/onemcp-bridge-discovery-spec.md"><code class="inline">onemcp-bridge-discovery-spec.md</code></a> cho dev osh_admin → dev implement endpoint → wait ≤60s → verified visible in Claude</li>
     </ul>
   </div>
 </section>

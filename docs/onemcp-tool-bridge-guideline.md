@@ -4,6 +4,43 @@ Adding a new tool bridge exposes an external HTTP endpoint as an MCP tool callab
 
 ---
 
+## Live discovery (Option D — recommended workflow)
+
+Register bridge once with discovery endpoint → dev osh_admin maintains tools list autonomously. Recommended for actively developed backends.
+
+### Setup (Admin OneMCP, one-time)
+
+1. Admin UI → `https://oneconnector.000nethost.com/admin/tool-bridges` → Upstreams tab
+2. Create new upstream: `Name: osh_admin`, `Base URL: https://osh-admin.domain` (or dev mock)
+3. **NEW**: Set optional field `Discovery URL: https://osh-admin.domain/tools/list` (or endpoint path per upstream)
+4. Paste bearer token (same as tool calls)
+5. Save → OneMCP caches endpoint for 60s, refreshes on every tools/list call
+
+### Iterate freely (Dev osh_admin)
+
+1. Add/modify endpoint in osh_admin code
+2. Update `/tools/list` endpoint to include new tool in response (or build dynamically from router registry)
+3. Deploy osh_admin
+4. Within ≤60s: bridge visible in Claude Desktop tools/list
+5. Or: Admin clicks "Refresh cache" in OneMCP portal for immediate effect
+6. LLM calls tool → OneMCP dispatches same as manual bridge
+
+**No handoff friction**: dev controls tool list entirely. OneMCP just proxies.
+
+### When to use manual bridges (legacy)
+
+Use manual bridge registration when:
+- Endpoint is **external SaaS** (no discovery capability)
+- osh_admin is **old version** or **doesn't support** `/tools/list` endpoint
+- Admin needs **full control** over description/param_schema independently (rare — most apps own their own docs)
+- Endpoint changes infrequently and sync burden is acceptable
+
+**Trade-off**: manual = zero autonomy for dev, admin OneMCP controls tool lifecycle entirely.
+
+**Reference**: Full discovery spec and troubleshooting at `[onemcp-bridge-discovery-spec.md](./onemcp-bridge-discovery-spec.md)`.
+
+---
+
 ## When to add a tool
 
 All must be true before registering a bridge:

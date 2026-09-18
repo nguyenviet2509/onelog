@@ -304,8 +304,11 @@
 
 <header>
   <h1>OneMCP → osh_admin bridge</h1>
-  <div class="subtitle">Workflow tổng hợp — <span class="status-badge">MVP shipped + E2E verified</span> · chờ osh_admin để P5d prod swap</div>
-  <div class="meta">Plan: <code>plans/260917-0902-onemcp-osh-admin-bridge</code> · Effort: 7.5d MVP · Updated: 2026-09-17</div>
+  <div class="subtitle">Workflow tổng hợp — <span class="status-badge">MVP + Option D live-discovery SHIPPED</span> · chờ osh_admin RBAC integrate để P5d prod swap</div>
+  <div class="meta">
+    Plans: <code>260917-0902-onemcp-osh-admin-bridge</code> (MVP) · <code>260918-0953-onemcp-bridge-live-discovery</code> (Option D)<br/>
+    Effort: 7.5d MVP + 2d Option D · Updated: 2026-09-18
+  </div>
 </header>
 
 <main>
@@ -313,49 +316,68 @@
 <section class="tldr">
   <h2>⚡ TL;DR — Đâu đã ready, đâu chờ</h2>
   <ol>
-    <li><strong>OneMCP-side READY</strong>: bridge framework shipped + E2E verified qua mock (positive user X 3 tools pass + negative user_partial mixed permission — screenshot proof). Chạy được với BẤT KỲ external HTTP API tương lai, không riêng osh_admin.</li>
-    <li><strong>osh_admin-side CHỜ</strong>: dev osh_admin cần integrate SDK Central RBAC, publish manifest <code>.well-known/rbac-permissions.json</code>, expose endpoint prod, cấp bearer service-to-service.</li>
-    <li><strong>P5d prod swap</strong>: chỉ 1 SQL update <code>tool_upstreams</code> record (mock URL → prod URL, dev bearer → real encrypted) + smoke happy path. Ước tính 0.5d khi osh_admin ready.</li>
+    <li><strong>OneMCP-side READY (2 shipments)</strong>: (1) MVP bridge framework 2026-09-17 — dispatch + Path C guard + audit + metrics; (2) Option D live discovery 2026-09-18 — auto-fetch <code>GET /tools/list</code> từ upstream, 60s cache + singleflight + 5min stale grace. Chạy được với BẤT KỲ external HTTP API tương lai.</li>
+    <li><strong>DX bottleneck RESOLVED</strong>: dev osh_admin từ nay không cần nhờ Admin OneMCP register bridge nữa. Chỉ cần expose <code>GET /tools/list</code> endpoint → OneMCP tự discover trong ≤60s. Admin OneMCP chỉ register upstream 1 lần với <code>discovery_url</code>.</li>
+    <li><strong>osh_admin-side còn CHỜ (2 items)</strong>: (a) implement <code>GET /tools/list</code> endpoint để enable live discovery (spec: <a href="../docs/onemcp-bridge-discovery-spec.md">onemcp-bridge-discovery-spec.md</a>); (b) integrate SDK Central RBAC + publish manifest permissions + expose prod endpoint + cấp bearer S2S.</li>
+    <li><strong>P5d prod swap</strong>: register 1 upstream <code>osh_admin</code> qua Admin UI (base_url + bearer + discovery_url) → OneMCP tự load bridges live → smoke happy path. Ước tính 0.5d khi osh_admin ready.</li>
   </ol>
   <div class="callout" style="margin-top: 1rem;">
     <strong>Distributed check pattern (verified 2026-09-17):</strong> OneMCP = pure proxy. Forward <code class="inline">X-Onemcp-User-Sub</code> (Zitadel sub) + Bearer + Correlation-Id. osh_admin backend owns RBAC gate (SDK Central resolve). Mock hiện tại simulate RBAC gate với 3 personas (test-user-x/y/partial) — behavior identical với prod flow.
   </div>
+  <div class="callout" style="margin-top: 1rem; background:#f0fdf4; border-color:#10b981;">
+    <strong>Live discovery pattern (shipped 2026-09-18):</strong> Symmetric với <code class="inline">load_permissions</code> của Central RBAC. OneMCP query osh_admin <code class="inline">GET /tools/list</code> live khi Claude gọi tools/list (60s cache, singleflight coalesce concurrent calls). Bridges dispatched runtime qua synthetic <code class="inline">ToolBridge</code> — no DB storage cần thiết. Dev osh_admin thêm endpoint mới → auto visible sau ≤60s.
+  </div>
 </section>
 
 <section>
-  <h2>🎯 Trạng thái hiện tại <span class="badge">2026-09-17</span></h2>
+  <h2>🎯 Trạng thái hiện tại <span class="badge">2026-09-18</span></h2>
   <div class="status-grid">
     <div class="status-col done">
-      <h3>OneMCP-side — 12 items DONE</h3>
+      <h3>OneMCP-side — 15 items DONE</h3>
       <ul>
+        <li><strong>MVP (2026-09-17):</strong></li>
         <li>Registry DB (<code class="inline">tool_upstreams</code> + <code class="inline">tool_bridges</code>) + migration<span class="tag">be8ce76</span></li>
         <li>Admin CRUD API + Zod DTO + bearer encryption (AES-256-GCM)<span class="tag">be8ce76</span></li>
         <li>HTTP proxy client + timeout/retry/response-cap 1MB<span class="tag">0da56e5</span></li>
         <li>MCP dispatch: <code class="inline">tools/list</code> merge + <code class="inline">tools/call</code> forward + Path C guard<span class="tag">0da56e5</span></li>
         <li>Admin UI portal <code class="inline">/admin/tool-bridges</code> + dry-run test modal<span class="tag">f6fe4ce</span></li>
-        <li>Mock osh_admin server (3 endpoints + 3 personas RBAC gate + 4 scenarios)<span class="tag">3784785</span></li>
-        <li>Prometheus metrics (4 series) + Alertmanager rule (success &lt;90%)<span class="tag">c92bb7b</span></li>
-        <li>Review fixes (audit Path C denial + schema errors + reserved names)<span class="tag">1087e10</span></li>
-        <li>zitadelSub DB lookup (opaque OAuth token → sub) + prod self-heal<span class="tag">760cb2d</span></li>
-        <li>E2E positive verified: 3 tools qua Claude Desktop, test-user-x<span class="tag">screenshot 16:56</span></li>
-        <li>E2E negative verified: test-user-partial → 403 create_waf + 200 query_log<span class="tag">screenshot 20:05</span></li>
-        <li>Docs: guideline + runbook + smoke plan + E2E guide + journal<span class="tag">8d3497d + ef92636 + 78b07d6 + 3eee124</span></li>
+        <li>Mock osh_admin (3 endpoints + 3 personas RBAC gate + 4 scenarios)<span class="tag">3784785</span></li>
+        <li>Prometheus metrics (4 series) + Alertmanager (success &lt;90%)<span class="tag">c92bb7b</span></li>
+        <li>zitadelSub DB lookup (opaque OAuth token → sub)<span class="tag">760cb2d</span></li>
+        <li>E2E positive + negative verified qua Claude Desktop<span class="tag">screenshot 16:56 + 20:05</span></li>
+        <li><strong>Option D live discovery (2026-09-18):</strong></li>
+        <li><code class="inline">BridgeDiscoveryService</code>: HTTP fetch + 60s cache + singleflight + 5min stale grace<span class="tag">041df83</span></li>
+        <li>Migration <code class="inline">discovery_url</code> column + Zod strict schema (100 tools cap, 100KB body cap, 10s timeout)<span class="tag">041df83</span></li>
+        <li>MCP dispatch merge: static > legacy DB > live-discovered (collision warn)<span class="tag">4118fd7</span></li>
+        <li>Portal UI: Discovery URL field + Live badge + Refresh cache button + Bridges Source column<span class="tag">dc41b27</span></li>
+        <li>Endpoints: <code class="inline">POST /:id/discovery-refresh</code> + <code class="inline">GET /tool-bridges/discovered</code><span class="tag">dc41b27</span></li>
+        <li>Test coverage: 166 tests pass (15 unit + 7 mcp-merge + 6 integration + 138 pre-existing)<span class="tag">no regression</span></li>
       </ul>
     </div>
     <div class="status-col pending">
-      <h3>osh_admin-side — 6 items TODO (block P5d)</h3>
+      <h3>osh_admin-side — 2 groups TODO (block P5d)</h3>
       <ul>
-        <li>Register app <code class="inline">osh_admin</code> trên Central RBAC portal (wizard tạo app + get token)</li>
-        <li>Publish manifest <code class="inline">.well-known/rbac-permissions.json</code> với 3 permissions (<code class="inline">osh_admin:tool.create_waf</code>, <code class="inline">create_rate_limit</code>, <code class="inline">query_access_log</code>) + <code class="inline">default_roles</code></li>
-        <li>Integrate <code class="inline">central-rbac-client</code> SDK trong backend osh_admin (init với <code class="inline">appSlug=osh_admin</code> + token + cache 60s + circuit breaker built-in)</li>
-        <li>Backend middleware: verify header <code class="inline">X-Onemcp-User-Sub</code> → gọi <code class="inline">sdk.resolve(sub, tenant)</code> → gate per-endpoint theo <code class="inline">routePerm</code> mapping</li>
-        <li>Expose prod endpoint URL (VD <code class="inline">https://gateway.onepanel.vn:8443/osh_admin</code>) + cấp bearer token service-to-service cho OneMCP</li>
-        <li>Confirm exposure model: LAN-only (IP whitelist đủ) vs Public (cần promote HMAC signed header) — decides M1 security mechanism</li>
+        <li><strong>🅐 Live discovery (NEW — recommended path):</strong></li>
+        <li>Expose <code class="inline">GET /tools/list</code> endpoint (bearer-protected) trả về tools catalog theo Zod schema — spec: <a href="../docs/onemcp-bridge-discovery-spec.md">onemcp-bridge-discovery-spec.md</a></li>
+        <li>Build tools list dynamic từ router (không hardcode) — auto-sync khi thêm endpoint mới</li>
+        <li>Test qua <code class="inline">curl -H "Authorization: Bearer $TOKEN" ${base_url}/tools/list | jq .</code></li>
+        <li><strong>🅑 RBAC integration (still required regardless):</strong></li>
+        <li>Register app <code class="inline">osh_admin</code> trên Central RBAC portal + get app token</li>
+        <li>Publish manifest <code class="inline">.well-known/rbac-permissions.json</code> với permissions + <code class="inline">default_roles</code></li>
+        <li>Integrate <code class="inline">central-rbac-client</code> SDK + middleware verify <code class="inline">X-Onemcp-User-Sub</code> per-endpoint</li>
+        <li>Expose prod endpoint URL + cấp bearer S2S cho OneMCP + confirm exposure model (LAN vs Public)</li>
       </ul>
     </div>
   </div>
   <div class="callout" style="margin-top: 1.25rem;">
-    <strong>Ownership boundary:</strong> Contract giữa 2 systems = HTTP header (<code class="inline">X-Onemcp-User-Sub</code> + <code class="inline">Authorization: Bearer</code> + <code class="inline">X-Onemcp-Correlation-Id</code>). Không code dependency giữa 2 repos. OneMCP không đụng Central RBAC (không init SDK, không apply manifest). osh_admin làm hết phần RBAC — OneMCP chỉ chuyển tiếp identity.
+    <strong>Ownership boundary:</strong> Contract giữa 2 systems = HTTP header (<code class="inline">X-Onemcp-User-Sub</code> + <code class="inline">Authorization: Bearer</code> + <code class="inline">X-Onemcp-Correlation-Id</code>) + endpoint contract <code class="inline">GET /tools/list</code>. Không code dependency giữa 2 repos. OneMCP không đụng Central RBAC. osh_admin làm hết phần RBAC.
+  </div>
+  <div class="callout" style="margin-top: 1rem; background:#f0fdf4; border-color:#10b981;">
+    <strong>Bridge registration workflow — 2 paths (choose one):</strong>
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
+      <li><strong>Live discovery (RECOMMENDED sau 2026-09-18):</strong> dev osh_admin expose <code class="inline">GET /tools/list</code> → Admin OneMCP register upstream với <code class="inline">discovery_url</code> 1 lần → bridges auto-visible ≤60s. Zero manual registration cho từng bridge.</li>
+      <li><strong>Manual register (legacy — backward compat):</strong> Admin OneMCP register mỗi bridge thủ công qua portal. Dùng khi endpoint external SaaS không support discovery, hoặc cần override description/schema.</li>
+    </ul>
   </div>
 </section>
 
@@ -363,55 +385,56 @@
   <h2>🔀 Split ownership OneMCP ↔ osh_admin</h2>
   <div class="mermaid">
 flowchart LR
-    subgraph done["🟢 OneMCP-side — DONE (MVP shipped)"]
+    subgraph done["🟢 OneMCP-side — DONE (MVP + Option D shipped)"]
         direction TB
-        D1[Bridge Registry DB<br/>tool_upstreams + bridges]
-        D2[Admin UI Portal<br/>/admin/tool-bridges]
+        D1[Bridge Registry DB<br/>tool_upstreams + bridges<br/>+ discovery_url col]
+        D2[Admin UI Portal<br/>Discovery URL + Live badge<br/>+ Refresh cache button]
         D3[HTTP Proxy Client<br/>timeout + retry + cap]
-        D4[MCP Dispatch<br/>tools/list + tools/call]
+        D4[MCP Dispatch<br/>static > legacy > live-discovered]
         D5[Path C Guard<br/>Zitadel sub required]
         D6[Audit + Metrics<br/>Prometheus + Alertmanager]
-        D7[Mock osh_admin<br/>3 personas RBAC gate]
+        D7[Mock osh_admin<br/>GET /tools/list<br/>+ 3 personas RBAC gate]
+        D8[BridgeDiscoveryService<br/>60s cache + singleflight<br/>+ 5min stale grace]
         D1 --> D4
         D2 --> D1
         D3 --> D4
         D4 --> D5
         D4 --> D6
-        D3 -.->|current| D7
+        D8 --> D4
+        D8 -.->|"live fetch"| D7
+        D3 -.->|"dispatch"| D7
     end
 
     subgraph pending["🟡 osh_admin-side — PENDING (block P5d)"]
         direction TB
-        P1[Register app osh_admin<br/>trên Central RBAC]
-        P2[Publish manifest<br/>.well-known/rbac-permissions.json]
-        P3[Integrate SDK<br/>central-rbac-client]
-        P4[Middleware verify<br/>X-Onemcp-User-Sub]
-        P5[Expose prod endpoint<br/>+ cấp bearer S2S]
-        P6[Confirm exposure model<br/>LAN vs Public]
-        P1 --> P2
-        P2 --> P3
-        P3 --> P4
-        P4 --> P5
-        P5 --> P6
+        PA1[🅐 Expose GET /tools/list<br/>bearer-protected<br/>dynamic from router]
+        PB1[🅑 Register app osh_admin<br/>trên Central RBAC]
+        PB2[Publish manifest permissions<br/>+ default_roles]
+        PB3[Integrate SDK central-rbac-client<br/>+ middleware verify]
+        PB4[Expose prod endpoint<br/>+ bearer S2S<br/>+ exposure model]
+        PB1 --> PB2
+        PB2 --> PB3
+        PB3 --> PB4
     end
 
     subgraph contract["📋 Boundary contract (immutable)"]
-        C1[HTTP headers only<br/>X-Onemcp-User-Sub + Bearer + Correlation-Id]
+        C1[HTTP headers<br/>X-Onemcp-User-Sub + Bearer + Correlation-Id]
+        C2[Discovery endpoint<br/>GET /tools/list JSON schema]
     end
 
-    done ==>|"P5d swap: mock URL → prod URL"| pending
+    done ==>|"P5d: register upstream với discovery_url<br/>→ bridges auto-load ≤60s"| pending
     contract -.->|"defines"| done
     contract -.->|"defines"| pending
 
     classDef doneNode fill:#d1fae5,stroke:#059669,stroke-width:2px,color:#065f46
     classDef pendingNode fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
     classDef contractNode fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3
-    class D1,D2,D3,D4,D5,D6,D7 doneNode
-    class P1,P2,P3,P4,P5,P6 pendingNode
-    class C1 contractNode
+    class D1,D2,D3,D4,D5,D6,D7,D8 doneNode
+    class PA1,PB1,PB2,PB3,PB4 pendingNode
+    class C1,C2 contractNode
   </div>
   <div class="callout" style="margin-top: 1rem;">
-    <strong>Zero code coupling:</strong> 2 repos hoàn toàn độc lập. OneMCP không import gì từ osh_admin, không share DB, không share config. Chỉ HTTP header contract. Nghĩa là dev osh_admin có thể chọn stack bất kỳ (Go/Node/Python/Java) miễn implement được `X-Onemcp-User-Sub` header verify + SDK Central RBAC integration.
+    <strong>Zero code coupling:</strong> 2 repos hoàn toàn độc lập. OneMCP không import gì từ osh_admin, không share DB, không share config. Chỉ HTTP header + endpoint contract. Dev osh_admin có thể chọn stack bất kỳ (Go/Node/Python/Java) miễn implement được: (1) <code class="inline">X-Onemcp-User-Sub</code> verify + SDK Central RBAC, (2) <code class="inline">GET /tools/list</code> endpoint.
   </div>
 </section>
 
@@ -516,23 +539,26 @@ sequenceDiagram
 </section>
 
 <section>
-  <h2>🚀 Setup — Thêm tool mới <span class="badge">5 bước · ~10 phút</span></h2>
+  <h2>🚀 Setup — Thêm tool mới <span class="badge">Post Option D · ~3 bước</span></h2>
   <div class="mermaid">
 flowchart LR
-    A["⏸ PENDING<br/>Dev osh_admin<br/>expose endpoint<br/>+ publish manifest<br/>osh_admin:*"] --> B["✅ DONE<br/>OneMCP admin<br/>register bridge<br/>/admin/tool-bridges<br/>(mock URL now)"]
-    A --> D["⏸ PENDING<br/>Central admin<br/>Fetch + Diff + Apply<br/>app osh_admin"]
-    D --> E["⏸ PENDING<br/>Central admin<br/>assign role<br/>osh_admin.* cho user"]
-    B --> F(["🟡 PARTIAL<br/>LLM thấy tool + gọi được<br/>hiện mock, prod khi osh_admin ready"])
+    A["✅ Dev osh_admin<br/>viết endpoint mới<br/>+ auto-append vào<br/>GET /tools/list<br/>(dynamic from router)"] --> B(["🟢 OneMCP tự discover<br/>≤60s (cache TTL)<br/>hoặc admin Refresh cache"])
+    A --> D["⏸ Dev osh_admin<br/>publish permission<br/>trong manifest<br/>(nếu tool mới cần permission mới)"]
+    D --> E["⏸ Central admin<br/>Fetch + Diff + Apply<br/>+ assign role cho user<br/>(nếu permission mới)"]
+    B --> F(["🟣 LLM thấy tool + gọi được<br/>hiện qua mock, prod khi osh_admin ready"])
     E --> F
 
-    style A fill:#fef3c7,stroke:#d97706,stroke-width:2px
-    style B fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style A fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style B fill:#d1fae5,stroke:#10b981,stroke-width:2px
     style D fill:#fef3c7,stroke:#d97706,stroke-width:2px
     style E fill:#fef3c7,stroke:#d97706,stroke-width:2px
     style F fill:#ede9fe,stroke:#7c3aed,stroke-width:2px
   </div>
+  <div class="callout" style="background:#f0fdf4; border-color:#10b981;">
+    <strong>Post Option D workflow (dev autonomy):</strong> Dev osh_admin thêm endpoint mới trong code, endpoint auto-append vào <code class="inline">GET /tools/list</code> response (nếu build dynamic từ router). Sau ≤60s OneMCP refetch cache → bridge visible trong Claude Desktop. <strong>Không cần Admin OneMCP</strong>. Chỉ khi thêm PERMISSION mới (không phải endpoint) mới cần Central admin apply manifest.
+  </div>
   <div class="callout">
-    <strong>Ownership split:</strong> Dev osh_admin sở hữu app <code class="inline">osh_admin</code> trên Central (manifest + SDK integrate). OneMCP chỉ register bridge (upstream URL + bearer + param_schema) — không đụng Central RBAC. Auto-wire <code class="inline">default_roles</code> vẫn áp dụng cho app osh_admin.
+    <strong>Ownership split:</strong> Dev osh_admin sở hữu app <code class="inline">osh_admin</code> trên Central (manifest + SDK integrate) + endpoint <code class="inline">GET /tools/list</code>. OneMCP chỉ register upstream 1 lần (URL + bearer + discovery_url). Auto-wire <code class="inline">default_roles</code> vẫn áp dụng cho app osh_admin.
   </div>
 </section>
 
@@ -544,16 +570,18 @@ flowchart LR
         A(["Actor"])
         CD[Claude Desktop<br/>onemcp-local]
     end
-    subgraph O["🟢 OneMCP — pure proxy ✅ READY"]
-        Portal[Admin Portal<br/>/admin/tool-bridges]
-        DB[(tool_bridges + upstreams<br/>base_url=mock now,<br/>swap to prod at P5d)]
+    subgraph O["🟢 OneMCP — pure proxy + live discovery ✅ READY"]
+        Portal[Admin Portal<br/>Discovery URL + Live badge<br/>+ Refresh cache button]
+        DB[(tool_bridges + upstreams<br/>+ discovery_url col<br/>base_url=mock now)]
+        Discovery[BridgeDiscoveryService<br/>60s cache + singleflight<br/>+ 5min stale grace]
         Proxy[HttpProxyClient<br/>+ Path C guard<br/>+ metrics]
     end
-    subgraph MOCK["🟠 mock-osh-admin — DEV NOW (docker-compose.dev)"]
-        MockApi[Express server<br/>3 endpoints]
+    subgraph MOCK["🟠 mock-osh-admin — DEV NOW"]
+        MockApi[Express server<br/>3 tool endpoints<br/>+ GET /tools/list]
         MockGate[fakeRbacGate<br/>3 personas hardcoded<br/>test-user-x/y/partial]
     end
-    subgraph X["🟡 osh_admin REAL — ⏸ PENDING (block P5d)"]
+    subgraph X["🟡 osh_admin REAL — ⏸ PENDING"]
+        ApiList[GET /tools/list<br/>bearer-protected<br/>dynamic from router]
         Api[HTTP API prod<br/>WAF · rate limit · logs]
         SDK[central-rbac-client SDK<br/>appSlug=osh_admin<br/>cache 60s + epoch 10s]
     end
@@ -565,7 +593,10 @@ flowchart LR
     A --> CD
     CD -->|OAuth + MCP| Proxy
     Portal -->|manages| DB
+    DB --> Discovery
     DB --> Proxy
+    Discovery -->|"live fetch<br/>/tools/list"| MockApi
+    Discovery -.->|"P5d swap"| ApiList
     Proxy -->|Bearer + X-User-Sub| MockApi
     MockApi --> MockGate
     Proxy -.->|"P5d swap →<br/>real endpoint"| Api
@@ -580,7 +611,7 @@ flowchart LR
     style X fill:#fef3c7,stroke:#d97706,stroke-width:3px,stroke-dasharray:5 5
   </div>
   <div class="callout" style="margin-top: 1rem;">
-    <strong>Đường liền = active flow (hiện tại):</strong> OneMCP → mock-osh-admin. <strong>Đường đứt = P5d flow (pending):</strong> OneMCP → osh_admin thật → Central RBAC resolve. Swap chỉ update <code class="inline">tool_upstreams.osh_admin.base_url + bearer_ciphertext</code>, không cần rebuild/redeploy.
+    <strong>Đường liền = active flow (hiện tại):</strong> OneMCP → mock-osh-admin (dispatch + live discovery cả 2). <strong>Đường đứt = P5d flow (pending):</strong> OneMCP → osh_admin thật (2 endpoints: <code class="inline">/tools/list</code> + business endpoints) → Central RBAC resolve. Swap chỉ update <code class="inline">tool_upstreams.osh_admin.base_url + bearer_ciphertext + discovery_url</code>, không cần rebuild/redeploy.
   </div>
 </section>
 
@@ -599,15 +630,19 @@ flowchart LR
       </tr>
       <tr>
         <td><span class="persona p-onemcp">Admin OneMCP</span></td>
-        <td>Register bridge (upstream + tool + param_schema)</td>
-        <td><span class="st-done">✅ Done</span> — 3 bridges seeded (mock URL)</td>
-        <td><code class="inline">/admin/tool-bridges</code></td>
+        <td>Register upstream 1 lần (base_url + bearer + discovery_url). Bridges tự load qua live discovery.</td>
+        <td><span class="st-done">✅ Done</span> — upstream seeded (mock URL), Refresh cache UI ready</td>
+        <td><code class="inline">/admin/tool-bridges</code> · tabs Upstreams + Bridges</td>
       </tr>
       <tr>
         <td><span class="persona p-osh">Dev osh_admin</span></td>
-        <td>Endpoint + bearer + schema + <strong>SDK Central integrate</strong> + publish manifest</td>
+        <td>
+          <strong>🅐 Live discovery:</strong> expose <code class="inline">GET /tools/list</code> (bearer-protected, dynamic from router)<br/>
+          <strong>🅑 RBAC:</strong> integrate SDK <code class="inline">central-rbac-client</code> + middleware verify <code class="inline">X-Onemcp-User-Sub</code> + publish manifest permissions<br/>
+          <strong>🅒 Ops:</strong> expose prod endpoint + bearer S2S cho OneMCP + confirm exposure model
+        </td>
         <td><span class="st-pending">⏸ Pending</span> — block P5d prod swap</td>
-        <td>osh_admin repo (owner của app RBAC)</td>
+        <td>osh_admin repo (owner của app RBAC + discovery endpoint)</td>
       </tr>
       <tr>
         <td><span class="persona p-central">Admin Central RBAC</span></td>
@@ -673,8 +708,38 @@ flowchart LR
 </section>
 
 <section class="checklist-section">
-  <h2>📋 osh_admin handoff checklist <span class="badge">6 items để unblock P5d</span></h2>
-  <p>Chi tiết từng bước dev osh_admin cần làm để OneMCP swap từ mock sang prod. Effort estimate ~1-2 tuần (SDK integrate là phần lớn).</p>
+  <h2>📋 osh_admin handoff checklist <span class="badge">7 items để unblock P5d</span></h2>
+  <p>Chi tiết từng bước dev osh_admin cần làm để OneMCP swap từ mock sang prod. Effort estimate ~1-2 tuần (SDK integrate là phần lớn, discovery endpoint ~30 phút).</p>
+
+  <div class="checklist-item" style="border-left-color:#10b981;">
+    <h4 style="color:#047857;">0. 🅐 Expose <code class="inline">GET /tools/list</code> endpoint (Option D — recommended, ~30 phút)</h4>
+    <div class="why">Enable live discovery. OneMCP tự fetch mỗi 60s, dev osh_admin thêm endpoint mới → auto visible sau ≤60s. Không cần Admin OneMCP register bridge thủ công. Spec đầy đủ: <a href="../docs/onemcp-bridge-discovery-spec.md">docs/onemcp-bridge-discovery-spec.md</a></div>
+    <span class="example">// Express example — build catalog dynamic from router
+app.get('/tools/list', requireBearerFromOneMCP, (req, res) => {
+  res.json({
+    app_slug: 'osh_admin',
+    version: '1.0.0',
+    tools: [
+      {
+        name: 'create_waf',
+        method: 'POST',
+        path: '/waf/rules',
+        description: 'Create WAF rule blocking IP/domain',
+        permission_id: 'osh_admin:tool.create_waf',
+        param_schema: {
+          type: 'object',
+          properties: { domain: { type: 'string' }, ip: { type: 'string' } },
+          required: ['domain'],
+          additionalProperties: false,
+        },
+      },
+      // ... auto-append từ router registry
+    ],
+  });
+});
+
+// Test: curl -H "Authorization: Bearer $TOKEN" ${base_url}/tools/list | jq .</span>
+  </div>
 
   <div class="checklist-item">
     <h4>1. Register app osh_admin trên Central RBAC portal</h4>
@@ -782,7 +847,7 @@ C. Hybrid (internal path + public gateway)
   </div>
 
   <div class="callout" style="margin-top: 1.25rem;">
-    <strong>Sau khi 6 items done:</strong> OneMCP admin thực hiện P5d (~30 phút): edit upstream <code class="inline">osh_admin</code> qua <code class="inline">/admin/tool-bridges</code> UI → change base_url + bearer → save → smoke happy path 1 prompt qua Claude Desktop → verify correlation ID chain trong logs 2 systems.
+    <strong>Sau khi 7 items done:</strong> OneMCP admin thực hiện P5d (~15 phút): edit upstream <code class="inline">osh_admin</code> qua <code class="inline">/admin/tool-bridges</code> UI → change base_url + bearer + <strong>discovery_url</strong> → save → OneMCP tự fetch <code class="inline">/tools/list</code> → bridges auto-load ≤60s → smoke happy path 1 prompt qua Claude Desktop → verify correlation ID chain trong logs 2 systems. <strong>Không cần re-seed bridges thủ công</strong> (Option D auto-populate từ dev osh_admin router).
   </div>
 </section>
 
@@ -1003,10 +1068,10 @@ flowchart TB
   <div class="callout" style="margin-top: 1.25rem;">
     <strong>P5d ship checklist (deploy dev → prod)</strong>:
     <ol style="margin: 0.5rem 0 0; padding-left: 1.5rem; font-size: 0.9rem;">
-      <li>Merge onemcp code lên master (đã có 3 dev bypass commits — env-gated, safe cho prod)</li>
+      <li>Merge onemcp code lên master (đã có 3 dev bypass commits + Option D 3 commits — tất cả env-gated hoặc backward-compat, safe cho prod)</li>
       <li>Deploy backend + portal lên <code class="inline">onemcp-vps</code> (git pull + docker restart)</li>
-      <li>Run migration prod DB: <code class="inline">tool_upstreams</code> + <code class="inline">tool_bridges</code> + <code class="inline">users.zitadel_sub</code> column</li>
-      <li>Register 1 upstream <code class="inline">osh_admin</code> (prod URL + real bearer) + 3 bridges qua Admin UI prod</li>
+      <li>Run migration prod DB: <code class="inline">tool_upstreams</code> + <code class="inline">tool_bridges</code> + <code class="inline">users.zitadel_sub</code> + <code class="inline">discovery_url</code> column</li>
+      <li>Register 1 upstream <code class="inline">osh_admin</code> qua Admin UI prod: base_url + real bearer + <strong>discovery_url</strong> → OneMCP tự load bridges via live discovery (không cần seed thủ công)</li>
       <li>Test happy path qua Claude Desktop dùng <code class="inline">onemcp</code> (prod) — 1 prompt <code class="inline">Xem access log của foo.com</code></li>
       <li>Verify prod audit + osh_admin logs correlation ID chain</li>
       <li>Announce dev/QA: có thể remove <code class="inline">onemcp-local</code> khỏi config nếu không cần dev (hoặc keep tuỳ workflow)</li>
@@ -1031,13 +1096,14 @@ flowchart TB
   <a href="../docs/onemcp-tool-bridge-workflow.md">workflow.md</a> ·
   <a href="../docs/onemcp-tool-bridge-guideline.md">guideline.md</a> ·
   <a href="../docs/onemcp-tool-bridge-runbook.md">runbook.md</a> ·
+  <a href="../docs/onemcp-bridge-discovery-spec.md"><strong>discovery-spec.md</strong> (NEW)</a> ·
   <a href="../docs/onemcp-tool-bridge-smoke-plan.md">smoke-plan.md</a> ·
   <a href="../docs/onemcp-tool-bridge-claude-desktop-e2e-guide.md">claude-desktop-e2e-guide.md</a> ·
-  <a href="../docs/journals/2026-09-17-onemcp-osh-admin-bridge-mvp-shipped.md">journal (E2E verified)</a> ·
-  <a href="../plans/260917-0902-onemcp-osh-admin-bridge/plan.md">plan.md</a>
+  <a href="../docs/journals/2026-09-17-onemcp-osh-admin-bridge-mvp-shipped.md">journal MVP</a> ·
+  <a href="../docs/journals/2026-09-18-onemcp-bridge-live-discovery-shipped.md">journal Option D</a>
   <br><br>
-  Updated 2026-09-18 09:24 · Status: MVP shipped + E2E verified positive/negative + Dev/Prod lifecycle + P2 DX enhancements documented · P5d pending osh_admin handoff
-  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · closed + archived · 13 commits pushed (2 repos)
+  Updated 2026-09-18 11:15 · Status: MVP + Option D live-discovery SHIPPED · Dev osh_admin bottleneck RESOLVED · P5d pending osh_admin RBAC integrate + /tools/list endpoint
+  <br>Plans: <code>260917-0902-onemcp-osh-admin-bridge</code> (closed) + <code>260918-0953-onemcp-bridge-live-discovery</code> (shipped) · 17 commits pushed across onemcp + onelog repos
 </footer>
 
 <script>

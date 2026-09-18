@@ -810,6 +810,106 @@ flowchart TB
 </section>
 
 <section>
+  <h2>⚠️ Known limitations + P2 enhancements <span class="badge">DX autonomy</span></h2>
+
+  <div class="callout" style="background:#fef2f2; border-color:#dc2626;">
+    <strong>Bottleneck hiện tại (MVP):</strong> Mỗi lần dev osh_admin thêm/sửa endpoint → phải nhờ Admin OneMCP register/update bridge qua portal UI. Admin OneMCP = single point of failure cho velocity dev osh_admin.
+  </div>
+
+  <div class="mermaid">
+flowchart LR
+    subgraph now["🔴 CURRENT MVP flow (manual, có bottleneck)"]
+        direction LR
+        A1[Dev osh_admin<br/>code + deploy endpoint] --> A2[Dev ping<br/>Admin OneMCP<br/>chat/email/ticket]
+        A2 --> A3[Admin OneMCP<br/>mở portal<br/>click register bridge<br/>paste info manually]
+        A3 --> A4[Dev osh_admin<br/>test qua Claude Desktop]
+    end
+
+    subgraph future["🟢 P2 Option C flow (manifest-driven, zero bottleneck)"]
+        direction LR
+        B1[Dev osh_admin<br/>code + deploy endpoint<br/>+ update manifest bridges section] --> B2[OneMCP scheduled fetch<br/>manifest mỗi 5min<br/>auto diff + apply]
+        B2 --> B3[Dev osh_admin<br/>test qua Claude Desktop]
+    end
+
+    now -.->|"P2 enhancement<br/>~3-4d effort"| future
+
+    style now fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+    style future fill:#f0fdf4,stroke:#10b981,stroke-width:2px
+  </div>
+
+  <div class="status-grid" style="margin-top: 1.5rem;">
+    <div class="status-col" style="background:#f0fdf4; border-color:#10b981;">
+      <h3 style="color:#047857;">🅐 Option A — Manual + SLA (status quo)</h3>
+      <ul style="list-style:disc;">
+        <li>0 effort code change</li>
+        <li>Document SLA: Admin OneMCP response &lt;1 business day</li>
+        <li>Chấp nhận ownership rõ (Admin OneMCP gatekeeper security)</li>
+        <li><strong>Trade-off:</strong> dev osh_admin không autonomy, không CI-able</li>
+      </ul>
+    </div>
+    <div class="status-col" style="background:#fffbeb; border-color:#f59e0b;">
+      <h3 style="color:#b45309;">🅑 Option B — Self-service API (medium)</h3>
+      <ul style="list-style:disc;">
+        <li>OneMCP expose <code class="inline">POST /api/app-bridges</code> với per-app token (giống Central RBAC pattern)</li>
+        <li>Dev osh_admin CI/CD gọi API tự register/update</li>
+        <li>Token scope chỉ app osh_admin</li>
+        <li><strong>Effort:</strong> ~2d</li>
+        <li><strong>Trade-off:</strong> vẫn 2-step (deploy code + call register API)</li>
+      </ul>
+    </div>
+    <div class="status-col" style="background:#eff6ff; border-color:#3b82f6;">
+      <h3 style="color:#1e40af;">🅒 Option C — Manifest auto-discovery (recommend long-term)</h3>
+      <ul style="list-style:disc;">
+        <li>Dev osh_admin publish extended manifest có section <code class="inline">bridges</code></li>
+        <li>OneMCP scheduled fetch mỗi 5 phút → diff + auto-apply (idempotent)</li>
+        <li>Config-as-code trong repo osh_admin (1 nguồn truth với permissions)</li>
+        <li>Symmetric với Central RBAC apply pattern</li>
+        <li><strong>Effort:</strong> ~3-4d</li>
+        <li><strong>Trade-off:</strong> small delay 5min cho bridge mới visible</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 1.25rem; background:#eff6ff; border-color:#3b82f6;">
+    <strong>Extended manifest schema (Option C proposal)</strong> — append vào existing <code class="inline">.well-known/rbac-permissions.json</code>:
+  </div>
+  <pre style="background:var(--code-bg); padding:1rem; border-radius:6px; overflow-x:auto; font-size:0.82rem; margin:0.5rem 0;">{
+  "app_slug": "osh_admin",
+  "version": "1.1.0",
+  "permissions": [...],
+  "default_roles": [...],
+  "bridges": [
+    {
+      "name": "create_waf",
+      "method": "POST",
+      "path": "/waf/rules",
+      "description": "Create WAF rule blocking IP/domain",
+      "permission_id": "osh_admin:tool.create_waf",
+      "param_schema": {
+        "type": "object",
+        "properties": {
+          "domain": {"type":"string"},
+          "ip": {"type":"string"},
+          "rules": {"type":"array"}
+        },
+        "required": ["domain"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}</pre>
+
+  <div class="callout" style="margin-top: 1rem;">
+    <strong>Roadmap decision:</strong>
+    <ul style="margin: 0.5rem 0 0; padding-left:1.5rem; font-size:0.9rem;">
+      <li><strong>MVP (hiện tại):</strong> Option A — chấp nhận bottleneck cho ownership + security tradeoff</li>
+      <li><strong>Trigger P2 Option C:</strong> khi có ≥3 tool mới cần add trong 1 tháng, HOẶC dev osh_admin explicit complain, HOẶC sau P5d có ≥2 tuần chạy prod stable</li>
+      <li><strong>Short-term workaround</strong> giữa lúc chờ Option C: dev osh_admin share <code class="inline">bridge-config.yaml</code> self-drafted trong repo → Admin OneMCP copy vào portal (~2 phút click) — reduce communication overhead</li>
+    </ul>
+  </div>
+</section>
+
+<section>
   <h2>🚦 Deployment lifecycle — Dev vs Prod <span class="badge">2 environments</span></h2>
   <p>Claude Desktop config có <strong>cả 2 MCP servers</strong>: <code class="inline">onemcp-local</code> (dev/test) + <code class="inline">onemcp</code> (prod). Vai trò khác nhau, không overlap.</p>
 
@@ -915,8 +1015,8 @@ flowchart TB
   <a href="../docs/journals/2026-09-17-onemcp-osh-admin-bridge-mvp-shipped.md">journal (E2E verified)</a> ·
   <a href="../plans/260917-0902-onemcp-osh-admin-bridge/plan.md">plan.md</a>
   <br><br>
-  Updated 2026-09-17 20:40 · Status: MVP shipped + E2E verified positive/negative + Dev/Prod lifecycle documented · P5d pending osh_admin handoff
-  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · 12 commits pushed (2 repos)
+  Updated 2026-09-18 09:24 · Status: MVP shipped + E2E verified positive/negative + Dev/Prod lifecycle + P2 DX enhancements documented · P5d pending osh_admin handoff
+  <br>Plan <code>260917-0902-onemcp-osh-admin-bridge</code> · closed + archived · 13 commits pushed (2 repos)
 </footer>
 
 <script>
